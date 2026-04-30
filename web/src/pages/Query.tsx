@@ -32,6 +32,16 @@ export default function QueryPage() {
   const dbMenuRef = useRef<HTMLDivElement>(null)
   const userMenuRef = useRef<HTMLDivElement>(null)
 
+  // Track dark mode for CodeMirror theme
+  const [isDark, setIsDark] = useState(() => document.documentElement.classList.contains('dark'))
+  useEffect(() => {
+    const obs = new MutationObserver(() => {
+      setIsDark(document.documentElement.classList.contains('dark'))
+    })
+    obs.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] })
+    return () => obs.disconnect()
+  }, [])
+
   // Draggable split
   const [editorPct, setEditorPct] = useState(40)
   const containerRef = useRef<HTMLDivElement>(null)
@@ -239,7 +249,7 @@ export default function QueryPage() {
               <CodeMirror
                 value={sqlText}
                 onChange={setSqlText}
-                theme={oneDark}
+                theme={isDark ? oneDark : 'light'}
                 extensions={[sql()]}
                 height="100%"
                 style={{ height: '100%', fontSize: 13, fontFamily: 'JetBrains Mono, monospace' }}
