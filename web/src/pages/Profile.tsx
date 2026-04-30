@@ -86,18 +86,18 @@ export default function ProfilePage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center text-zinc-500 text-sm">Loading…</div>
+      <div className="min-h-screen bg-zinc-50 dark:bg-zinc-950 flex items-center justify-center text-zinc-500 text-sm">Loading…</div>
     )
   }
 
   return (
-    <div className="min-h-screen bg-zinc-950">
+    <div className="min-h-screen bg-zinc-50 dark:bg-zinc-950">
       {/* Header */}
-      <header className="px-4 py-3 border-b border-zinc-800 flex items-center gap-3">
+      <header className="px-4 py-3 border-b border-zinc-200 dark:border-zinc-800 flex items-center gap-3">
         <div className="w-7 h-7 bg-blue-600 rounded-md flex items-center justify-center">
           <Database size={15} className="text-white" />
         </div>
-        <span className="font-semibold text-zinc-100">D1 Studio</span>
+        <span className="font-semibold text-zinc-900 dark:text-zinc-100">D1 Studio</span>
         <div className="flex-1" />
         <Link to="/query" className="btn-ghost btn-sm gap-1.5">
           <ArrowLeft size={14} /> Back to query
@@ -105,21 +105,21 @@ export default function ProfilePage() {
       </header>
 
       <div className="max-w-2xl mx-auto p-4 sm:p-6 space-y-6">
-        <h1 className="text-xl font-semibold text-zinc-100">Profile & Security</h1>
+        <h1 className="text-xl font-semibold text-zinc-900 dark:text-zinc-100">Profile & Security</h1>
 
         {/* Account info */}
         <div className="card p-5">
-          <h2 className="text-sm font-semibold text-zinc-300 mb-4 flex items-center gap-2">
+          <h2 className="text-sm font-semibold text-zinc-700 dark:text-zinc-300 mb-4 flex items-center gap-2">
             <Shield size={15} className="text-zinc-500" /> Account
           </h2>
           <div className="space-y-2 text-sm">
             <div className="flex items-center justify-between">
               <span className="text-zinc-500">Name</span>
-              <span className="text-zinc-200">{user?.name}</span>
+              <span className="text-zinc-800 dark:text-zinc-200">{user?.name}</span>
             </div>
             <div className="flex items-center justify-between">
               <span className="text-zinc-500">Email</span>
-              <span className="text-zinc-200">{user?.email}</span>
+              <span className="text-zinc-800 dark:text-zinc-200">{user?.email}</span>
             </div>
             <div className="flex items-center justify-between">
               <span className="text-zinc-500">Role</span>
@@ -130,7 +130,7 @@ export default function ProfilePage() {
 
         {/* Change password */}
         <div className="card p-5">
-          <h2 className="text-sm font-semibold text-zinc-300 mb-4 flex items-center gap-2">
+          <h2 className="text-sm font-semibold text-zinc-700 dark:text-zinc-300 mb-4 flex items-center gap-2">
             <Key size={15} className="text-zinc-500" /> Change Password
           </h2>
           <form onSubmit={savePassword} className="space-y-4">
@@ -159,16 +159,16 @@ export default function ProfilePage() {
 
         {/* TOTP */}
         <div className="card p-5">
-          <h2 className="text-sm font-semibold text-zinc-300 mb-4 flex items-center gap-2">
+          <h2 className="text-sm font-semibold text-zinc-700 dark:text-zinc-300 mb-4 flex items-center gap-2">
             <Smartphone size={15} className="text-zinc-500" /> Authenticator App (TOTP)
           </h2>
 
           {user?.totpCredentials && user.totpCredentials.length > 0 && (
             <ul className="space-y-2 mb-4">
               {user.totpCredentials.map((cred) => (
-                <li key={cred.id} className="flex items-center justify-between bg-zinc-800 rounded-lg px-4 py-2.5">
+                <li key={cred.id} className="flex items-center justify-between bg-zinc-100 dark:bg-zinc-800 rounded-lg px-4 py-2.5">
                   <div>
-                    <p className="text-sm text-zinc-200">{cred.name}</p>
+                    <p className="text-sm text-zinc-800 dark:text-zinc-200">{cred.name}</p>
                     <p className="text-xs text-zinc-500">Added {new Date(cred.created_at * 1000).toLocaleDateString()}</p>
                   </div>
                   <button onClick={() => deleteTotpCred(cred.id)} className="btn-ghost p-1.5 text-red-400">
@@ -196,8 +196,8 @@ export default function ProfilePage() {
                   className="rounded-lg border border-zinc-700 w-44 h-44"
                 />
               </div>
-              <div className="flex items-center gap-2 bg-zinc-800 rounded-lg px-3 py-2">
-                <code className="flex-1 text-xs text-zinc-300 font-mono break-all">
+              <div className="flex items-center gap-2 bg-zinc-100 dark:bg-zinc-800 rounded-lg px-3 py-2">
+                <code className="flex-1 text-xs text-zinc-700 dark:text-zinc-300 font-mono break-all">
                   {showSecret ? totpSetup.secret : '•'.repeat(totpSetup.secret.length)}
                 </code>
                 <button onClick={() => setShowSecret(!showSecret)} className="text-zinc-500 hover:text-zinc-300 p-1">

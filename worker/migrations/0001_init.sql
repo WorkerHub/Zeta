@@ -96,7 +96,7 @@ CREATE INDEX idx_audit_created ON audit_logs(created_at);
 -- Default settings
 INSERT INTO settings (key, value, updated_at) VALUES
   ('registration_enabled', 'true', unixepoch()),
-  ('require_email_verification', 'true', unixepoch()),
+  ('require_email_verification', 'false', unixepoch()),
   ('enforce_2fa', 'false', unixepoch()),
   ('email_provider', 'resend', unixepoch()),
   ('resend_api_key', '', unixepoch()),

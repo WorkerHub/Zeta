@@ -31,17 +31,17 @@ export default function Register() {
   })
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-4">
+    <div className="min-h-screen flex items-center justify-center p-4 bg-zinc-50 dark:bg-zinc-950">
       <div className="w-full max-w-sm">
         <div className="flex items-center justify-center gap-2 mb-8">
           <div className="w-9 h-9 bg-blue-600 rounded-lg flex items-center justify-center">
             <Database size={20} className="text-white" />
           </div>
-          <span className="text-xl font-semibold text-zinc-100">D1 Studio</span>
+          <span className="text-xl font-semibold text-zinc-900 dark:text-zinc-100">D1 Studio</span>
         </div>
 
         <div className="card p-6">
-          <h1 className="text-lg font-semibold text-zinc-100 mb-6">Create account</h1>
+          <h1 className="text-lg font-semibold text-zinc-900 mb-6 dark:text-zinc-100">Create account</h1>
 
           {success ? (
             <div className="space-y-4">

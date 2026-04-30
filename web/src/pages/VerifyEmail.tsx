@@ -17,21 +17,21 @@ export default function VerifyEmail() {
   }, [token])
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-4">
+    <div className="min-h-screen flex items-center justify-center p-4 bg-zinc-50 dark:bg-zinc-950">
       <div className="w-full max-w-sm">
         <div className="flex items-center justify-center gap-2 mb-8">
           <div className="w-9 h-9 bg-blue-600 rounded-lg flex items-center justify-center">
             <Database size={20} className="text-white" />
           </div>
-          <span className="text-xl font-semibold text-zinc-100">D1 Studio</span>
+          <span className="text-xl font-semibold text-zinc-900 dark:text-zinc-100">D1 Studio</span>
         </div>
 
         <div className="card p-6 text-center">
-          {status === 'loading' && <p className="text-zinc-400">Verifying…</p>}
+          {status === 'loading' && <p className="text-zinc-500">Verifying…</p>}
           {status === 'success' && (
             <div className="space-y-4">
               <CheckCircle size={40} className="mx-auto text-emerald-400" />
-              <p className="text-zinc-200">{message}</p>
+              <p className="text-zinc-700 dark:text-zinc-200">{message}</p>
               <Link to="/login" className="btn-primary inline-block">Sign in</Link>
             </div>
           )}

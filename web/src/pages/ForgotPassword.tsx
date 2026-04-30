@@ -22,17 +22,17 @@ export default function ForgotPassword() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-4">
+    <div className="min-h-screen flex items-center justify-center p-4 bg-zinc-50 dark:bg-zinc-950">
       <div className="w-full max-w-sm">
         <div className="flex items-center justify-center gap-2 mb-8">
           <div className="w-9 h-9 bg-blue-600 rounded-lg flex items-center justify-center">
             <Database size={20} className="text-white" />
           </div>
-          <span className="text-xl font-semibold text-zinc-100">D1 Studio</span>
+          <span className="text-xl font-semibold text-zinc-900 dark:text-zinc-100">D1 Studio</span>
         </div>
 
         <div className="card p-6">
-          <h1 className="text-lg font-semibold text-zinc-100 mb-2">Forgot password</h1>
+          <h1 className="text-lg font-semibold text-zinc-900 mb-2 dark:text-zinc-100">Forgot password</h1>
           <p className="text-sm text-zinc-500 mb-6">Enter your email and we'll send a reset link.</p>
 
           {message ? (

@@ -93,7 +93,7 @@ export default function AdminDatabases() {
   return (
     <div className="p-4 sm:p-6 max-w-5xl">
       <div className="flex items-center justify-between mb-6">
-        <h1 className="text-lg font-semibold text-zinc-100">Databases</h1>
+        <h1 className="text-lg font-semibold text-zinc-900 dark:text-zinc-100">Databases</h1>
         <button onClick={() => setShowAdd(!showAdd)} className="btn-primary btn-sm gap-1.5">
           <Plus size={13} /> Add database
         </button>
@@ -102,7 +102,7 @@ export default function AdminDatabases() {
       {/* Add form */}
       {showAdd && (
         <div className="card p-5 mb-4 space-y-4">
-          <h2 className="text-sm font-semibold text-zinc-300">Register a D1 database</h2>
+          <h2 className="text-sm font-semibold text-zinc-700 dark:text-zinc-300">Register a D1 database</h2>
           <p className="text-xs text-zinc-500">The binding must already exist in your Worker's wrangler.toml.</p>
           <div className="grid sm:grid-cols-2 gap-4">
             <div>
@@ -141,7 +141,7 @@ export default function AdminDatabases() {
         ) : (
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b border-zinc-800 bg-zinc-800/30">
+              <tr className="border-b border-zinc-200 dark:border-zinc-800 bg-zinc-100/50 dark:bg-zinc-800/30">
                 <th className="text-left px-4 py-3 text-xs font-medium text-zinc-500">Name</th>
                 <th className="text-left px-4 py-3 text-xs font-medium text-zinc-500 hidden md:table-cell">Binding</th>
                 <th className="text-left px-4 py-3 text-xs font-medium text-zinc-500">Status</th>
@@ -150,9 +150,9 @@ export default function AdminDatabases() {
             </thead>
             <tbody>
               {databases.map((db) => (
-                <tr key={db.id} className="border-b border-zinc-800/50 hover:bg-zinc-800/20 transition-colors">
+                <tr key={db.id} className="border-b border-zinc-100 hover:bg-zinc-50 dark:border-zinc-800/50 dark:hover:bg-zinc-800/20 transition-colors">
                   <td className="px-4 py-3">
-                    <p className="font-medium text-zinc-200">{db.name}</p>
+                    <p className="font-medium text-zinc-800 dark:text-zinc-200">{db.name}</p>
                     {db.description && <p className="text-xs text-zinc-500">{db.description}</p>}
                   </td>
                   <td className="px-4 py-3 hidden md:table-cell">
@@ -188,8 +188,8 @@ export default function AdminDatabases() {
       {/* Permissions panel */}
       {selectedDb && (
         <div className="card p-5">
-          <h2 className="text-sm font-semibold text-zinc-300 mb-4">
-            Permissions for <span className="text-zinc-100">{selectedDb.name}</span>
+          <h2 className="text-sm font-semibold text-zinc-700 dark:text-zinc-300 mb-4">
+            Permissions for <span className="text-zinc-900 dark:text-zinc-100">{selectedDb.name}</span>
           </h2>
           <p className="text-xs text-zinc-500 mb-4">Admins always have full write access. These permissions apply to members only.</p>
 
@@ -216,9 +216,9 @@ export default function AdminDatabases() {
           ) : (
             <ul className="space-y-2">
               {permissions.map((p) => (
-                <li key={p.id} className="flex items-center justify-between bg-zinc-800 rounded-lg px-4 py-2.5">
+                <li key={p.id} className="flex items-center justify-between bg-zinc-100 dark:bg-zinc-800 rounded-lg px-4 py-2.5">
                   <div>
-                    <p className="text-sm text-zinc-200">{p.user_name}</p>
+                    <p className="text-sm text-zinc-800 dark:text-zinc-200">{p.user_name}</p>
                     <p className="text-xs text-zinc-500">{p.email}</p>
                   </div>
                   <div className="flex items-center gap-2">

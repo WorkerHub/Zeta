@@ -36,7 +36,7 @@ export default function AdminSettings() {
   return (
     <div className="p-4 sm:p-6 max-w-2xl">
       <div className="flex items-center justify-between mb-6">
-        <h1 className="text-lg font-semibold text-zinc-100">Settings</h1>
+        <h1 className="text-lg font-semibold text-zinc-900 dark:text-zinc-100">Settings</h1>
         <button onClick={save} disabled={saving} className="btn-primary gap-2">
           {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
           {saved ? 'Saved!' : 'Save changes'}
@@ -56,31 +56,31 @@ export default function AdminSettings() {
           </div>
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm font-medium text-zinc-200">Registration open</p>
+              <p className="text-sm font-medium text-zinc-700 dark:text-zinc-200">Registration open</p>
               <p className="text-xs text-zinc-500">Allow new users to register</p>
             </div>
             <button onClick={() => toggle('registration_enabled')}
-              className={`relative w-11 h-6 rounded-full transition-colors ${settings['registration_enabled'] === 'true' ? 'bg-blue-600' : 'bg-zinc-700'}`}>
+              className={`relative w-11 h-6 rounded-full transition-colors ${settings['registration_enabled'] === 'true' ? 'bg-blue-600' : 'bg-zinc-300 dark:bg-zinc-700'}`}>
               <span className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-transform ${settings['registration_enabled'] === 'true' ? 'translate-x-6' : 'translate-x-1'}`} />
             </button>
           </div>
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm font-medium text-zinc-200">Require email verification</p>
+              <p className="text-sm font-medium text-zinc-700 dark:text-zinc-200">Require email verification</p>
               <p className="text-xs text-zinc-500">Users must verify before logging in</p>
             </div>
             <button onClick={() => toggle('require_email_verification')}
-              className={`relative w-11 h-6 rounded-full transition-colors ${settings['require_email_verification'] !== 'false' ? 'bg-blue-600' : 'bg-zinc-700'}`}>
+              className={`relative w-11 h-6 rounded-full transition-colors ${settings['require_email_verification'] !== 'false' ? 'bg-blue-600' : 'bg-zinc-300 dark:bg-zinc-700'}`}>
               <span className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-transform ${settings['require_email_verification'] !== 'false' ? 'translate-x-6' : 'translate-x-1'}`} />
             </button>
           </div>
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm font-medium text-zinc-200">Enforce 2FA for all users</p>
+              <p className="text-sm font-medium text-zinc-700 dark:text-zinc-200">Enforce 2FA for all users</p>
               <p className="text-xs text-zinc-500">Require 2FA even if not individually set</p>
             </div>
             <button onClick={() => toggle('enforce_2fa')}
-              className={`relative w-11 h-6 rounded-full transition-colors ${settings['enforce_2fa'] === 'true' ? 'bg-blue-600' : 'bg-zinc-700'}`}>
+              className={`relative w-11 h-6 rounded-full transition-colors ${settings['enforce_2fa'] === 'true' ? 'bg-blue-600' : 'bg-zinc-300 dark:bg-zinc-700'}`}>
               <span className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-transform ${settings['enforce_2fa'] === 'true' ? 'translate-x-6' : 'translate-x-1'}`} />
             </button>
           </div>

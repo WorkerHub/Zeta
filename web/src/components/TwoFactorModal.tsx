@@ -54,7 +54,7 @@ export default function TwoFactorModal({ pendingToken, onSuccess, onCancel }: Pr
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
       <div className="card w-full max-w-sm p-6 shadow-2xl">
         <div className="flex items-center justify-between mb-6">
-          <h2 className="text-lg font-semibold text-zinc-100">Two-factor verification</h2>
+          <h2 className="text-lg font-semibold text-zinc-900 dark:text-zinc-100">Two-factor verification</h2>
           <button onClick={onCancel} className="btn-ghost p-1.5 rounded-lg">
             <X size={16} />
           </button>
@@ -66,7 +66,7 @@ export default function TwoFactorModal({ pendingToken, onSuccess, onCancel }: Pr
             <button
               key={m}
               onClick={() => { setMethod(m); setCode(''); setError(''); setOtpSent(false) }}
-              className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-medium border transition-colors ${method === m ? 'bg-blue-600 border-blue-600 text-white' : 'bg-zinc-800 border-zinc-700 text-zinc-400 hover:text-zinc-200'}`}
+              className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-medium border transition-colors ${method === m ? 'bg-blue-600 border-blue-600 text-white' : 'bg-zinc-100 border-zinc-200 text-zinc-500 hover:text-zinc-800 dark:bg-zinc-800 dark:border-zinc-700 dark:text-zinc-400 dark:hover:text-zinc-200'}`}
             >
               {m === 'totp' ? <><Smartphone size={13} /> Authenticator</> : <><Mail size={13} /> Email OTP</>}
             </button>

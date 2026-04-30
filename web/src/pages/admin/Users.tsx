@@ -38,7 +38,7 @@ export default function AdminUsers() {
   return (
     <div className="p-4 sm:p-6 max-w-5xl">
       <div className="flex items-center justify-between mb-6">
-        <h1 className="text-lg font-semibold text-zinc-100">Users</h1>
+        <h1 className="text-lg font-semibold text-zinc-900 dark:text-zinc-100">Users</h1>
         <span className="badge badge-zinc">{total} total</span>
       </div>
 
@@ -54,7 +54,7 @@ export default function AdminUsers() {
       <div className="card overflow-hidden">
         <table className="w-full text-sm">
           <thead>
-            <tr className="border-b border-zinc-800 bg-zinc-800/30">
+            <tr className="border-b border-zinc-200 dark:border-zinc-800 bg-zinc-100/50 dark:bg-zinc-800/30">
               <th className="text-left px-4 py-3 text-xs font-medium text-zinc-500">User</th>
               <th className="text-left px-4 py-3 text-xs font-medium text-zinc-500 hidden md:table-cell">Verified</th>
               <th className="text-left px-4 py-3 text-xs font-medium text-zinc-500">Role</th>
@@ -68,9 +68,9 @@ export default function AdminUsers() {
             ) : users.length === 0 ? (
               <tr><td colSpan={5} className="px-4 py-8 text-center text-zinc-500 text-sm">No users found</td></tr>
             ) : users.map((u) => (
-              <tr key={u.id} className="border-b border-zinc-800/50 hover:bg-zinc-800/20 transition-colors">
+              <tr key={u.id} className="border-b border-zinc-100 hover:bg-zinc-50 dark:border-zinc-800/50 dark:hover:bg-zinc-800/20 transition-colors">
                 <td className="px-4 py-3">
-                  <p className="font-medium text-zinc-200">{u.name}</p>
+                  <p className="font-medium text-zinc-800 dark:text-zinc-200">{u.name}</p>
                   <p className="text-xs text-zinc-500">{u.email}</p>
                 </td>
                 <td className="px-4 py-3 hidden md:table-cell">
@@ -84,7 +84,7 @@ export default function AdminUsers() {
                   <select
                     value={u.role}
                     onChange={(e) => changeRole(u.id, e.target.value)}
-                    className="bg-zinc-800 border border-zinc-700 rounded-md px-2 py-1 text-xs text-zinc-200 focus:outline-none focus:border-blue-500"
+                    className="bg-zinc-100 border border-zinc-200 rounded-md px-2 py-1 text-xs text-zinc-700 dark:bg-zinc-800 dark:border-zinc-700 dark:text-zinc-200 focus:outline-none focus:border-blue-500"
                   >
                     <option value="member">member</option>
                     <option value="admin">admin</option>

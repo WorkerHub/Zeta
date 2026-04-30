@@ -30,7 +30,7 @@ export default function ResetPassword() {
 
   if (!token) {
     return (
-      <div className="min-h-screen flex items-center justify-center p-4">
+      <div className="min-h-screen flex items-center justify-center p-4 bg-zinc-50 dark:bg-zinc-950">
         <div className="card p-6 text-center">
           <p className="text-red-400 mb-4">Invalid reset link.</p>
           <Link to="/forgot-password" className="btn-primary">Request a new link</Link>
@@ -40,17 +40,17 @@ export default function ResetPassword() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-4">
+    <div className="min-h-screen flex items-center justify-center p-4 bg-zinc-50 dark:bg-zinc-950">
       <div className="w-full max-w-sm">
         <div className="flex items-center justify-center gap-2 mb-8">
           <div className="w-9 h-9 bg-blue-600 rounded-lg flex items-center justify-center">
             <Database size={20} className="text-white" />
           </div>
-          <span className="text-xl font-semibold text-zinc-100">D1 Studio</span>
+          <span className="text-xl font-semibold text-zinc-900 dark:text-zinc-100">D1 Studio</span>
         </div>
 
         <div className="card p-6">
-          <h1 className="text-lg font-semibold text-zinc-100 mb-6">Set new password</h1>
+          <h1 className="text-lg font-semibold text-zinc-900 mb-6 dark:text-zinc-100">Set new password</h1>
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
               <label className="label">New password</label>
