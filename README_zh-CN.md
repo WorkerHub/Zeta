@@ -109,6 +109,7 @@
 | 名称 | 值 |
 |------|----|
 | `APP_URL` | 你的 Worker 地址，例如 `https://d1-studio.yourname.workers.dev` 或自定义域名 |
+| `TABLE_PREFIX` | *（可选）* 所有内部 D1 表的前缀，例如 `kp` → 表名变为 `kp_users`、`kp_settings` 等。必须在**访问 setup URL 之前**设置，初始化后不可更改。 |
 
 > 以上配置完全隔离于 GitHub。`wrangler.toml` 中的 `keep_vars = true` 确保每次部署不会覆盖你在此处设置的值。
 
@@ -232,6 +233,7 @@ http://localhost:8787/api/setup/dev-setup-secret
 | `ENCRYPTION_KEY` | 密钥 | 64 位十六进制 — TOTP 密钥的 AES-GCM 加密密钥 |
 | `SETUP_SECRET` | 密钥 | 保护 `GET /api/setup/:secret` 初始化端点 |
 | `APP_URL` | 变量 | 部署的完整 URL，例如 `https://studio.example.com` |
+| `TABLE_PREFIX` | 变量 | *（可选）* 内部表名前缀（例如 `kp`）。首次 setup 前设置，初始化后不可更改。 |
 
 ---
 

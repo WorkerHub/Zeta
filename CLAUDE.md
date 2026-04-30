@@ -37,6 +37,7 @@ pnpm deploy   # builds web then deploys worker (which embeds the SPA)
    - `SETUP_SECRET` — random string that protects the setup endpoint
 4. Set Worker vars:
    - `APP_URL` — your custom domain (e.g. `https://d1studio.example.com`)
+   - `TABLE_PREFIX` — (optional) prefix for all internal tables, e.g. `kp` → tables become `kp_users`, `kp_settings`, etc. Must be set **before** running setup. Cannot be changed after initialisation.
 5. `pnpm deploy` to build & deploy
 6. Visit `https://<your-domain>/api/setup/<SETUP_SECRET>` to initialise the database
 7. Register at `/register` — first user automatically becomes admin

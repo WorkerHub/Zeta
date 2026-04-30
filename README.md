@@ -109,6 +109,7 @@ Go to **Workers & Pages → d1-studio → Settings → Variables and Secrets**:
 | Name | Value |
 |------|-------|
 | `APP_URL` | Your Worker URL, e.g. `https://d1-studio.yourname.workers.dev` or your custom domain |
+| `TABLE_PREFIX` | *(Optional)* Prefix for all internal D1 tables, e.g. `kp` → tables become `kp_users`, `kp_settings`, etc. Must be set **before** visiting the setup URL. Cannot be changed after initialisation. |
 
 > These are kept out of GitHub entirely. The `keep_vars = true` setting in `wrangler.toml` ensures each deployment never overwrites values you set here.
 
@@ -229,6 +230,7 @@ http://localhost:8787/api/setup/dev-setup-secret
 | `ENCRYPTION_KEY` | Secret | 64-char hex — AES-GCM key for TOTP secrets |
 | `SETUP_SECRET` | Secret | Protects `GET /api/setup/:secret` |
 | `APP_URL` | Variable | Full URL of your deployment |
+| `TABLE_PREFIX` | Variable | *(Optional)* Prefix for internal tables (e.g. `kp`). Set before first setup run. |
 
 ---
 
