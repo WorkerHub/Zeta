@@ -84,9 +84,9 @@ In your GitHub repo → **Settings → Secrets and variables → Actions**:
 | Name | Value |
 |------|-------|
 | `CLOUDFLARE_ACCOUNT_ID` | Your Cloudflare Account ID |
-| `CF_D1_DATABASE_NAME` | e.g. `d1-studio-db` |
-| `CF_D1_DATABASE_ID` | The D1 Database ID from Step 1 |
-| `CF_KV_NAMESPACE_ID` | The KV Namespace ID from Step 1 |
+| `D1_DATABASE_NAME` | e.g. `d1-studio-db` |
+| `D1_DATABASE_ID` | The D1 Database ID from Step 1 |
+| `KV_NAMESPACE_ID` | The KV Namespace ID from Step 1 |
 
 ---
 

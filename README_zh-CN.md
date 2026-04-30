@@ -84,9 +84,9 @@
 | 名称 | 值 |
 |------|----|
 | `CLOUDFLARE_ACCOUNT_ID` | 你的 Cloudflare Account ID |
-| `CF_D1_DATABASE_NAME` | 例如 `d1-studio-db` |
-| `CF_D1_DATABASE_ID` | 第一步中的 D1 Database ID |
-| `CF_KV_NAMESPACE_ID` | 第一步中的 KV Namespace ID |
+| `D1_DATABASE_NAME` | 例如 `d1-studio-db` |
+| `D1_DATABASE_ID` | 第一步中的 D1 Database ID |
+| `KV_NAMESPACE_ID` | 第一步中的 KV Namespace ID |
 
 ---
 

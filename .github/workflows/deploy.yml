@@ -13,7 +13,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
@@ -36,14 +36,18 @@ jobs:
         working-directory: worker
         env:
           CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
-          CF_D1_DATABASE_NAME: ${{ vars.CF_D1_DATABASE_NAME }}
-          CF_D1_DATABASE_ID: ${{ vars.CF_D1_DATABASE_ID }}
-          CF_KV_NAMESPACE_ID: ${{ vars.CF_KV_NAMESPACE_ID }}
+          D1_DATABASE_NAME: ${{ vars.D1_DATABASE_NAME }}
+          D1_DATABASE_ID: ${{ vars.D1_DATABASE_ID }}
+          KV_NAMESPACE_ID: ${{ vars.KV_NAMESPACE_ID }}
+          QUERY_DB_1_NAME: ${{ vars.QUERY_DB_1_NAME }}
+          QUERY_DB_1_ID: ${{ vars.QUERY_DB_1_ID }}
         run: |
           sed -i "s/CLOUDFLARE_ACCOUNT_ID_PLACEHOLDER/${CLOUDFLARE_ACCOUNT_ID}/" wrangler.toml
-          sed -i "s/DB_NAME_PLACEHOLDER/${CF_D1_DATABASE_NAME}/" wrangler.toml
-          sed -i "s/DB_ID_PLACEHOLDER/${CF_D1_DATABASE_ID}/" wrangler.toml
-          sed -i "s/KV_ID_PLACEHOLDER/${CF_KV_NAMESPACE_ID}/" wrangler.toml
+          sed -i "s/D1_DATABASE_NAME_PLACEHOLDER/${D1_DATABASE_NAME}/" wrangler.toml
+          sed -i "s/D1_DATABASE_ID_PLACEHOLDER/${D1_DATABASE_ID}/" wrangler.toml
+          sed -i "s/KV_NAMESPACE_ID_PLACEHOLDER/${KV_NAMESPACE_ID}/" wrangler.toml
+          sed -i "s/QUERY_DB_1_NAME_PLACEHOLDER/${QUERY_DB_1_NAME}/" wrangler.toml
+          sed -i "s/QUERY_DB_1_ID_PLACEHOLDER/${QUERY_DB_1_ID}/" wrangler.toml
 
       - name: Deploy Worker
         working-directory: worker

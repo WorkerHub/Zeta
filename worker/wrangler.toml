@@ -13,19 +13,19 @@ run_worker_first = true
 
 [[d1_databases]]
 binding = "DB"
-database_name = "DB_NAME_PLACEHOLDER"
-database_id   = "DB_ID_PLACEHOLDER"
+database_name = "D1_DATABASE_NAME_PLACEHOLDER"
+database_id   = "D1_DATABASE_ID_PLACEHOLDER"
 migrations_dir = "migrations"
 
 # Add additional queryable D1 databases here, e.g.:
-# [[d1_databases]]
-# binding = "QUERY_DB_1"
-# database_name = "my-other-db"
-# database_id   = "xxxx"
+[[d1_databases]]
+binding = "QUERY_DB_1"
+database_name = "QUERY_DB_1_NAME_PLACEHOLDER"
+database_id   = "QUERY_DB_1_ID_PLACEHOLDER"
 
 [[kv_namespaces]]
 binding = "KV"
-id = "KV_ID_PLACEHOLDER"
+id = "KV_NAMESPACE_ID_PLACEHOLDER"
 
 # Secrets – set via dashboard or `wrangler secret put`:
 #   JWT_SECRET       – random 64-char string
