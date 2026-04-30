@@ -1,9 +1,11 @@
 import { useState, useEffect } from 'react'
 import { Search, Trash2, ChevronDown, CheckCircle, XCircle } from 'lucide-react'
 import { adminApi } from '../../lib/api'
+import { useAuthContext } from '../../hooks/useAuth'
 import type { User } from '../../types'
 
 export default function AdminUsers() {
+  const { user: me } = useAuthContext()
   const [users, setUsers] = useState<User[]>([])
   const [total, setTotal] = useState(0)
   const [search, setSearch] = useState('')
@@ -96,9 +98,11 @@ export default function AdminUsers() {
                   </span>
                 </td>
                 <td className="px-4 py-3 text-right">
-                  <button onClick={() => deleteUser(u.id, u.email)} className="btn-ghost p-1.5 text-red-400 btn-sm">
-                    <Trash2 size={13} />
-                  </button>
+                  {u.id !== me?.id && (
+                    <button onClick={() => deleteUser(u.id, u.email)} className="btn-ghost p-1.5 text-red-400 btn-sm">
+                      <Trash2 size={13} />
+                    </button>
+                  )}
                 </td>
               </tr>
             ))}

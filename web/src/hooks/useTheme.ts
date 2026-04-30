@@ -8,11 +8,14 @@ const CYCLE: Theme[] = ['auto', 'light', 'dark']
 function applyTheme(theme: Theme) {
   const html = document.documentElement
   const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches
-  if (theme === 'dark' || (theme === 'auto' && prefersDark)) {
+  const isDark = theme === 'dark' || (theme === 'auto' && prefersDark)
+  if (isDark) {
     html.classList.add('dark')
   } else {
     html.classList.remove('dark')
   }
+  const metaTheme = document.querySelector<HTMLMetaElement>('meta[name="theme-color"]')
+  if (metaTheme) metaTheme.content = isDark ? '#09090b' : '#fafafa'
 }
 
 export function useTheme() {

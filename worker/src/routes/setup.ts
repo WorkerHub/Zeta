@@ -100,7 +100,7 @@ function buildDDL(T: ReturnType<typeof tables>): string[] {
 // Default settings (INSERT OR IGNORE so re-runs are safe)
 const DEFAULT_SETTINGS: Array<[string, string]> = [
   ['registration_enabled', 'true'],
-  ['require_email_verification', 'true'],
+  ['require_email_verification', 'false'],
   ['enforce_2fa', 'false'],
   ['email_provider', 'resend'],
   ['resend_api_key', ''],

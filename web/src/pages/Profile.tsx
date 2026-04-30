@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
-import { Database, ArrowLeft, Shield, Key, Smartphone, Trash2, Plus, Eye, EyeOff, Copy, CheckCircle } from 'lucide-react'
+import { Database, ArrowLeft, Shield, Key, Smartphone, Trash2, Plus, Eye, EyeOff, Copy, CheckCircle, Fingerprint } from 'lucide-react'
+import QRCode from 'qrcode'
+import { startRegistration } from '@simplewebauthn/browser'
 import { profileApi } from '../lib/api'
 import { useAuthContext } from '../hooks/useAuth'
 import type { User } from '../types'
@@ -18,15 +20,28 @@ export default function ProfilePage() {
 
   // TOTP setup
   const [totpSetup, setTotpSetup] = useState<{ secret: string; uri: string } | null>(null)
+  const [totpQr, setTotpQr] = useState<string | null>(null)
   const [totpCode, setTotpCode] = useState('')
   const [totpError, setTotpError] = useState('')
   const [totpLoading, setTotpLoading] = useState(false)
   const [showSecret, setShowSecret] = useState(false)
   const [copied, setCopied] = useState(false)
 
+  // Passkey
+  const [passkeyLoading, setPasskeyLoading] = useState(false)
+  const [passkeyError, setPasskeyError] = useState('')
+
   useEffect(() => {
     profileApi.me().then(setUser).finally(() => setLoading(false))
   }, [])
+
+  // Generate QR code data URL when TOTP URI is available
+  useEffect(() => {
+    if (!totpSetup?.uri) { setTotpQr(null); return }
+    QRCode.toDataURL(totpSetup.uri, { width: 176, margin: 1, color: { dark: '#000000', light: '#ffffff' } })
+      .then(setTotpQr)
+      .catch(() => setTotpQr(null))
+  }, [totpSetup?.uri])
 
   async function savePassword(e: React.FormEvent) {
     e.preventDefault()
@@ -82,6 +97,31 @@ export default function ProfilePage() {
       setCopied(true)
       setTimeout(() => setCopied(false), 2000)
     }
+  }
+
+  async function registerPasskey() {
+    setPasskeyLoading(true); setPasskeyError('')
+    try {
+      const options = await profileApi.passkeyRegisterOptions()
+      const result = await startRegistration({ optionsJSON: options as unknown as Parameters<typeof startRegistration>[0]['optionsJSON'] })
+      await profileApi.passkeyRegisterVerify(result)
+      const updated = await profileApi.me()
+      setUser(updated)
+    } catch (err) {
+      if (err instanceof Error && err.name === 'NotAllowedError') {
+        setPasskeyError('Passkey registration was cancelled.')
+      } else {
+        setPasskeyError(err instanceof Error ? err.message : 'Passkey registration failed')
+      }
+    } finally {
+      setPasskeyLoading(false)
+    }
+  }
+
+  async function deletePasskeyCred(id: string) {
+    await profileApi.deletePasskey(id)
+    const updated = await profileApi.me()
+    setUser(updated)
   }
 
   if (loading) {
@@ -188,13 +228,14 @@ export default function ProfilePage() {
               <p className="text-sm text-zinc-400">
                 Scan the QR code in your authenticator app, or enter the secret manually.
               </p>
-              {/* QR code via Google Charts */}
               <div className="flex justify-center">
-                <img
-                  src={`https://chart.googleapis.com/chart?chs=180x180&chld=M|0&cht=qr&chl=${encodeURIComponent(totpSetup.uri)}`}
-                  alt="TOTP QR code"
-                  className="rounded-lg border border-zinc-700 w-44 h-44"
-                />
+                {totpQr ? (
+                  <img src={totpQr} alt="TOTP QR code" className="rounded-lg w-44 h-44" />
+                ) : (
+                  <div className="w-44 h-44 rounded-lg bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center text-zinc-500 text-xs">
+                    Generating…
+                  </div>
+                )}
               </div>
               <div className="flex items-center gap-2 bg-zinc-100 dark:bg-zinc-800 rounded-lg px-3 py-2">
                 <code className="flex-1 text-xs text-zinc-700 dark:text-zinc-300 font-mono break-all">
@@ -223,6 +264,34 @@ export default function ProfilePage() {
             </div>
           )}
           {totpError && !totpSetup && <p className="text-sm text-red-400 mt-2">{totpError}</p>}
+        </div>
+
+        {/* Passkey */}
+        <div className="card p-5">
+          <h2 className="text-sm font-semibold text-zinc-700 dark:text-zinc-300 mb-4 flex items-center gap-2">
+            <Fingerprint size={15} className="text-zinc-500" /> Passkeys (Face ID / Touch ID)
+          </h2>
+
+          {user?.passkeyCredentials && user.passkeyCredentials.length > 0 && (
+            <ul className="space-y-2 mb-4">
+              {user.passkeyCredentials.map((cred) => (
+                <li key={cred.id} className="flex items-center justify-between bg-zinc-100 dark:bg-zinc-800 rounded-lg px-4 py-2.5">
+                  <div>
+                    <p className="text-sm text-zinc-800 dark:text-zinc-200">{cred.name ?? 'Passkey'}</p>
+                    <p className="text-xs text-zinc-500">Added {new Date(cred.created_at * 1000).toLocaleDateString()}</p>
+                  </div>
+                  <button onClick={() => deletePasskeyCred(cred.id)} className="btn-ghost p-1.5 text-red-400">
+                    <Trash2 size={14} />
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+
+          <button onClick={registerPasskey} disabled={passkeyLoading} className="btn-secondary gap-2">
+            <Plus size={14} /> {passkeyLoading ? 'Waiting for device…' : 'Add passkey'}
+          </button>
+          {passkeyError && <p className="text-sm text-red-400 mt-2">{passkeyError}</p>}
         </div>
       </div>
     </div>
