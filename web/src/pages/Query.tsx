@@ -1,9 +1,9 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { Link } from 'react-router-dom'
-import CodeMirror, { createTheme } from '@uiw/react-codemirror'
+import CodeMirror from '@uiw/react-codemirror'
 import { sql } from '@codemirror/lang-sql'
 import { oneDark } from '@codemirror/theme-one-dark'
-import { tags as t } from '@lezer/highlight'
+import { EditorView } from '@codemirror/view'
 import {
   Database, Play, Clock, ChevronDown, LogOut, Settings,
   User as UserIcon, History, AlertCircle, CheckCircle2, Loader2,
@@ -18,32 +18,14 @@ import type { Database as DbType } from '../types'
 
 const THEME_ICONS = { auto: Monitor, light: Sun, dark: Moon }
 
-const sqlLightTheme = createTheme({
-  theme: 'light',
-  settings: {
-    background: '#ffffff',
-    foreground: '#18181b',
-    caret: '#18181b',
-    selection: '#bfdbfe',
-    selectionMatch: '#bfdbfe',
-    lineHighlight: '#f4f4f5',
-    gutterBackground: '#fafafa',
-    gutterForeground: '#a1a1aa',
-  },
-  styles: [
-    { tag: t.keyword,                   color: '#1d4ed8' },
-    { tag: t.string,                    color: '#059669' },
-    { tag: t.number,                    color: '#b45309' },
-    { tag: t.bool,                      color: '#b45309' },
-    { tag: t.null,                      color: '#b45309' },
-    { tag: t.comment,                   color: '#71717a', fontStyle: 'italic' },
-    { tag: t.operator,                  color: '#3f3f46' },
-    { tag: t.punctuation,               color: '#3f3f46' },
-    { tag: t.name,                      color: '#18181b' },
-    { tag: t.variableName,              color: '#18181b' },
-    { tag: t.typeName,                  color: '#18181b' },
-    { tag: t.function(t.variableName),  color: '#6d28d9' },
-  ],
+const sqlLightTheme = EditorView.theme({
+  '&': { backgroundColor: '#ffffff', color: '#18181b' },
+  '.cm-content': { caretColor: '#18181b', color: '#18181b' },
+  '.cm-cursor': { borderLeftColor: '#18181b' },
+  '.cm-selectionBackground, ::selection': { backgroundColor: '#bfdbfe' },
+  '.cm-activeLine': { backgroundColor: '#f4f4f5' },
+  '.cm-gutters': { backgroundColor: '#fafafa', color: '#a1a1aa', border: 'none', borderRight: '1px solid #e4e4e7' },
+  '.cm-activeLineGutter': { backgroundColor: '#f4f4f5' },
 })
 
 export default function QueryPage() {
@@ -284,8 +266,8 @@ export default function QueryPage() {
                   const sel = update.state.selection.main
                   setSelectedSql(sel.empty ? '' : update.state.sliceDoc(sel.from, sel.to))
                 }}
-                theme={isDark ? oneDark : sqlLightTheme}
-                extensions={[sql()]}
+                theme={isDark ? oneDark : 'none'}
+                extensions={[sql(), ...(isDark ? [] : [sqlLightTheme])]}
                 height="100%"
                 style={{ height: '100%', fontSize: 13, fontFamily: 'JetBrains Mono, monospace' }}
                 basicSetup={{ lineNumbers: true, foldGutter: false, autocompletion: true }}
