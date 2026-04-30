@@ -1,8 +1,9 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { Link } from 'react-router-dom'
-import CodeMirror from '@uiw/react-codemirror'
+import CodeMirror, { createTheme } from '@uiw/react-codemirror'
 import { sql } from '@codemirror/lang-sql'
 import { oneDark } from '@codemirror/theme-one-dark'
+import { tags as t } from '@lezer/highlight'
 import {
   Database, Play, Clock, ChevronDown, LogOut, Settings,
   User as UserIcon, History, AlertCircle, CheckCircle2, Loader2,
@@ -17,6 +18,34 @@ import type { Database as DbType } from '../types'
 
 const THEME_ICONS = { auto: Monitor, light: Sun, dark: Moon }
 
+const sqlLightTheme = createTheme({
+  theme: 'light',
+  settings: {
+    background: '#ffffff',
+    foreground: '#18181b',
+    caret: '#18181b',
+    selection: '#bfdbfe',
+    selectionMatch: '#bfdbfe',
+    lineHighlight: '#f4f4f5',
+    gutterBackground: '#fafafa',
+    gutterForeground: '#a1a1aa',
+  },
+  styles: [
+    { tag: t.keyword,                   color: '#1d4ed8' },
+    { tag: t.string,                    color: '#059669' },
+    { tag: t.number,                    color: '#b45309' },
+    { tag: t.bool,                      color: '#b45309' },
+    { tag: t.null,                      color: '#b45309' },
+    { tag: t.comment,                   color: '#71717a', fontStyle: 'italic' },
+    { tag: t.operator,                  color: '#3f3f46' },
+    { tag: t.punctuation,               color: '#3f3f46' },
+    { tag: t.name,                      color: '#18181b' },
+    { tag: t.variableName,              color: '#18181b' },
+    { tag: t.typeName,                  color: '#18181b' },
+    { tag: t.function(t.variableName),  color: '#6d28d9' },
+  ],
+})
+
 export default function QueryPage() {
   const { user, logout } = useAuthContext()
   const { theme, cycleTheme } = useTheme()
@@ -29,6 +58,7 @@ export default function QueryPage() {
   const [showHistory, setShowHistory] = useState(false)
   const [showDbMenu, setShowDbMenu] = useState(false)
   const [showUserMenu, setShowUserMenu] = useState(false)
+  const [selectedSql, setSelectedSql] = useState('')
   const dbMenuRef = useRef<HTMLDivElement>(null)
   const userMenuRef = useRef<HTMLDivElement>(null)
 
@@ -69,12 +99,13 @@ export default function QueryPage() {
   }, [])
 
   const runQuery = useCallback(async () => {
-    if (!selectedDb || !sqlText.trim()) return
+    const sqlToRun = selectedSql.trim() || sqlText.trim()
+    if (!selectedDb || !sqlToRun) return
     setRunning(true)
     setQueryError('')
     setResults(null)
     try {
-      const res = await queryApi.execute({ databaseId: selectedDb.id, sql: sqlText.trim() })
+      const res = await queryApi.execute({ databaseId: selectedDb.id, sql: sqlToRun })
       if (res.error) {
         setQueryError(res.error)
       } else {
@@ -85,7 +116,7 @@ export default function QueryPage() {
     } finally {
       setRunning(false)
     }
-  }, [selectedDb, sqlText])
+  }, [selectedDb, sqlText, selectedSql])
 
   // Ctrl/Cmd+Enter to run
   useEffect(() => {
@@ -241,7 +272,7 @@ export default function QueryPage() {
                   className="btn-primary btn-sm gap-1.5 hidden sm:flex"
                 >
                   {running ? <Loader2 size={13} className="animate-spin" /> : <Play size={13} />}
-                  Run
+                  {selectedSql.trim() ? 'Run Selection' : 'Run'}
                 </button>
               </div>
             </div>
@@ -249,7 +280,11 @@ export default function QueryPage() {
               <CodeMirror
                 value={sqlText}
                 onChange={setSqlText}
-                theme={isDark ? oneDark : 'light'}
+                onUpdate={(update) => {
+                  const sel = update.state.selection.main
+                  setSelectedSql(sel.empty ? '' : update.state.sliceDoc(sel.from, sel.to))
+                }}
+                theme={isDark ? oneDark : sqlLightTheme}
                 extensions={[sql()]}
                 height="100%"
                 style={{ height: '100%', fontSize: 13, fontFamily: 'JetBrains Mono, monospace' }}
@@ -359,7 +394,7 @@ export default function QueryPage() {
           className="btn-primary gap-1.5 px-4 py-2"
         >
           {running ? <Loader2 size={14} className="animate-spin" /> : <Play size={14} />}
-          Run
+          {selectedSql.trim() ? 'Selection' : 'Run'}
         </button>
       </div>
 
