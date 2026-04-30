@@ -43,6 +43,9 @@ export default function AdminLayout() {
 
       {/* Mobile top nav */}
       <div className="sm:hidden fixed top-0 left-0 right-0 z-10 bg-white dark:bg-zinc-950 border-b border-zinc-200 dark:border-zinc-800 flex items-center gap-1 px-2 py-2">
+        <Link to="/query" className="flex items-center justify-center w-9 h-9 rounded-lg text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-800 shrink-0">
+          <ArrowLeft size={16} />
+        </Link>
         {nav.map(({ to, label, icon: Icon }) => (
           <Link key={to} to={to}
             className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-medium transition-colors ${loc.pathname.startsWith(to) ? 'bg-zinc-200 text-zinc-900 dark:bg-zinc-800 dark:text-zinc-100' : 'text-zinc-500'}`}>
