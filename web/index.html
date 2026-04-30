@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en" class="dark">
+<html lang="en">
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/icon.svg" />
@@ -7,11 +7,21 @@
     <meta name="theme-color" content="#09090b" />
     <meta name="description" content="D1 Studio – Query your Cloudflare D1 databases" />
     <title>D1 Studio</title>
+    <!-- Blocking theme script: runs before first paint to prevent flash -->
+    <script>
+      (function () {
+        var t = localStorage.getItem('theme') || 'auto'
+        var dark = t === 'dark' || (t === 'auto' && window.matchMedia('(prefers-color-scheme: dark)').matches)
+        document.documentElement.classList.toggle('dark', dark)
+        var m = document.querySelector('meta[name="theme-color"]')
+        if (m) m.content = dark ? '#09090b' : '#fafafa'
+      })()
+    </script>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
   </head>
-  <body class="bg-zinc-950 text-zinc-100 antialiased">
+  <body class="bg-zinc-50 dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100 antialiased">
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
