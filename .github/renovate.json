@@ -1,0 +1,26 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": ["config:recommended"],
+  "schedule": ["before 6am on monday"],
+  "timezone": "UTC",
+  "automerge": false,
+  "platformAutomerge": true,
+  "packageRules": [
+    {
+      "matchUpdateTypes": ["patch", "minor"],
+      "automerge": true
+    },
+    {
+      "groupName": "Cloudflare packages",
+      "matchPackageNames": [
+        "/^@cloudflare//"
+      ]
+    },
+    {
+      "groupName": "SimpleWebAuthn packages",
+      "matchPackageNames": [
+        "/^@simplewebauthn//"
+      ]
+    }
+  ]
+}
