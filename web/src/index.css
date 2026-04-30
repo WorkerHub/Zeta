@@ -26,6 +26,20 @@
   }
 }
 
+/* CodeMirror light mode: override default gray foreground with near-black */
+:root:not(.dark) .cm-editor .cm-content,
+:root:not(.dark) .cm-editor .cm-line {
+  color: #18181b;
+}
+:root:not(.dark) .cm-editor .cm-gutters {
+  background-color: #fafafa;
+  color: #a1a1aa;
+  border-right: 1px solid #e4e4e7;
+}
+:root:not(.dark) .cm-editor .cm-activeLineGutter {
+  background-color: #f4f4f5;
+}
+
 @layer components {
   .btn {
     @apply inline-flex items-center justify-center gap-2 px-4 py-2 rounded-lg font-medium text-sm transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-white dark:focus-visible:ring-offset-zinc-950 disabled:opacity-50 disabled:cursor-not-allowed;

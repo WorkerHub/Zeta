@@ -3,7 +3,6 @@ import { Link } from 'react-router-dom'
 import CodeMirror from '@uiw/react-codemirror'
 import { sql } from '@codemirror/lang-sql'
 import { oneDark } from '@codemirror/theme-one-dark'
-import { EditorView } from '@codemirror/view'
 import {
   Database, Play, Clock, ChevronDown, LogOut, Settings,
   User as UserIcon, History, AlertCircle, CheckCircle2, Loader2,
@@ -18,15 +17,6 @@ import type { Database as DbType } from '../types'
 
 const THEME_ICONS = { auto: Monitor, light: Sun, dark: Moon }
 
-const sqlLightTheme = EditorView.theme({
-  '&': { backgroundColor: '#ffffff', color: '#18181b' },
-  '.cm-content': { caretColor: '#18181b', color: '#18181b' },
-  '.cm-cursor': { borderLeftColor: '#18181b' },
-  '.cm-selectionBackground, ::selection': { backgroundColor: '#bfdbfe' },
-  '.cm-activeLine': { backgroundColor: '#f4f4f5' },
-  '.cm-gutters': { backgroundColor: '#fafafa', color: '#a1a1aa', border: 'none', borderRight: '1px solid #e4e4e7' },
-  '.cm-activeLineGutter': { backgroundColor: '#f4f4f5' },
-})
 
 export default function QueryPage() {
   const { user, logout } = useAuthContext()
@@ -266,8 +256,8 @@ export default function QueryPage() {
                   const sel = update.state.selection.main
                   setSelectedSql(sel.empty ? '' : update.state.sliceDoc(sel.from, sel.to))
                 }}
-                theme={isDark ? oneDark : 'none'}
-                extensions={[sql(), ...(isDark ? [] : [sqlLightTheme])]}
+                theme={isDark ? oneDark : 'light'}
+                extensions={[sql()]}
                 height="100%"
                 style={{ height: '100%', fontSize: 13, fontFamily: 'JetBrains Mono, monospace' }}
                 basicSetup={{ lineNumbers: true, foldGutter: false, autocompletion: true }}
