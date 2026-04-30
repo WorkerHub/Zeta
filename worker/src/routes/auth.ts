@@ -139,7 +139,7 @@ auth.post('/login', async (c) => {
   const user = await c.env.DB.prepare('SELECT * FROM users WHERE email = ?1').bind(email).first<UserRow>()
 
   // Constant-time failure to avoid timing attacks on user enumeration
-  const hashToCheck = user?.password_hash ?? 'pbkdf2:210000:0000000000000000000000000000000000000000000000000000000000000000:0000000000000000000000000000000000000000000000000000000000000000'
+  const hashToCheck = user?.password_hash ?? 'pbkdf2:100000:0000000000000000000000000000000000000000000000000000000000000000:0000000000000000000000000000000000000000000000000000000000000000'
   const valid = await verifyPassword(body.password, hashToCheck)
 
   if (!user || !valid) {

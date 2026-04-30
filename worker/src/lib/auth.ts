@@ -3,7 +3,7 @@ import { KV } from './kv'
 
 // ── Password (PBKDF2 via WebCrypto) ─────────────────────────────────────────
 
-const PBKDF2_ITERATIONS = 210_000
+const PBKDF2_ITERATIONS = 100_000
 const SALT_LEN = 32
 
 export async function hashPassword(password: string): Promise<string> {
@@ -24,7 +24,7 @@ export async function verifyPassword(password: string, stored: string): Promise<
   const parts = stored.split(':')
   if (parts.length !== 4 || parts[0] !== 'pbkdf2') return false
   const [, iterStr, saltHex, hashHex] = parts
-  const iterations = parseInt(iterStr ?? '0', 10)
+  const iterations = Math.min(parseInt(iterStr ?? '0', 10), 100_000)
   const salt = hexToBuf(saltHex ?? '')
   const expected = hexToBuf(hashHex ?? '')
   const keyMaterial = await crypto.subtle.importKey(
