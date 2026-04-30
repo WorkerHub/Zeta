@@ -2,7 +2,7 @@ import { Hono } from 'hono'
 import type { Env, Variables, DatabaseRow } from '../types'
 import { requireAuth } from '../middleware/auth'
 import { nanoid, uuid } from '../lib/id'
-import { now, audit } from '../lib/db'
+import { now, audit, tables } from '../lib/db'
 
 const query = new Hono<{ Bindings: Env; Variables: Variables }>()
 query.use('*', requireAuth)
@@ -40,7 +40,8 @@ query.post('/', async (c) => {
   }
 
   // Resolve database + permission
-  const db = await c.env.DB.prepare('SELECT * FROM d1_databases WHERE id = ?1 AND is_active = 1')
+  const T = tables(c.env)
+  const db = await c.env.DB.prepare(`SELECT * FROM ${T.d1_databases} WHERE id = ?1 AND is_active = 1`)
     .bind(body.databaseId).first<DatabaseRow>()
   if (!db) return c.json({ error: 'Database not found' }, 404)
 
@@ -49,7 +50,7 @@ query.post('/', async (c) => {
     permission = 'write'
   } else {
     const perm = await c.env.DB.prepare(
-      'SELECT permission FROM user_database_permissions WHERE user_id = ?1 AND database_id = ?2'
+      `SELECT permission FROM ${T.user_database_permissions} WHERE user_id = ?1 AND database_id = ?2`
     ).bind(userId, db.id).first<{ permission: string }>()
     if (!perm) return c.json({ error: 'Access denied' }, 403)
     permission = (perm.permission as 'read' | 'write') ?? 'read'
@@ -90,7 +91,7 @@ query.post('/', async (c) => {
   // Save history (non-blocking)
   c.executionCtx.waitUntil(
     c.env.DB.prepare(
-      `INSERT INTO query_history (id, user_id, database_id, sql, duration_ms, row_count, error, executed_at)
+      `INSERT INTO ${T.query_history} (id, user_id, database_id, sql, duration_ms, row_count, error, executed_at)
        VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)`
     ).bind(uuid(), userId, db.id, sql, duration, rowCount, errorMsg, now()).run()
   )
@@ -107,30 +108,27 @@ query.get('/history', async (c) => {
   const limit = Math.min(parseInt(c.req.query('limit') ?? '50', 10), 200)
   const offset = parseInt(c.req.query('offset') ?? '0', 10)
   const dbId = c.req.query('databaseId')
-
-  const base = role === 'admin'
-    ? 'SELECT * FROM query_history'
-    : 'SELECT * FROM query_history WHERE user_id = ?userId'
+  const T = tables(c.env)
 
   let rows
   if (dbId) {
     if (role === 'admin') {
       rows = await c.env.DB.prepare(
-        `SELECT * FROM query_history WHERE database_id = ?1 ORDER BY executed_at DESC LIMIT ?2 OFFSET ?3`
+        `SELECT * FROM ${T.query_history} WHERE database_id = ?1 ORDER BY executed_at DESC LIMIT ?2 OFFSET ?3`
       ).bind(dbId, limit, offset).all()
     } else {
       rows = await c.env.DB.prepare(
-        `SELECT * FROM query_history WHERE user_id = ?1 AND database_id = ?2 ORDER BY executed_at DESC LIMIT ?3 OFFSET ?4`
+        `SELECT * FROM ${T.query_history} WHERE user_id = ?1 AND database_id = ?2 ORDER BY executed_at DESC LIMIT ?3 OFFSET ?4`
       ).bind(userId, dbId, limit, offset).all()
     }
   } else {
     if (role === 'admin') {
       rows = await c.env.DB.prepare(
-        `SELECT * FROM query_history ORDER BY executed_at DESC LIMIT ?1 OFFSET ?2`
+        `SELECT * FROM ${T.query_history} ORDER BY executed_at DESC LIMIT ?1 OFFSET ?2`
       ).bind(limit, offset).all()
     } else {
       rows = await c.env.DB.prepare(
-        `SELECT * FROM query_history WHERE user_id = ?1 ORDER BY executed_at DESC LIMIT ?2 OFFSET ?3`
+        `SELECT * FROM ${T.query_history} WHERE user_id = ?1 ORDER BY executed_at DESC LIMIT ?2 OFFSET ?3`
       ).bind(userId, limit, offset).all()
     }
   }

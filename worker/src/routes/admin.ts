@@ -2,7 +2,7 @@ import { Hono } from 'hono'
 import type { Env, Variables, UserRow, DatabaseRow, PermissionRow } from '../types'
 import { requireAdmin } from '../middleware/auth'
 import { nanoid, uuid } from '../lib/id'
-import { now, getSetting, setSetting, getSettings, audit } from '../lib/db'
+import { now, getSetting, setSetting, getSettings, audit, tables } from '../lib/db'
 import { hashPassword } from '../lib/auth'
 
 const admin = new Hono<{ Bindings: Env; Variables: Variables }>()
@@ -14,38 +14,40 @@ admin.get('/users', async (c) => {
   const limit = Math.min(parseInt(c.req.query('limit') ?? '50', 10), 200)
   const offset = parseInt(c.req.query('offset') ?? '0', 10)
   const search = c.req.query('search')?.trim()
+  const T = tables(c.env)
 
   let rows, total
   if (search) {
     const like = `%${search.replace(/[%_\\]/g, '\\$&')}%`
     rows = await c.env.DB.prepare(
       `SELECT id, email, name, role, email_verified, two_factor_required, created_at
-       FROM users WHERE email LIKE ?1 ESCAPE '\\' OR name LIKE ?1 ESCAPE '\\'
+       FROM ${T.users} WHERE email LIKE ?1 ESCAPE '\\' OR name LIKE ?1 ESCAPE '\\'
        ORDER BY created_at DESC LIMIT ?2 OFFSET ?3`
     ).bind(like, limit, offset).all<Omit<UserRow, 'password_hash' | 'updated_at'>>()
     total = await c.env.DB.prepare(
-      `SELECT COUNT(*) as n FROM users WHERE email LIKE ?1 ESCAPE '\\' OR name LIKE ?1 ESCAPE '\\'`
+      `SELECT COUNT(*) as n FROM ${T.users} WHERE email LIKE ?1 ESCAPE '\\' OR name LIKE ?1 ESCAPE '\\'`
     ).bind(like).first<{ n: number }>()
   } else {
     rows = await c.env.DB.prepare(
       `SELECT id, email, name, role, email_verified, two_factor_required, created_at
-       FROM users ORDER BY created_at DESC LIMIT ?1 OFFSET ?2`
+       FROM ${T.users} ORDER BY created_at DESC LIMIT ?1 OFFSET ?2`
     ).bind(limit, offset).all<Omit<UserRow, 'password_hash' | 'updated_at'>>()
-    total = await c.env.DB.prepare('SELECT COUNT(*) as n FROM users').first<{ n: number }>()
+    total = await c.env.DB.prepare(`SELECT COUNT(*) as n FROM ${T.users}`).first<{ n: number }>()
   }
 
   return c.json({ results: rows.results, total: total?.n ?? 0 })
 })
 
 admin.get('/users/:id', async (c) => {
+  const T = tables(c.env)
   const user = await c.env.DB.prepare(
-    'SELECT id, email, name, role, email_verified, two_factor_required, created_at FROM users WHERE id = ?1'
+    `SELECT id, email, name, role, email_verified, two_factor_required, created_at FROM ${T.users} WHERE id = ?1`
   ).bind(c.req.param('id')).first<Omit<UserRow, 'password_hash' | 'updated_at'>>()
   if (!user) return c.json({ error: 'User not found' }, 404)
 
   const perms = await c.env.DB.prepare(
-    `SELECT p.*, d.name as database_name FROM user_database_permissions p
-     JOIN d1_databases d ON d.id = p.database_id WHERE p.user_id = ?1`
+    `SELECT p.*, d.name as database_name FROM ${T.user_database_permissions} p
+     JOIN ${T.d1_databases} d ON d.id = p.database_id WHERE p.user_id = ?1`
   ).bind(user.id).all()
 
   return c.json({ ...user, permissions: perms.results })
@@ -75,8 +77,9 @@ admin.patch('/users/:id', async (c) => {
   bindings.push(now())
   bindings.push(c.req.param('id'))
 
+  const T = tables(c.env)
   await c.env.DB.prepare(
-    `UPDATE users SET ${updates.join(', ')} WHERE id = ?${i}`
+    `UPDATE ${T.users} SET ${updates.join(', ')} WHERE id = ?${i}`
   ).bind(...bindings).run()
 
   return c.json({ message: 'User updated' })
@@ -85,7 +88,8 @@ admin.patch('/users/:id', async (c) => {
 admin.delete('/users/:id', async (c) => {
   const id = c.req.param('id')
   if (id === c.get('userId')) return c.json({ error: 'Cannot delete yourself' }, 400)
-  await c.env.DB.prepare('DELETE FROM users WHERE id = ?1').bind(id).run()
+  const T = tables(c.env)
+  await c.env.DB.prepare(`DELETE FROM ${T.users} WHERE id = ?1`).bind(id).run()
   c.executionCtx.waitUntil(audit(c.env, {
     userId: c.get('userId'), action: 'delete_user', resource: id,
     ip: c.req.header('cf-connecting-ip')
@@ -96,7 +100,8 @@ admin.delete('/users/:id', async (c) => {
 // ── Database registry ─────────────────────────────────────────────────────────
 
 admin.get('/databases', async (c) => {
-  const rows = await c.env.DB.prepare('SELECT * FROM d1_databases ORDER BY name').all<DatabaseRow>()
+  const T = tables(c.env)
+  const rows = await c.env.DB.prepare(`SELECT * FROM ${T.d1_databases} ORDER BY name`).all<DatabaseRow>()
   return c.json({ results: rows.results })
 })
 
@@ -114,9 +119,10 @@ admin.post('/databases', async (c) => {
     return c.json({ error: `Binding "${body.binding_name}" not found on this Worker. Add it to wrangler.toml first.` }, 400)
   }
 
+  const T = tables(c.env)
   const id = uuid()
   await c.env.DB.prepare(
-    `INSERT INTO d1_databases (id, name, description, binding_name, is_active, created_at, created_by)
+    `INSERT INTO ${T.d1_databases} (id, name, description, binding_name, is_active, created_at, created_by)
      VALUES (?1, ?2, ?3, ?4, 1, ?5, ?6)`
   ).bind(id, body.name, body.description ?? null, body.binding_name, now(), c.get('userId')).run()
 
@@ -138,23 +144,26 @@ admin.patch('/databases/:id', async (c) => {
   if (updates.length === 0) return c.json({ error: 'Nothing to update' }, 400)
   bindings.push(c.req.param('id'))
 
-  await c.env.DB.prepare(`UPDATE d1_databases SET ${updates.join(', ')} WHERE id = ?${i}`)
+  const T = tables(c.env)
+  await c.env.DB.prepare(`UPDATE ${T.d1_databases} SET ${updates.join(', ')} WHERE id = ?${i}`)
     .bind(...bindings).run()
 
   return c.json({ message: 'Updated' })
 })
 
 admin.delete('/databases/:id', async (c) => {
-  await c.env.DB.prepare('DELETE FROM d1_databases WHERE id = ?1').bind(c.req.param('id')).run()
+  const T = tables(c.env)
+  await c.env.DB.prepare(`DELETE FROM ${T.d1_databases} WHERE id = ?1`).bind(c.req.param('id')).run()
   return c.json({ message: 'Deleted' })
 })
 
 // ── Permissions ───────────────────────────────────────────────────────────────
 
 admin.get('/databases/:id/permissions', async (c) => {
+  const T = tables(c.env)
   const rows = await c.env.DB.prepare(
     `SELECT p.*, u.email, u.name as user_name
-     FROM user_database_permissions p JOIN users u ON u.id = p.user_id
+     FROM ${T.user_database_permissions} p JOIN ${T.users} u ON u.id = p.user_id
      WHERE p.database_id = ?1`
   ).bind(c.req.param('id')).all()
   return c.json({ results: rows.results })
@@ -166,8 +175,9 @@ admin.put('/databases/:id/permissions/:userId', async (c) => {
     return c.json({ error: 'permission must be "read" or "write"' }, 400)
   }
 
+  const T = tables(c.env)
   await c.env.DB.prepare(
-    `INSERT INTO user_database_permissions (id, user_id, database_id, permission, granted_by, granted_at)
+    `INSERT INTO ${T.user_database_permissions} (id, user_id, database_id, permission, granted_by, granted_at)
      VALUES (?1, ?2, ?3, ?4, ?5, ?6)
      ON CONFLICT(user_id, database_id) DO UPDATE SET permission = ?4, granted_by = ?5, granted_at = ?6`
   ).bind(uuid(), c.req.param('userId'), c.req.param('id'), body.permission, c.get('userId'), now()).run()
@@ -176,8 +186,9 @@ admin.put('/databases/:id/permissions/:userId', async (c) => {
 })
 
 admin.delete('/databases/:id/permissions/:userId', async (c) => {
+  const T = tables(c.env)
   await c.env.DB.prepare(
-    'DELETE FROM user_database_permissions WHERE user_id = ?1 AND database_id = ?2'
+    `DELETE FROM ${T.user_database_permissions} WHERE user_id = ?1 AND database_id = ?2`
   ).bind(c.req.param('userId'), c.req.param('id')).run()
   return c.json({ message: 'Permission revoked' })
 })

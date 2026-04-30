@@ -1,7 +1,7 @@
 import { Hono } from 'hono'
 import type { Env, Variables, DatabaseRow, PermissionRow } from '../types'
 import { requireAuth } from '../middleware/auth'
-import { now, audit } from '../lib/db'
+import { now, audit, tables } from '../lib/db'
 import { uuid } from '../lib/id'
 
 const databases = new Hono<{ Bindings: Env; Variables: Variables }>()
@@ -12,18 +12,19 @@ databases.use('*', requireAuth)
 databases.get('/', async (c) => {
   const userId = c.get('userId')
   const role = c.get('userRole')
+  const T = tables(c.env)
 
   let rows: DatabaseRow[]
 
   if (role === 'admin') {
     const result = await c.env.DB.prepare(
-      'SELECT * FROM d1_databases WHERE is_active = 1 ORDER BY name'
+      `SELECT * FROM ${T.d1_databases} WHERE is_active = 1 ORDER BY name`
     ).all<DatabaseRow>()
     rows = result.results
   } else {
     const result = await c.env.DB.prepare(
-      `SELECT d.* FROM d1_databases d
-       JOIN user_database_permissions p ON p.database_id = d.id
+      `SELECT d.* FROM ${T.d1_databases} d
+       JOIN ${T.user_database_permissions} p ON p.database_id = d.id
        WHERE p.user_id = ?1 AND d.is_active = 1
        ORDER BY d.name`
     ).bind(userId).all<DatabaseRow>()
@@ -32,7 +33,7 @@ databases.get('/', async (c) => {
 
   // Annotate with user's permission level
   const perms = await c.env.DB.prepare(
-    `SELECT database_id, permission FROM user_database_permissions WHERE user_id = ?1`
+    `SELECT database_id, permission FROM ${T.user_database_permissions} WHERE user_id = ?1`
   ).bind(userId).all<{ database_id: string; permission: string }>()
   const permMap = new Map(perms.results.map((r) => [r.database_id, r.permission]))
 

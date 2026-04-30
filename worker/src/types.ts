@@ -11,6 +11,7 @@ export interface Env {
   SETUP_SECRET: string     // random secret used for the /api/setup/:secret endpoint
   // Vars (set via CF dashboard)
   APP_URL: string
+  TABLE_PREFIX?: string
   // Additional queryable D1 databases – dynamic bindings
   [key: string]: unknown
 }

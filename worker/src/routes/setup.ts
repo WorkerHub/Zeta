@@ -1,104 +1,106 @@
 import { Hono } from 'hono'
 import type { Env, Variables } from '../types'
-import { now } from '../lib/db'
+import { now, tables } from '../lib/db'
 
 const setup = new Hono<{ Bindings: Env; Variables: Variables }>()
 
-// ── DDL statements (idempotent – all use IF NOT EXISTS) ───────────────────────
+// ── DDL builder (idempotent – all use IF NOT EXISTS) ──────────────────────────
 
-const DDL: string[] = [
-  `CREATE TABLE IF NOT EXISTS users (
-    id TEXT PRIMARY KEY,
-    email TEXT NOT NULL UNIQUE,
-    password_hash TEXT,
-    name TEXT NOT NULL DEFAULT '',
-    role TEXT NOT NULL DEFAULT 'member' CHECK (role IN ('admin', 'member')),
-    email_verified INTEGER NOT NULL DEFAULT 0,
-    two_factor_required INTEGER NOT NULL DEFAULT 0,
-    created_at INTEGER NOT NULL,
-    updated_at INTEGER NOT NULL
-  )`,
-  `CREATE INDEX IF NOT EXISTS idx_users_email ON users(email)`,
+function buildDDL(T: ReturnType<typeof tables>): string[] {
+  return [
+    `CREATE TABLE IF NOT EXISTS ${T.users} (
+      id TEXT PRIMARY KEY,
+      email TEXT NOT NULL UNIQUE,
+      password_hash TEXT,
+      name TEXT NOT NULL DEFAULT '',
+      role TEXT NOT NULL DEFAULT 'member' CHECK (role IN ('admin', 'member')),
+      email_verified INTEGER NOT NULL DEFAULT 0,
+      two_factor_required INTEGER NOT NULL DEFAULT 0,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL
+    )`,
+    `CREATE INDEX IF NOT EXISTS idx_${T.users}_email ON ${T.users}(email)`,
 
-  `CREATE TABLE IF NOT EXISTS totp_credentials (
-    id TEXT PRIMARY KEY,
-    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    encrypted_secret TEXT NOT NULL,
-    name TEXT NOT NULL DEFAULT 'Authenticator',
-    created_at INTEGER NOT NULL
-  )`,
-  `CREATE INDEX IF NOT EXISTS idx_totp_user ON totp_credentials(user_id)`,
+    `CREATE TABLE IF NOT EXISTS ${T.totp_credentials} (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL REFERENCES ${T.users}(id) ON DELETE CASCADE,
+      encrypted_secret TEXT NOT NULL,
+      name TEXT NOT NULL DEFAULT 'Authenticator',
+      created_at INTEGER NOT NULL
+    )`,
+    `CREATE INDEX IF NOT EXISTS idx_${T.totp_credentials}_user ON ${T.totp_credentials}(user_id)`,
 
-  `CREATE TABLE IF NOT EXISTS passkey_credentials (
-    id TEXT PRIMARY KEY,
-    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    credential_id TEXT NOT NULL UNIQUE,
-    public_key TEXT NOT NULL,
-    sign_count INTEGER NOT NULL DEFAULT 0,
-    name TEXT,
-    created_at INTEGER NOT NULL
-  )`,
-  `CREATE INDEX IF NOT EXISTS idx_passkey_user ON passkey_credentials(user_id)`,
+    `CREATE TABLE IF NOT EXISTS ${T.passkey_credentials} (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL REFERENCES ${T.users}(id) ON DELETE CASCADE,
+      credential_id TEXT NOT NULL UNIQUE,
+      public_key TEXT NOT NULL,
+      sign_count INTEGER NOT NULL DEFAULT 0,
+      name TEXT,
+      created_at INTEGER NOT NULL
+    )`,
+    `CREATE INDEX IF NOT EXISTS idx_${T.passkey_credentials}_user ON ${T.passkey_credentials}(user_id)`,
 
-  `CREATE TABLE IF NOT EXISTS d1_databases (
-    id TEXT PRIMARY KEY,
-    name TEXT NOT NULL,
-    description TEXT,
-    binding_name TEXT NOT NULL UNIQUE,
-    is_active INTEGER NOT NULL DEFAULT 1,
-    created_at INTEGER NOT NULL,
-    created_by TEXT REFERENCES users(id)
-  )`,
+    `CREATE TABLE IF NOT EXISTS ${T.d1_databases} (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      description TEXT,
+      binding_name TEXT NOT NULL UNIQUE,
+      is_active INTEGER NOT NULL DEFAULT 1,
+      created_at INTEGER NOT NULL,
+      created_by TEXT REFERENCES ${T.users}(id)
+    )`,
 
-  `CREATE TABLE IF NOT EXISTS user_database_permissions (
-    id TEXT PRIMARY KEY,
-    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    database_id TEXT NOT NULL REFERENCES d1_databases(id) ON DELETE CASCADE,
-    permission TEXT NOT NULL DEFAULT 'read' CHECK (permission IN ('read', 'write')),
-    granted_by TEXT REFERENCES users(id),
-    granted_at INTEGER NOT NULL,
-    UNIQUE (user_id, database_id)
-  )`,
-  `CREATE INDEX IF NOT EXISTS idx_perm_user ON user_database_permissions(user_id)`,
-  `CREATE INDEX IF NOT EXISTS idx_perm_db   ON user_database_permissions(database_id)`,
+    `CREATE TABLE IF NOT EXISTS ${T.user_database_permissions} (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL REFERENCES ${T.users}(id) ON DELETE CASCADE,
+      database_id TEXT NOT NULL REFERENCES ${T.d1_databases}(id) ON DELETE CASCADE,
+      permission TEXT NOT NULL DEFAULT 'read' CHECK (permission IN ('read', 'write')),
+      granted_by TEXT REFERENCES ${T.users}(id),
+      granted_at INTEGER NOT NULL,
+      UNIQUE (user_id, database_id)
+    )`,
+    `CREATE INDEX IF NOT EXISTS idx_${T.user_database_permissions}_user ON ${T.user_database_permissions}(user_id)`,
+    `CREATE INDEX IF NOT EXISTS idx_${T.user_database_permissions}_db   ON ${T.user_database_permissions}(database_id)`,
 
-  `CREATE TABLE IF NOT EXISTS query_history (
-    id TEXT PRIMARY KEY,
-    user_id TEXT NOT NULL REFERENCES users(id),
-    database_id TEXT NOT NULL REFERENCES d1_databases(id),
-    sql TEXT NOT NULL,
-    duration_ms INTEGER,
-    row_count INTEGER,
-    error TEXT,
-    executed_at INTEGER NOT NULL
-  )`,
-  `CREATE INDEX IF NOT EXISTS idx_history_user ON query_history(user_id)`,
-  `CREATE INDEX IF NOT EXISTS idx_history_db   ON query_history(database_id)`,
+    `CREATE TABLE IF NOT EXISTS ${T.query_history} (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL REFERENCES ${T.users}(id),
+      database_id TEXT NOT NULL REFERENCES ${T.d1_databases}(id),
+      sql TEXT NOT NULL,
+      duration_ms INTEGER,
+      row_count INTEGER,
+      error TEXT,
+      executed_at INTEGER NOT NULL
+    )`,
+    `CREATE INDEX IF NOT EXISTS idx_${T.query_history}_user ON ${T.query_history}(user_id)`,
+    `CREATE INDEX IF NOT EXISTS idx_${T.query_history}_db   ON ${T.query_history}(database_id)`,
 
-  `CREATE TABLE IF NOT EXISTS settings (
-    key TEXT PRIMARY KEY,
-    value TEXT NOT NULL,
-    updated_at INTEGER NOT NULL
-  )`,
+    `CREATE TABLE IF NOT EXISTS ${T.settings} (
+      key TEXT PRIMARY KEY,
+      value TEXT NOT NULL,
+      updated_at INTEGER NOT NULL
+    )`,
 
-  `CREATE TABLE IF NOT EXISTS audit_logs (
-    id TEXT PRIMARY KEY,
-    user_id TEXT REFERENCES users(id),
-    action TEXT NOT NULL,
-    resource TEXT,
-    metadata TEXT,
-    ip TEXT,
-    user_agent TEXT,
-    created_at INTEGER NOT NULL
-  )`,
-  `CREATE INDEX IF NOT EXISTS idx_audit_user    ON audit_logs(user_id)`,
-  `CREATE INDEX IF NOT EXISTS idx_audit_created ON audit_logs(created_at)`,
-]
+    `CREATE TABLE IF NOT EXISTS ${T.audit_logs} (
+      id TEXT PRIMARY KEY,
+      user_id TEXT REFERENCES ${T.users}(id),
+      action TEXT NOT NULL,
+      resource TEXT,
+      metadata TEXT,
+      ip TEXT,
+      user_agent TEXT,
+      created_at INTEGER NOT NULL
+    )`,
+    `CREATE INDEX IF NOT EXISTS idx_${T.audit_logs}_user    ON ${T.audit_logs}(user_id)`,
+    `CREATE INDEX IF NOT EXISTS idx_${T.audit_logs}_created ON ${T.audit_logs}(created_at)`,
+  ]
+}
 
 // Default settings (INSERT OR IGNORE so re-runs are safe)
 const DEFAULT_SETTINGS: Array<[string, string]> = [
   ['registration_enabled', 'true'],
-  ['require_email_verification', 'false'],
+  ['require_email_verification', 'true'],
   ['enforce_2fa', 'false'],
   ['email_provider', 'resend'],
   ['resend_api_key', ''],
@@ -125,12 +127,13 @@ setup.get('/:secret', async (c) => {
     return c.json({ error: 'Invalid setup secret.' }, 403)
   }
 
+  const T = tables(c.env)
   const errors: string[] = []
   const ts = now()
 
   // Run all DDL statements in a batch
   try {
-    await c.env.DB.batch(DDL.map((stmt) => c.env.DB.prepare(stmt)))
+    await c.env.DB.batch(buildDDL(T).map((stmt) => c.env.DB.prepare(stmt)))
   } catch (err) {
     errors.push(`DDL error: ${err instanceof Error ? err.message : String(err)}`)
   }
@@ -141,7 +144,7 @@ setup.get('/:secret', async (c) => {
       await c.env.DB.batch(
         DEFAULT_SETTINGS.map(([key, value]) =>
           c.env.DB.prepare(
-            `INSERT OR IGNORE INTO settings (key, value, updated_at) VALUES (?1, ?2, ?3)`
+            `INSERT OR IGNORE INTO ${T.settings} (key, value, updated_at) VALUES (?1, ?2, ?3)`
           ).bind(key, value, ts)
         )
       )

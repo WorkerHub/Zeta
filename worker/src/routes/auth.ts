@@ -2,7 +2,7 @@ import { Hono } from 'hono'
 import { getCookie, setCookie, deleteCookie } from 'hono/cookie'
 import type { Env, Variables, UserRow } from '../types'
 import { nanoid, uuid } from '../lib/id'
-import { now, getSetting, audit } from '../lib/db'
+import { now, getSetting, audit, tables } from '../lib/db'
 import { KV } from '../lib/kv'
 import {
   hashPassword, verifyPassword,
@@ -51,11 +51,12 @@ auth.post('/register', async (c) => {
   if (body.password.length < 8) return c.json({ error: 'Password must be at least 8 characters' }, 400)
   if (body.name.trim().length < 1) return c.json({ error: 'Name is required' }, 400)
 
-  const existing = await c.env.DB.prepare('SELECT id FROM users WHERE email = ?1').bind(email).first()
+  const T = tables(c.env)
+  const existing = await c.env.DB.prepare(`SELECT id FROM ${T.users} WHERE email = ?1`).bind(email).first()
   if (existing) return c.json({ error: 'Email already registered' }, 409)
 
   // First registered user becomes admin
-  const countRow = await c.env.DB.prepare('SELECT COUNT(*) as n FROM users').first<{ n: number }>()
+  const countRow = await c.env.DB.prepare(`SELECT COUNT(*) as n FROM ${T.users}`).first<{ n: number }>()
   const isFirstUser = (countRow?.n ?? 0) === 0
 
   const id = uuid()
@@ -63,7 +64,7 @@ auth.post('/register', async (c) => {
   const ts = now()
 
   await c.env.DB.prepare(
-    `INSERT INTO users (id, email, password_hash, name, role, email_verified, created_at, updated_at)
+    `INSERT INTO ${T.users} (id, email, password_hash, name, role, email_verified, created_at, updated_at)
      VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?7)`
   ).bind(id, email, passwordHash, body.name.trim(), isFirstUser ? 'admin' : 'member', 0, ts).run()
 
@@ -94,8 +95,9 @@ auth.get('/verify-email', async (c) => {
   const userId = await c.env.KV.get(KV.emailVerify(token))
   if (!userId) return c.json({ error: 'Invalid or expired token' }, 400)
 
+  const T = tables(c.env)
   await c.env.DB.prepare(
-    'UPDATE users SET email_verified = 1, updated_at = ?1 WHERE id = ?2'
+    `UPDATE ${T.users} SET email_verified = 1, updated_at = ?1 WHERE id = ?2`
   ).bind(now(), userId).run()
   await c.env.KV.delete(KV.emailVerify(token))
 
@@ -109,7 +111,8 @@ auth.post('/resend-verification', async (c) => {
   if (!body?.email) return c.json({ error: 'email is required' }, 400)
 
   const email = body.email.toLowerCase().trim()
-  const user = await c.env.DB.prepare('SELECT id, email_verified FROM users WHERE email = ?1')
+  const T = tables(c.env)
+  const user = await c.env.DB.prepare(`SELECT id, email_verified FROM ${T.users} WHERE email = ?1`)
     .bind(email).first<{ id: string; email_verified: number }>()
   // Always return 200 to avoid user enumeration
   if (!user || user.email_verified === 1) return c.json({ message: 'If the address exists, a new link was sent.' })
@@ -136,7 +139,8 @@ auth.post('/login', async (c) => {
   if (!body?.email || !body.password) return c.json({ error: 'email and password are required' }, 400)
 
   const email = body.email.toLowerCase().trim()
-  const user = await c.env.DB.prepare('SELECT * FROM users WHERE email = ?1').bind(email).first<UserRow>()
+  const T = tables(c.env)
+  const user = await c.env.DB.prepare(`SELECT * FROM ${T.users} WHERE email = ?1`).bind(email).first<UserRow>()
 
   // Constant-time failure to avoid timing attacks on user enumeration
   const hashToCheck = user?.password_hash ?? 'pbkdf2:100000:0000000000000000000000000000000000000000000000000000000000000000:0000000000000000000000000000000000000000000000000000000000000000'
@@ -156,8 +160,8 @@ auth.post('/login', async (c) => {
   // Check if 2FA is required
   const enforce2fa = await getSetting(c.env, 'enforce_2fa')
   const hasTotpOrPasskey = await c.env.DB.prepare(
-    `SELECT 1 FROM totp_credentials WHERE user_id = ?1
-     UNION SELECT 1 FROM passkey_credentials WHERE user_id = ?1`
+    `SELECT 1 FROM ${T.totp_credentials} WHERE user_id = ?1
+     UNION SELECT 1 FROM ${T.passkey_credentials} WHERE user_id = ?1`
   ).bind(user.id).first()
   const needs2fa = enforce2fa === 'true' || user.two_factor_required === 1 || hasTotpOrPasskey !== null
 
@@ -184,15 +188,16 @@ auth.post('/2fa/totp', async (c) => {
   const pending = await verifyPending2faToken(body.pendingToken, c.env.JWT_SECRET)
   if (!pending) return c.json({ error: 'Invalid or expired token' }, 401)
 
+  const T = tables(c.env)
   const totp = await c.env.DB.prepare(
-    'SELECT encrypted_secret FROM totp_credentials WHERE user_id = ?1'
+    `SELECT encrypted_secret FROM ${T.totp_credentials} WHERE user_id = ?1`
   ).bind(pending.sub).first<{ encrypted_secret: string }>()
   if (!totp) return c.json({ error: 'TOTP not configured' }, 400)
 
   const secret = await decryptTotpSecret(c.env, totp.encrypted_secret)
   if (!verifyTotpCode(secret, body.code)) return c.json({ error: 'Invalid code' }, 401)
 
-  const user = await c.env.DB.prepare('SELECT * FROM users WHERE id = ?1').bind(pending.sub).first<UserRow>()
+  const user = await c.env.DB.prepare(`SELECT * FROM ${T.users} WHERE id = ?1`).bind(pending.sub).first<UserRow>()
   if (!user) return c.json({ error: 'User not found' }, 404)
 
   const accessToken = await createAccessToken(user.id, user.role, c.env.JWT_SECRET)
@@ -212,7 +217,8 @@ auth.post('/2fa/email-otp/send', async (c) => {
   const pending = await verifyPending2faToken(body.pendingToken, c.env.JWT_SECRET)
   if (!pending) return c.json({ error: 'Invalid or expired token' }, 401)
 
-  const user = await c.env.DB.prepare('SELECT email FROM users WHERE id = ?1')
+  const T = tables(c.env)
+  const user = await c.env.DB.prepare(`SELECT email FROM ${T.users} WHERE id = ?1`)
     .bind(pending.sub).first<{ email: string }>()
   if (!user) return c.json({ error: 'User not found' }, 404)
 
@@ -238,7 +244,8 @@ auth.post('/2fa/email-otp/verify', async (c) => {
 
   await c.env.KV.delete(KV.emailOtp(pending.sub))
 
-  const user = await c.env.DB.prepare('SELECT * FROM users WHERE id = ?1').bind(pending.sub).first<UserRow>()
+  const T = tables(c.env)
+  const user = await c.env.DB.prepare(`SELECT * FROM ${T.users} WHERE id = ?1`).bind(pending.sub).first<UserRow>()
   if (!user) return c.json({ error: 'User not found' }, 404)
 
   const accessToken = await createAccessToken(user.id, user.role, c.env.JWT_SECRET)
@@ -262,7 +269,8 @@ auth.post('/refresh', async (c) => {
     return c.json({ error: 'Refresh token revoked' }, 401)
   }
 
-  const user = await c.env.DB.prepare('SELECT * FROM users WHERE id = ?1').bind(payload.sub).first<UserRow>()
+  const T = tables(c.env)
+  const user = await c.env.DB.prepare(`SELECT * FROM ${T.users} WHERE id = ?1`).bind(payload.sub).first<UserRow>()
   if (!user) return c.json({ error: 'User not found' }, 401)
 
   // Rotate refresh token
@@ -293,7 +301,8 @@ auth.post('/forgot-password', async (c) => {
   if (!body?.email) return c.json({ error: 'email is required' }, 400)
 
   const email = body.email.toLowerCase().trim()
-  const user = await c.env.DB.prepare('SELECT id FROM users WHERE email = ?1')
+  const T = tables(c.env)
+  const user = await c.env.DB.prepare(`SELECT id FROM ${T.users} WHERE email = ?1`)
     .bind(email).first<{ id: string }>()
 
   // Always 200 to avoid enumeration
@@ -319,8 +328,9 @@ auth.post('/reset-password', async (c) => {
   const userId = await c.env.KV.get(KV.passwordReset(body.token))
   if (!userId) return c.json({ error: 'Invalid or expired reset token' }, 400)
 
+  const T = tables(c.env)
   const hash = await hashPassword(body.password)
-  await c.env.DB.prepare('UPDATE users SET password_hash = ?1, updated_at = ?2 WHERE id = ?3')
+  await c.env.DB.prepare(`UPDATE ${T.users} SET password_hash = ?1, updated_at = ?2 WHERE id = ?3`)
     .bind(hash, now(), userId).run()
   await c.env.KV.delete(KV.passwordReset(body.token))
 
