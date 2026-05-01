@@ -90,3 +90,14 @@ export interface SettingRow {
   value: string
   updated_at: number
 }
+
+export interface NotebookRow {
+  id: string
+  user_id: string
+  name: string
+  sql_content: string
+  database_id: string | null
+  position: number
+  created_at: number
+  updated_at: number
+}

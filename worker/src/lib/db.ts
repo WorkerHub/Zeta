@@ -11,6 +11,7 @@ export function tables(env: Pick<Env, 'TABLE_PREFIX'>) {
     query_history:             `${p}query_history`,
     settings:                  `${p}settings`,
     audit_logs:                `${p}audit_logs`,
+    notebooks:                 `${p}notebooks`,
   }
 }
 

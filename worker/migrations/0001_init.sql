@@ -93,6 +93,19 @@ CREATE TABLE audit_logs (
 CREATE INDEX idx_audit_user ON audit_logs(user_id);
 CREATE INDEX idx_audit_created ON audit_logs(created_at);
 
+CREATE TABLE notebooks (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  name TEXT NOT NULL DEFAULT 'Untitled',
+  sql_content TEXT NOT NULL DEFAULT '',
+  database_id TEXT REFERENCES d1_databases(id) ON DELETE SET NULL,
+  position INTEGER NOT NULL DEFAULT 0,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+
+CREATE INDEX idx_notebooks_user ON notebooks(user_id);
+
 -- Default settings
 INSERT INTO settings (key, value, updated_at) VALUES
   ('registration_enabled', 'true', unixepoch()),
