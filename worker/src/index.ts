@@ -6,6 +6,7 @@ import auth from './routes/auth'
 import profile from './routes/profile'
 import databases from './routes/databases'
 import query from './routes/query'
+import notebooks from './routes/notebooks'
 import admin from './routes/admin'
 import setup from './routes/setup'
 
@@ -28,6 +29,7 @@ app.route('/api/auth', auth)
 app.route('/api/profile', profile)
 app.route('/api/databases', databases)
 app.route('/api/query', query)
+app.route('/api/notebooks', notebooks)
 app.route('/api/admin', admin)
 app.route('/api/setup', setup)
 
