@@ -89,25 +89,33 @@
 
   /* iOS-style skeuomorphic toggle switch */
   .toggle-track {
-    @apply relative w-11 h-6 rounded-full transition-colors duration-200;
+    @apply relative inline-flex shrink-0 w-11 h-6 rounded-full;
+    appearance: none;
+    border: none;
+    padding: 0;
+    margin: 0;
+    background: #d1d5db;
+    cursor: pointer;
+    transition: background 0.2s, box-shadow 0.2s;
     box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.15), inset 0 0 1px rgba(0, 0, 0, 0.1);
   }
   .toggle-track[aria-checked="true"] {
     background: #2563eb;
     box-shadow: inset 0 1px 3px rgba(37, 99, 235, 0.3), inset 0 0 1px rgba(0, 0, 0, 0.1);
   }
-  .toggle-track[aria-checked="false"] {
-    background: #d1d5db;
-    box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.15), inset 0 0 1px rgba(0, 0, 0, 0.1);
-  }
-  :where(.dark) .toggle-track[aria-checked="false"] {
+  :where(.dark) .toggle-track {
     background: #3f3f46;
     box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.4), inset 0 0 1px rgba(0, 0, 0, 0.2);
   }
+  :where(.dark) .toggle-track[aria-checked="true"] {
+    background: #2563eb;
+    box-shadow: inset 0 1px 3px rgba(37, 99, 235, 0.3), inset 0 0 1px rgba(0, 0, 0, 0.1);
+  }
   .toggle-thumb {
-    @apply absolute top-0.5 w-5 h-5 rounded-full transition-transform duration-200;
+    @apply absolute top-0.5 w-5 h-5 rounded-full;
     background: white;
     box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25), 0 0 0 0.5px rgba(0, 0, 0, 0.08);
+    transition: transform 0.2s;
   }
   .toggle-track[aria-checked="true"] .toggle-thumb {
     transform: translateX(1.25rem);
