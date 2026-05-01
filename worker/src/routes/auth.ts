@@ -73,7 +73,7 @@ auth.post('/register', async (c) => {
   if (requireVerify !== 'false') {
     const token = nanoid(32)
     await c.env.KV.put(KV.emailVerify(token), id, { expirationTtl: 24 * 3600 })
-    const appName = (await getSetting(c.env, 'app_name')) ?? 'D1 Studio'
+    const appName = (await getSetting(c.env, 'app_name')) ?? 'Zeta'
     await sendEmail(c.env, buildVerificationEmail({
       appName, appUrl: c.env.APP_URL, toEmail: email, token
     })).catch(() => { /* non-fatal – user can resend */ })
@@ -119,7 +119,7 @@ auth.post('/resend-verification', async (c) => {
 
   const token = nanoid(32)
   await c.env.KV.put(KV.emailVerify(token), user.id, { expirationTtl: 24 * 3600 })
-  const appName = (await getSetting(c.env, 'app_name')) ?? 'D1 Studio'
+  const appName = (await getSetting(c.env, 'app_name')) ?? 'Zeta'
   await sendEmail(c.env, buildVerificationEmail({
     appName, appUrl: c.env.APP_URL, toEmail: email, token
   })).catch(() => {})
@@ -226,7 +226,7 @@ auth.post('/2fa/email-otp/send', async (c) => {
   const otp = String(Math.floor(100000 + Math.random() * 900000))
   await c.env.KV.put(KV.emailOtp(pending.sub), otp, { expirationTtl: 600 })
 
-  const appName = (await getSetting(c.env, 'app_name')) ?? 'D1 Studio'
+  const appName = (await getSetting(c.env, 'app_name')) ?? 'Zeta'
   await sendEmail(c.env, buildOtpEmail({ appName, toEmail: user.email, otp }))
 
   return c.json({ message: 'OTP sent' })
@@ -309,7 +309,7 @@ auth.post('/forgot-password', async (c) => {
   if (user) {
     const token = nanoid(32)
     await c.env.KV.put(KV.passwordReset(token), user.id, { expirationTtl: 3600 })
-    const appName = (await getSetting(c.env, 'app_name')) ?? 'D1 Studio'
+    const appName = (await getSetting(c.env, 'app_name')) ?? 'Zeta'
     await sendEmail(c.env, buildPasswordResetEmail({
       appName, appUrl: c.env.APP_URL, toEmail: email, token
     })).catch(() => {})

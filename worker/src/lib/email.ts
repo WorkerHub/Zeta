@@ -15,7 +15,7 @@ export async function sendEmail(env: Env, payload: EmailPayload): Promise<void> 
     'app_name',
   ])
 
-  const from = cfg['smtp_from'] || 'noreply@d1-studio.app'
+  const from = cfg['smtp_from'] || 'noreply@zeta.app'
   const provider = cfg['email_provider'] || 'resend'
 
   if (provider === 'resend') {

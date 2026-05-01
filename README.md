@@ -1,6 +1,10 @@
-# D1 Studio
+# Zeta
+
+> **中文文档：** [README_zh-CN.md](./README_zh-CN.md)
 
 A self-hosted SQL query interface for [Cloudflare D1](https://developers.cloudflare.com/d1/) databases. Runs entirely on Cloudflare — no servers to manage.
+
+**Version 1.0.0**
 
 ![Stack](https://img.shields.io/badge/Cloudflare-Workers-orange?logo=cloudflare) ![Stack](https://img.shields.io/badge/Hono-v4-blue) ![Stack](https://img.shields.io/badge/React-19-61dafb?logo=react) ![Stack](https://img.shields.io/badge/TypeScript-5-blue?logo=typescript)
 
@@ -8,12 +12,15 @@ A self-hosted SQL query interface for [Cloudflare D1](https://developers.cloudfl
 
 ## Features
 
-- **SQL Editor** — Full SQL input with syntax highlighting (CodeMirror 6), Ctrl/Cmd+Enter to run, execution time and row count
+- **SQL Notebooks** — Multiple named SQL editor tabs per user, auto-saved, each independently bound to a database; supports rename, reorder, and up to 20 notebooks per user
+- **SQL Editor** — Full SQL input with syntax highlighting (CodeMirror 6), Ctrl/Cmd+Enter to run, partial selection execution, execution time and row count display
 - **Query History** — Last 50 queries per database, click to re-run
 - **Multi-database** — Connect multiple D1 databases; grant per-user `read` or `write` access per database
-- **Auth** — Email + password, email verification, password reset, optional TOTP / Email OTP / Passkey (WebAuthn) 2FA
+- **Auth** — Email + password login, email verification, password reset, optional TOTP / Email OTP / Passkey (WebAuthn) two-factor authentication
 - **Admin Panel** — Manage users, database connections, permissions, and email/app settings
-- **100% Cloudflare** — Workers + D1 + KV + Workers Assets; only external dependency is an email provider (Resend or SMTP)
+- **i18n** — Built-in English and Chinese (Simplified) interface
+- **Dark / Light / Auto theme** — Follows system preference by default
+- **100% Cloudflare** — Workers + D1 + KV + Workers Assets; the only external dependency is an email provider (Resend or SMTP)
 
 ---
 
@@ -38,10 +45,10 @@ A self-hosted SQL query interface for [Cloudflare D1](https://developers.cloudfl
 |-------|-----------|
 | Runtime | Cloudflare Workers |
 | API framework | Hono.js v4 |
-| App database | D1 (SQLite) — users, settings, history |
+| App database | D1 (SQLite) — users, notebooks, settings, history |
 | Query targets | Additional D1 bindings |
-| Sessions / 2FA | Cloudflare KV |
-| Frontend | React 19 + Vite + Tailwind CSS |
+| Sessions / 2FA state | Cloudflare KV |
+| Frontend | React 19 + Vite + Tailwind CSS v4 |
 
 ---
 
@@ -54,11 +61,11 @@ Deployment runs automatically on every push to `main`. No local tooling required
 Go to the [Cloudflare dashboard](https://dash.cloudflare.com) and create:
 
 **D1 database** (Workers & Pages → D1 → Create database)
-- Name: `d1-studio-db` (or any name you like)
+- Name: `zeta-db` (or any name you like)
 - Note the **Database ID** shown after creation
 
 **KV namespace** (Workers & Pages → KV → Create namespace)
-- Name: `D1_STUDIO_KV`
+- Name: `ZETA_KV`
 - Note the **Namespace ID**
 
 **API token** (My Profile → API Tokens → Create Token)
@@ -84,7 +91,7 @@ In your GitHub repo → **Settings → Secrets and variables → Actions**:
 | Name | Value |
 |------|-------|
 | `CLOUDFLARE_ACCOUNT_ID` | Your Cloudflare Account ID |
-| `D1_DATABASE_NAME` | e.g. `d1-studio-db` |
+| `D1_DATABASE_NAME` | e.g. `zeta-db` |
 | `D1_DATABASE_ID` | The D1 Database ID from Step 1 |
 | `KV_NAMESPACE_ID` | The KV Namespace ID from Step 1 |
 
@@ -94,7 +101,7 @@ In your GitHub repo → **Settings → Secrets and variables → Actions**:
 
 These values are sensitive or deployment-specific and are set **directly in the Cloudflare dashboard**, not in GitHub.
 
-Go to **Workers & Pages → d1-studio → Settings → Variables and Secrets**:
+Go to **Workers & Pages → zeta → Settings → Variables and Secrets**:
 
 **Secrets** (type: Secret):
 
@@ -108,7 +115,7 @@ Go to **Workers & Pages → d1-studio → Settings → Variables and Secrets**:
 
 | Name | Value |
 |------|-------|
-| `APP_URL` | Your Worker URL, e.g. `https://d1-studio.yourname.workers.dev` or your custom domain |
+| `APP_URL` | Your Worker URL, e.g. `https://zeta.yourname.workers.dev` or your custom domain |
 | `TABLE_PREFIX` | *(Optional)* Prefix for all internal D1 tables, e.g. `kp` → tables become `kp_users`, `kp_settings`, etc. Must be set **before** visiting the setup URL. Cannot be changed after initialisation. |
 
 > These are kept out of GitHub entirely. The `keep_vars = true` setting in `wrangler.toml` ensures each deployment never overwrites values you set here.
@@ -154,7 +161,7 @@ Expected response:
 Visit `https://<your-domain>/register`. The **first registered user automatically becomes admin**.
 
 Afterwards:
-- Disable registration in **Admin → Settings** if needed
+- Disable registration in **Admin → Settings** if you want to prevent others from signing up
 - Add queryable D1 databases in **Admin → Databases**
 - Grant users access in **Admin → Databases → Permissions**
 
@@ -202,11 +209,13 @@ SETUP_SECRET=dev-setup-secret
 APP_URL=http://localhost:8787
 ```
 
-Apply local D1 schema via the setup endpoint:
+Initialise the local database by visiting:
 
 ```
 http://localhost:8787/api/setup/dev-setup-secret
 ```
+
+Then open `http://localhost:5173` in your browser.
 
 ---
 
@@ -218,9 +227,9 @@ http://localhost:8787/api/setup/dev-setup-secret
 |------|-------|-------------|
 | `CLOUDFLARE_API_TOKEN` | Secret | Wrangler deploy authentication |
 | `CLOUDFLARE_ACCOUNT_ID` | Variable | Cloudflare account ID |
-| `CF_D1_DATABASE_NAME` | Variable | D1 database name (e.g. `d1-studio-db`) |
-| `CF_D1_DATABASE_ID` | Variable | D1 database ID |
-| `CF_KV_NAMESPACE_ID` | Variable | KV namespace ID |
+| `D1_DATABASE_NAME` | Variable | D1 database name (e.g. `zeta-db`) |
+| `D1_DATABASE_ID` | Variable | D1 database ID |
+| `KV_NAMESPACE_ID` | Variable | KV namespace ID |
 
 ### Cloudflare Dashboard (set manually)
 
@@ -230,7 +239,25 @@ http://localhost:8787/api/setup/dev-setup-secret
 | `ENCRYPTION_KEY` | Secret | 64-char hex — AES-GCM key for TOTP secrets |
 | `SETUP_SECRET` | Secret | Protects `GET /api/setup/:secret` |
 | `APP_URL` | Variable | Full URL of your deployment |
-| `TABLE_PREFIX` | Variable | *(Optional)* Prefix for internal tables (e.g. `kp`). Set before first setup run. |
+| `TABLE_PREFIX` | Variable | *(Optional)* Prefix for internal tables (e.g. `kp`). Set before first setup run. Immutable after initialisation. |
+
+---
+
+## API Overview
+
+All endpoints live under `/api/`. Authentication uses short-lived JWT access tokens (Authorization header) plus an HttpOnly refresh-token cookie.
+
+| Prefix | Description |
+|--------|-------------|
+| `POST /api/auth/*` | Register, login, logout, token refresh, email verification, password reset, 2FA (TOTP / Email OTP / Passkey) |
+| `GET/PATCH /api/profile/*` | Profile, password change, TOTP setup/confirm/delete, passkey registration/delete |
+| `GET /api/databases` | List accessible databases for the current user |
+| `POST /api/query` | Execute SQL against a bound D1 database |
+| `GET /api/query/history` | Query execution history (filterable by database) |
+| `GET/POST/PATCH/DELETE /api/notebooks` | CRUD for SQL notebooks (per-user, max 20) |
+| `GET/POST/PATCH/DELETE /api/admin/*` | Admin-only: users, databases, permissions, settings |
+| `GET /api/setup/:secret` | Idempotent schema initialisation |
+| `GET /api/health` | Health check |
 
 ---
 
@@ -242,12 +269,12 @@ http://localhost:8787/api/setup/dev-setup-secret
 | **API** | [Hono](https://hono.dev) v4 |
 | **Database** | [Cloudflare D1](https://developers.cloudflare.com/d1/) (SQLite) |
 | **KV** | [Cloudflare KV](https://developers.cloudflare.com/kv/) |
-| **Frontend** | React 19, Vite, Tailwind CSS v3 |
+| **Frontend** | React 19, Vite, Tailwind CSS v4 |
 | **SQL Editor** | CodeMirror 6 + `@codemirror/lang-sql` |
 | **Auth** | PBKDF2-SHA256 passwords, HS256 JWTs, WebAuthn passkeys |
 | **2FA** | TOTP (otpauth), Email OTP, Passkey |
 | **Email** | [Resend](https://resend.com) or custom SMTP |
-| **Deploy** | `wrangler deploy` |
+| **Deploy** | `wrangler deploy` via GitHub Actions |
 
 ---
 

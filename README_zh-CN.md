@@ -1,6 +1,10 @@
-# D1 Studio
+# Zeta
+
+> **English documentation:** [README.md](./README.md)
 
 自托管的 [Cloudflare D1](https://developers.cloudflare.com/d1/) 数据库 SQL 查询界面。完全运行在 Cloudflare 平台上，无需管理任何服务器。
+
+**版本 1.0.0**
 
 ![Stack](https://img.shields.io/badge/Cloudflare-Workers-orange?logo=cloudflare) ![Stack](https://img.shields.io/badge/Hono-v4-blue) ![Stack](https://img.shields.io/badge/React-19-61dafb?logo=react) ![Stack](https://img.shields.io/badge/TypeScript-5-blue?logo=typescript)
 
@@ -8,11 +12,14 @@
 
 ## 功能特性
 
-- **SQL 编辑器** — 完整 SQL 输入，语法高亮（CodeMirror 6），Ctrl/Cmd+Enter 执行，显示耗时和行数
+- **SQL Notebook** — 每位用户可创建多个命名 SQL 编辑器标签页，自动保存，每个标签页独立绑定数据库；支持重命名、每用户最多 20 个
+- **SQL 编辑器** — 完整 SQL 输入，语法高亮（CodeMirror 6），Ctrl/Cmd+Enter 执行，支持选中片段单独运行，显示耗时和行数
 - **查询历史** — 每个数据库最近 50 条记录，点击即可重新执行
 - **多数据库** — 连接多个 D1 数据库，按用户分配每个数据库的 `read`（只读）或 `write`（读写）权限
-- **身份验证** — 邮箱 + 密码、邮件验证、找回密码、可选 TOTP / 邮件 OTP / Passkey（WebAuthn）二步验证
+- **身份验证** — 邮箱 + 密码登录、邮件验证、找回密码、可选 TOTP / 邮件 OTP / Passkey（WebAuthn）二步验证
 - **管理后台** — 用户管理、数据库连接管理、权限分配、邮件及应用配置
+- **多语言** — 内置中文（简体）和英文界面
+- **深色 / 浅色 / 自动主题** — 默认跟随系统偏好
 - **100% Cloudflare** — Workers + D1 + KV + Workers Assets，唯一外部依赖为邮件服务（Resend 或 SMTP）
 
 ---
@@ -38,10 +45,10 @@
 |------|------|
 | 运行时 | Cloudflare Workers |
 | API 框架 | Hono.js v4 |
-| 应用数据库 | D1 (SQLite) — 用户、设置、查询历史 |
+| 应用数据库 | D1 (SQLite) — 用户、Notebook、设置、查询历史 |
 | 查询目标 | 额外绑定的 D1 数据库 |
-| 会话 / 2FA | Cloudflare KV |
-| 前端 | React 19 + Vite + Tailwind CSS |
+| 会话 / 2FA 状态 | Cloudflare KV |
+| 前端 | React 19 + Vite + Tailwind CSS v4 |
 
 ---
 
@@ -54,11 +61,11 @@
 在 [Cloudflare 控制台](https://dash.cloudflare.com) 中创建以下资源：
 
 **D1 数据库**（Workers & Pages → D1 → 创建数据库）
-- 名称：`d1-studio-db`（或任意名称）
+- 名称：`zeta-db`（或任意名称）
 - 记录创建后显示的 **Database ID**
 
 **KV 命名空间**（Workers & Pages → KV → 创建命名空间）
-- 名称：`D1_STUDIO_KV`
+- 名称：`ZETA_KV`
 - 记录 **Namespace ID**
 
 **API Token**（我的个人资料 → API 令牌 → 创建令牌）
@@ -84,7 +91,7 @@
 | 名称 | 值 |
 |------|----|
 | `CLOUDFLARE_ACCOUNT_ID` | 你的 Cloudflare Account ID |
-| `D1_DATABASE_NAME` | 例如 `d1-studio-db` |
+| `D1_DATABASE_NAME` | 例如 `zeta-db` |
 | `D1_DATABASE_ID` | 第一步中的 D1 Database ID |
 | `KV_NAMESPACE_ID` | 第一步中的 KV Namespace ID |
 
@@ -94,7 +101,7 @@
 
 这些值属于敏感信息或与具体部署环境相关，**直接在 Cloudflare 控制台配置**，不经过 GitHub。
 
-进入 **Workers & Pages → d1-studio → 设置 → 变量和密钥**：
+进入 **Workers & Pages → zeta → 设置 → 变量和密钥**：
 
 **密钥（Secret 类型）**：
 
@@ -108,7 +115,7 @@
 
 | 名称 | 值 |
 |------|----|
-| `APP_URL` | 你的 Worker 地址，例如 `https://d1-studio.yourname.workers.dev` 或自定义域名 |
+| `APP_URL` | 你的 Worker 地址，例如 `https://zeta.yourname.workers.dev` 或自定义域名 |
 | `TABLE_PREFIX` | *（可选）* 所有内部 D1 表的前缀，例如 `kp` → 表名变为 `kp_users`、`kp_settings` 等。必须在**访问 setup URL 之前**设置，初始化后不可更改。 |
 
 > 以上配置完全隔离于 GitHub。`wrangler.toml` 中的 `keep_vars = true` 确保每次部署不会覆盖你在此处设置的值。
@@ -142,10 +149,7 @@ https://<你的域名>/api/setup/<SETUP_SECRET>
 成功后返回：
 
 ```json
-{
-  "ok": true,
-  "message": "Database initialised successfully. You can now register at /register — the first user becomes admin."
-}
+{ "ok": true, "message": "Database initialised successfully. You can now register at /register — the first user becomes admin." }
 ```
 
 > 该接口是幂等的，重复访问不会造成任何破坏，可安全地多次调用。
@@ -180,7 +184,7 @@ D1 数据库必须在部署时绑定到 Worker，操作步骤如下：
 
 3. 在 **管理后台 → 数据库** 中点击**添加数据库**，输入绑定名称（`QUERY_DB_1`）。
 
-4. 在**数据库 → 权限**中为需要访问的用户分配权限（只读/读写）。
+4. 在**数据库 → 权限**中为需要访问的用户分配权限（只读 / 读写）。
 
 ---
 
@@ -205,11 +209,13 @@ SETUP_SECRET=dev-setup-secret
 APP_URL=http://localhost:8787
 ```
 
-访问本地初始化端点完成数据库初始化：
+访问以下地址完成本地数据库初始化：
 
 ```
 http://localhost:8787/api/setup/dev-setup-secret
 ```
+
+然后在浏览器中打开 `http://localhost:5173`。
 
 ---
 
@@ -221,9 +227,9 @@ http://localhost:8787/api/setup/dev-setup-secret
 |------|------|------|
 | `CLOUDFLARE_API_TOKEN` | Secret | Wrangler 部署认证 Token |
 | `CLOUDFLARE_ACCOUNT_ID` | Variable | Cloudflare 账号 ID |
-| `CF_D1_DATABASE_NAME` | Variable | D1 数据库名称（例如 `d1-studio-db`） |
-| `CF_D1_DATABASE_ID` | Variable | D1 数据库 ID |
-| `CF_KV_NAMESPACE_ID` | Variable | KV 命名空间 ID |
+| `D1_DATABASE_NAME` | Variable | D1 数据库名称（例如 `zeta-db`） |
+| `D1_DATABASE_ID` | Variable | D1 数据库 ID |
+| `KV_NAMESPACE_ID` | Variable | KV 命名空间 ID |
 
 ### Cloudflare 控制台（手动配置）
 
@@ -232,8 +238,26 @@ http://localhost:8787/api/setup/dev-setup-secret
 | `JWT_SECRET` | 密钥 | 签发访问令牌和刷新令牌（HS256） |
 | `ENCRYPTION_KEY` | 密钥 | 64 位十六进制 — TOTP 密钥的 AES-GCM 加密密钥 |
 | `SETUP_SECRET` | 密钥 | 保护 `GET /api/setup/:secret` 初始化端点 |
-| `APP_URL` | 变量 | 部署的完整 URL，例如 `https://studio.example.com` |
+| `APP_URL` | 变量 | 部署的完整 URL，例如 `https://zeta.example.com` |
 | `TABLE_PREFIX` | 变量 | *（可选）* 内部表名前缀（例如 `kp`）。首次 setup 前设置，初始化后不可更改。 |
+
+---
+
+## API 概览
+
+所有端点挂载在 `/api/` 下，认证使用短效 JWT 访问令牌（Authorization 请求头）+ HttpOnly 刷新令牌 Cookie。
+
+| 前缀 | 说明 |
+|------|------|
+| `POST /api/auth/*` | 注册、登录、注销、令牌刷新、邮件验证、密码重置、2FA（TOTP / 邮件 OTP / Passkey） |
+| `GET/PATCH /api/profile/*` | 个人信息、修改密码、TOTP 设置/确认/删除、Passkey 注册/删除 |
+| `GET /api/databases` | 列出当前用户可访问的数据库 |
+| `POST /api/query` | 对绑定的 D1 数据库执行 SQL |
+| `GET /api/query/history` | 查询执行历史（可按数据库过滤） |
+| `GET/POST/PATCH/DELETE /api/notebooks` | SQL Notebook 的增删改查（每用户，最多 20 个） |
+| `GET/POST/PATCH/DELETE /api/admin/*` | 仅管理员：用户、数据库、权限、设置 |
+| `GET /api/setup/:secret` | 幂等的数据库 Schema 初始化 |
+| `GET /api/health` | 健康检查 |
 
 ---
 
@@ -245,12 +269,12 @@ http://localhost:8787/api/setup/dev-setup-secret
 | **API** | [Hono](https://hono.dev) v4 |
 | **数据库** | [Cloudflare D1](https://developers.cloudflare.com/d1/)（SQLite） |
 | **KV** | [Cloudflare KV](https://developers.cloudflare.com/kv/) |
-| **前端** | React 19、Vite、Tailwind CSS v3 |
+| **前端** | React 19、Vite、Tailwind CSS v4 |
 | **SQL 编辑器** | CodeMirror 6 + `@codemirror/lang-sql` |
 | **认证** | PBKDF2-SHA256 密码、HS256 JWT、WebAuthn Passkey |
 | **二步验证** | TOTP（otpauth）、邮件 OTP、Passkey |
 | **邮件** | [Resend](https://resend.com) 或自定义 SMTP |
-| **部署** | `wrangler deploy` |
+| **部署** | `wrangler deploy`（GitHub Actions） |
 
 ---
 

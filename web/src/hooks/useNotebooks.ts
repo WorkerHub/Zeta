@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { notebooksApi } from '../lib/api'
 import type { Notebook } from '../types'
 
-const ACTIVE_NOTEBOOK_KEY = 'd1studio_active_notebook'
+const ACTIVE_NOTEBOOK_KEY = 'zeta_active_notebook'
 const DEBOUNCE_MS = 1500
 const MAX_NOTEBOOKS = 20
 

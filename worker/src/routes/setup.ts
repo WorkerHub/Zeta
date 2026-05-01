@@ -121,7 +121,7 @@ const DEFAULT_SETTINGS: Array<[string, string]> = [
   ['smtp_user', ''],
   ['smtp_pass', ''],
   ['smtp_from', ''],
-  ['app_name', 'D1 Studio'],
+  ['app_name', 'Zeta'],
   ['setup_completed', 'true'],
 ]
 

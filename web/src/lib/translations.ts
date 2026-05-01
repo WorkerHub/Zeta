@@ -3,7 +3,7 @@ import type { Locale } from './i18n'
 const translations: Record<Locale, Record<string, string>> = {
   en: {
     // App
-    'app.name': 'D1 Studio',
+    'app.name': 'Zeta',
 
     // Auth pages
     'auth.signin': 'Sign in',
@@ -184,7 +184,7 @@ const translations: Record<Locale, Record<string, string>> = {
   },
   zh: {
     // App
-    'app.name': 'D1 Studio',
+    'app.name': 'Zeta',
 
     // Auth pages
     'auth.signin': '登录',

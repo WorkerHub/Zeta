@@ -53,7 +53,7 @@ export default function AdminSettings() {
           <h2 className="text-sm font-semibold text-zinc-400 uppercase tracking-wider">{t('admin_settings.general')}</h2>
           <div>
             <label className="label">{t('admin_settings.app_name')}</label>
-            <input type="text" className="input" value={settings['app_name'] ?? 'D1 Studio'}
+            <input type="text" className="input" value={settings['app_name'] ?? 'Zeta'}
               onChange={(e) => set('app_name', e.target.value)} />
           </div>
           <div className="flex items-center justify-between">

@@ -94,7 +94,7 @@ profile.post('/totp/setup', async (c) => {
   // Store plaintext secret temporarily in KV (5min) before user confirms
   await c.env.KV.put(`totp_setup:${c.get('userId')}`, secret, { expirationTtl: 300 })
 
-  const appName = 'D1 Studio'
+  const appName = 'Zeta'
   const uri = getTotpUri(secret, user.email, appName)
 
   return c.json({ secret, uri })
@@ -143,7 +143,7 @@ profile.post('/passkey/register/options', async (c) => {
 
   const appUrl = new URL(c.env.APP_URL)
   const options = await generateRegistrationOptions({
-    rpName: 'D1 Studio',
+    rpName: 'Zeta',
     rpID: appUrl.hostname,
     userID: new TextEncoder().encode(user.id) as Uint8Array<ArrayBuffer>,
     userName: user.email,
