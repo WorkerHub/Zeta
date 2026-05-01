@@ -45,6 +45,7 @@ export default function QueryPage() {
   const [renameValue, setRenameValue] = useState('')
   const [selectedSql, setSelectedSql] = useState('')
   const dbMenuRef = useRef<HTMLDivElement>(null)
+  const dbMenuDesktopRef = useRef<HTMLDivElement>(null)
   const userMenuRef = useRef<HTMLDivElement>(null)
 
   // Track dark mode for CodeMirror theme
@@ -73,7 +74,9 @@ export default function QueryPage() {
   // Close dropdowns on outside click
   useEffect(() => {
     function handleClick(e: MouseEvent) {
-      if (dbMenuRef.current && !dbMenuRef.current.contains(e.target as Node)) setShowDbMenu(false)
+      const inDesktop = dbMenuDesktopRef.current?.contains(e.target as Node)
+      const inMobile = dbMenuRef.current?.contains(e.target as Node)
+      if (!inDesktop && !inMobile) setShowDbMenu(false)
       if (userMenuRef.current && !userMenuRef.current.contains(e.target as Node)) setShowUserMenu(false)
     }
     document.addEventListener('mousedown', handleClick)
@@ -160,7 +163,7 @@ export default function QueryPage() {
         </div>
 
         {/* Database selector — hidden on mobile (shown in bottom bar) */}
-        <div className="relative hidden sm:block" ref={dbMenuRef}>
+        <div className="relative hidden sm:block" ref={dbMenuDesktopRef}>
           <button
             onClick={() => setShowDbMenu(!showDbMenu)}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-zinc-100 hover:bg-zinc-200 border border-zinc-200 text-sm text-zinc-700 dark:bg-zinc-800 dark:hover:bg-zinc-700 dark:border-zinc-700 dark:text-zinc-200 transition-colors max-w-[200px]"
