@@ -2,10 +2,12 @@ import { useState, useEffect } from 'react'
 import { Search, Trash2, ChevronDown, CheckCircle, XCircle } from 'lucide-react'
 import { adminApi } from '../../lib/api'
 import { useAuthContext } from '../../hooks/useAuth'
+import { useLocale } from '../../hooks/useLocale'
 import type { User } from '../../types'
 
 export default function AdminUsers() {
   const { user: me } = useAuthContext()
+  const { t } = useLocale()
   const [users, setUsers] = useState<User[]>([])
   const [total, setTotal] = useState(0)
   const [search, setSearch] = useState('')
@@ -40,8 +42,8 @@ export default function AdminUsers() {
   return (
     <div className="p-4 sm:p-6 max-w-5xl">
       <div className="flex items-center justify-between mb-6">
-        <h1 className="text-lg font-semibold text-zinc-900 dark:text-zinc-100">Users</h1>
-        <span className="badge badge-zinc">{total} total</span>
+        <h1 className="text-lg font-semibold text-zinc-900 dark:text-zinc-100">{t('admin.users')}</h1>
+        <span className="badge badge-zinc">{total} {t('admin_users.total')}</span>
       </div>
 
       {/* Search */}
@@ -49,7 +51,7 @@ export default function AdminUsers() {
         <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500" />
         <input
           type="text" value={search} onChange={(e) => { setSearch(e.target.value); setPage(0) }}
-          className="input pl-9" placeholder="Search by name or email…"
+          className="input pl-9" placeholder={t('admin_users.search')}
         />
       </div>
 
@@ -57,18 +59,18 @@ export default function AdminUsers() {
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-zinc-200 dark:border-zinc-800 bg-zinc-100/50 dark:bg-zinc-800/30">
-              <th className="text-left px-4 py-3 text-xs font-medium text-zinc-500">User</th>
-              <th className="text-left px-4 py-3 text-xs font-medium text-zinc-500 hidden md:table-cell">Verified</th>
-              <th className="text-left px-4 py-3 text-xs font-medium text-zinc-500">Role</th>
-              <th className="text-left px-4 py-3 text-xs font-medium text-zinc-500 hidden lg:table-cell">Joined</th>
+              <th className="text-left px-4 py-3 text-xs font-medium text-zinc-500">{t('admin_users.user')}</th>
+              <th className="text-left px-4 py-3 text-xs font-medium text-zinc-500 hidden md:table-cell">{t('admin_users.verified')}</th>
+              <th className="text-left px-4 py-3 text-xs font-medium text-zinc-500">{t('admin_users.role')}</th>
+              <th className="text-left px-4 py-3 text-xs font-medium text-zinc-500 hidden lg:table-cell">{t('admin_users.joined')}</th>
               <th className="px-4 py-3" />
             </tr>
           </thead>
           <tbody>
             {loading ? (
-              <tr><td colSpan={5} className="px-4 py-8 text-center text-zinc-500 text-sm">Loading…</td></tr>
+              <tr><td colSpan={5} className="px-4 py-8 text-center text-zinc-500 text-sm">{t('admin_users.loading')}</td></tr>
             ) : users.length === 0 ? (
-              <tr><td colSpan={5} className="px-4 py-8 text-center text-zinc-500 text-sm">No users found</td></tr>
+              <tr><td colSpan={5} className="px-4 py-8 text-center text-zinc-500 text-sm">{t('admin_users.no_users')}</td></tr>
             ) : users.map((u) => (
               <tr key={u.id} className="border-b border-zinc-100 hover:bg-zinc-50 dark:border-zinc-800/50 dark:hover:bg-zinc-800/20 transition-colors">
                 <td className="px-4 py-3">
@@ -114,11 +116,11 @@ export default function AdminUsers() {
       {total > limit && (
         <div className="flex items-center justify-between mt-4">
           <span className="text-sm text-zinc-500">
-            {page * limit + 1}–{Math.min((page + 1) * limit, total)} of {total}
+            {page * limit + 1}–{Math.min((page + 1) * limit, total)} / {total}
           </span>
           <div className="flex gap-2">
-            <button onClick={() => setPage(p => p - 1)} disabled={page === 0} className="btn-secondary btn-sm">Prev</button>
-            <button onClick={() => setPage(p => p + 1)} disabled={(page + 1) * limit >= total} className="btn-secondary btn-sm">Next</button>
+            <button onClick={() => setPage(p => p - 1)} disabled={page === 0} className="btn-secondary btn-sm">{t('admin_users.prev')}</button>
+            <button onClick={() => setPage(p => p + 1)} disabled={(page + 1) * limit >= total} className="btn-secondary btn-sm">{t('admin_users.next')}</button>
           </div>
         </div>
       )}

@@ -6,11 +6,12 @@ import { oneDark } from '@codemirror/theme-one-dark'
 import {
   Database, Play, Clock, ChevronDown, LogOut, Settings,
   User as UserIcon, History, AlertCircle, CheckCircle2, Loader2,
-  Shield, Monitor, Sun, Moon, X
+  Shield, Monitor, Sun, Moon, X, Globe
 } from 'lucide-react'
 import { databasesApi, queryApi } from '../lib/api'
 import { useAuthContext } from '../hooks/useAuth'
 import { useTheme } from '../hooks/useTheme'
+import { useLocale } from '../hooks/useLocale'
 import ResultTable from '../components/ResultTable'
 import QueryHistoryPanel from '../components/QueryHistoryPanel'
 import type { Database as DbType } from '../types'
@@ -21,6 +22,7 @@ const THEME_ICONS = { auto: Monitor, light: Sun, dark: Moon }
 export default function QueryPage() {
   const { user, logout } = useAuthContext()
   const { theme, cycleTheme } = useTheme()
+  const { t, locale, changeLocale } = useLocale()
   const [databases, setDatabases] = useState<DbType[]>([])
   const [selectedDb, setSelectedDb] = useState<DbType | null>(null)
   const [sqlText, setSqlText] = useState('SELECT * FROM sqlite_master\nWHERE type = \'table\';')
@@ -131,7 +133,7 @@ export default function QueryPage() {
           <div className="w-7 h-7 bg-blue-600 rounded-md flex items-center justify-center">
             <Database size={15} className="text-white" />
           </div>
-          <span className="font-semibold text-zinc-900 dark:text-zinc-100 hidden sm:block">D1 Studio</span>
+          <span className="font-semibold text-zinc-900 dark:text-zinc-100 hidden sm:block">{t('app.name')}</span>
         </div>
 
         {/* Database selector — hidden on mobile (shown in bottom bar) */}
@@ -141,7 +143,7 @@ export default function QueryPage() {
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-zinc-100 hover:bg-zinc-200 border border-zinc-200 text-sm text-zinc-700 dark:bg-zinc-800 dark:hover:bg-zinc-700 dark:border-zinc-700 dark:text-zinc-200 transition-colors max-w-[200px]"
           >
             <Database size={13} className="text-zinc-400 shrink-0" />
-            <span className="truncate">{selectedDb?.name ?? 'Select database'}</span>
+            <span className="truncate">{selectedDb?.name ?? t('query.select_db')}</span>
             {selectedDb && (
               <span className={`badge ${selectedDb.permission === 'write' ? 'badge-blue' : 'badge-zinc'} ml-1 shrink-0`}>
                 {selectedDb.permission}
@@ -152,7 +154,7 @@ export default function QueryPage() {
           {showDbMenu && (
             <div className="absolute left-0 top-full mt-1 w-64 bg-white border border-zinc-200 dark:bg-zinc-900 dark:border-zinc-700 rounded-xl shadow-xl z-20 overflow-hidden">
               {databases.length === 0 ? (
-                <p className="px-4 py-3 text-sm text-zinc-500">No databases available</p>
+                <p className="px-4 py-3 text-sm text-zinc-500">{t('query.no_databases')}</p>
               ) : databases.map((db) => (
                 <button
                   key={db.id}
@@ -175,7 +177,16 @@ export default function QueryPage() {
           className={`btn-ghost btn-sm gap-1.5 hidden sm:flex ${showHistory ? 'text-blue-500 bg-blue-500/10' : ''}`}
         >
           <History size={15} />
-          <span className="hidden sm:inline">History</span>
+          <span className="hidden sm:inline">{t('query.history')}</span>
+        </button>
+
+        {/* Language toggle */}
+        <button
+          onClick={() => changeLocale(locale === 'en' ? 'zh' : 'en')}
+          className="btn-ghost btn-sm p-2"
+          title={t('lang.label')}
+        >
+          <Globe size={15} />
         </button>
 
         {/* Theme toggle */}
@@ -203,17 +214,17 @@ export default function QueryPage() {
               </div>
               <Link to="/profile" onClick={() => setShowUserMenu(false)}
                 className="flex items-center gap-2 px-4 py-2.5 text-sm text-zinc-600 hover:bg-zinc-50 hover:text-zinc-900 dark:text-zinc-300 dark:hover:bg-zinc-800 dark:hover:text-zinc-100 transition-colors">
-                <UserIcon size={14} /> Profile & Security
+                <UserIcon size={14} /> {t('user.profile_security')}
               </Link>
               {user?.role === 'admin' && (
                 <Link to="/admin" onClick={() => setShowUserMenu(false)}
                   className="flex items-center gap-2 px-4 py-2.5 text-sm text-zinc-600 hover:bg-zinc-50 hover:text-zinc-900 dark:text-zinc-300 dark:hover:bg-zinc-800 dark:hover:text-zinc-100 transition-colors">
-                  <Shield size={14} /> Admin Panel
+                  <Shield size={14} /> {t('user.admin_panel')}
                 </Link>
               )}
               <button onClick={logout}
                 className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-red-400 hover:bg-zinc-50 dark:hover:bg-zinc-800 transition-colors border-t border-zinc-100 dark:border-zinc-800">
-                <LogOut size={14} /> Sign out
+                <LogOut size={14} /> {t('user.sign_out')}
               </button>
             </div>
           )}
@@ -235,16 +246,16 @@ export default function QueryPage() {
             style={{ height: `${editorPct}%`, minHeight: 120 }}
           >
             <div className="flex items-center justify-between px-4 py-2 border-b border-zinc-200 dark:border-zinc-800 shrink-0">
-              <span className="text-xs font-medium text-zinc-500 uppercase tracking-wider">SQL Editor</span>
+              <span className="text-xs font-medium text-zinc-500 uppercase tracking-wider">{t('query.sql_editor')}</span>
               <div className="flex items-center gap-2">
-                <span className="text-xs text-zinc-400 dark:text-zinc-600 hidden sm:block">⌘+Enter to run</span>
+                <span className="text-xs text-zinc-400 dark:text-zinc-600 hidden sm:block">{t('query.shortcut')}</span>
                 <button
                   onClick={runQuery}
                   disabled={running || !selectedDb}
                   className="btn-primary btn-sm gap-1.5 hidden sm:flex"
                 >
                   {running ? <Loader2 size={13} className="animate-spin" /> : <Play size={13} />}
-                  {selectedSql.trim() ? 'Run Selection' : 'Run'}
+                  {selectedSql.trim() ? t('query.run_selection') : t('query.run')}
                 </button>
               </div>
             </div>
@@ -276,14 +287,14 @@ export default function QueryPage() {
             {running && (
               <div className="flex items-center justify-center h-full gap-2 text-zinc-500">
                 <Loader2 size={18} className="animate-spin" />
-                <span className="text-sm">Running query…</span>
+                <span className="text-sm">{t('query.running')}</span>
               </div>
             )}
             {!running && queryError && (
               <div className="m-4 flex items-start gap-3 p-4 bg-red-500/10 border border-red-500/20 rounded-xl">
                 <AlertCircle size={18} className="text-red-400 shrink-0 mt-0.5" />
                 <div>
-                  <p className="text-sm font-medium text-red-400 mb-1">Query error</p>
+                  <p className="text-sm font-medium text-red-400 mb-1">{t('query.error')}</p>
                   <pre className="text-xs text-red-300 whitespace-pre-wrap font-mono">{queryError}</pre>
                 </div>
               </div>
@@ -292,7 +303,7 @@ export default function QueryPage() {
               <div className="p-4 space-y-2">
                 <div className="flex items-center gap-2 text-xs text-zinc-500">
                   <CheckCircle2 size={13} className="text-emerald-400" />
-                  <span>{results.results.length} row{results.results.length !== 1 ? 's' : ''}</span>
+                  <span>{results.results.length} {results.results.length !== 1 ? t('query.rows') : t('query.row')}</span>
                   {results.duration_ms !== undefined && (
                     <>
                       <span>·</span>
@@ -306,7 +317,7 @@ export default function QueryPage() {
             )}
             {!running && !queryError && !results && (
               <div className="flex items-center justify-center h-full text-zinc-400 dark:text-zinc-600 text-sm">
-                Run a query to see results
+                {t('query.no_results')}
               </div>
             )}
           </div>
@@ -332,7 +343,7 @@ export default function QueryPage() {
             className="w-full flex items-center gap-1.5 px-3 py-2 rounded-lg bg-zinc-100 border border-zinc-200 text-sm text-zinc-700 dark:bg-zinc-800 dark:border-zinc-700 dark:text-zinc-200 transition-colors"
           >
             <Database size={13} className="text-zinc-400 shrink-0" />
-            <span className="truncate flex-1 text-left">{selectedDb?.name ?? 'Select DB'}</span>
+            <span className="truncate flex-1 text-left">{selectedDb?.name ?? t('query.select_db')}</span>
             <ChevronDown size={13} className="text-zinc-500 shrink-0" />
           </button>
           {showDbMenu && (
@@ -366,7 +377,7 @@ export default function QueryPage() {
           className="btn-primary gap-1.5 px-4 py-2"
         >
           {running ? <Loader2 size={14} className="animate-spin" /> : <Play size={14} />}
-          {selectedSql.trim() ? 'Selection' : 'Run'}
+          {selectedSql.trim() ? t('query.run_selection') : t('query.run')}
         </button>
       </div>
 
@@ -376,7 +387,7 @@ export default function QueryPage() {
           <div className="absolute inset-0 bg-black/40" onClick={() => setShowHistory(false)} />
           <div className="relative bg-white dark:bg-zinc-900 rounded-t-2xl border-t border-zinc-200 dark:border-zinc-800 flex flex-col" style={{ maxHeight: '70vh' }}>
             <div className="flex items-center justify-between px-4 py-3 border-b border-zinc-200 dark:border-zinc-800 shrink-0">
-              <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">Query History</span>
+              <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">{t('query.query_history')}</span>
               <button onClick={() => setShowHistory(false)} className="btn-ghost p-1.5">
                 <X size={16} />
               </button>

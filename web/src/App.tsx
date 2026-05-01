@@ -1,6 +1,7 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { AuthProvider, useAuthContext } from './hooks/useAuth'
 import { useTheme } from './hooks/useTheme'
+import { useLocale } from './hooks/useLocale'
 import Login from './pages/Login'
 import Register from './pages/Register'
 import ForgotPassword from './pages/ForgotPassword'
@@ -12,14 +13,16 @@ import AdminPage from './pages/admin/AdminLayout'
 
 function PrivateRoute({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuthContext()
-  if (loading) return <div className="flex h-screen items-center justify-center text-zinc-500 text-sm">Loading…</div>
+  const { t } = useLocale()
+  if (loading) return <div className="flex h-screen items-center justify-center text-zinc-500 text-sm">{t('common.loading')}</div>
   if (!user) return <Navigate to="/login" replace />
   return <>{children}</>
 }
 
 function AdminRoute({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuthContext()
-  if (loading) return <div className="flex h-screen items-center justify-center text-zinc-500 text-sm">Loading…</div>
+  const { t } = useLocale()
+  if (loading) return <div className="flex h-screen items-center justify-center text-zinc-500 text-sm">{t('common.loading')}</div>
   if (!user) return <Navigate to="/login" replace />
   if (user.role !== 'admin') return <Navigate to="/query" replace />
   return <>{children}</>

@@ -2,8 +2,10 @@ import { useEffect, useState } from 'react'
 import { useSearchParams, Link } from 'react-router-dom'
 import { Database, CheckCircle, XCircle } from 'lucide-react'
 import { authApi } from '../lib/api'
+import { useLocale } from '../hooks/useLocale'
 
 export default function VerifyEmail() {
+  const { t } = useLocale()
   const [params] = useSearchParams()
   const token = params.get('token') ?? ''
   const [status, setStatus] = useState<'loading' | 'success' | 'error'>('loading')
@@ -23,23 +25,23 @@ export default function VerifyEmail() {
           <div className="w-9 h-9 bg-blue-600 rounded-lg flex items-center justify-center">
             <Database size={20} className="text-white" />
           </div>
-          <span className="text-xl font-semibold text-zinc-900 dark:text-zinc-100">D1 Studio</span>
+          <span className="text-xl font-semibold text-zinc-900 dark:text-zinc-100">{t('app.name')}</span>
         </div>
 
         <div className="card p-6 text-center">
-          {status === 'loading' && <p className="text-zinc-500">Verifying…</p>}
+          {status === 'loading' && <p className="text-zinc-500">{t('auth.verify_title')}</p>}
           {status === 'success' && (
             <div className="space-y-4">
               <CheckCircle size={40} className="mx-auto text-emerald-400" />
               <p className="text-zinc-700 dark:text-zinc-200">{message}</p>
-              <Link to="/login" className="btn-primary inline-block">Sign in</Link>
+              <Link to="/login" className="btn-primary inline-block">{t('auth.verify_success')}</Link>
             </div>
           )}
           {status === 'error' && (
             <div className="space-y-4">
               <XCircle size={40} className="mx-auto text-red-400" />
               <p className="text-red-400">{message}</p>
-              <Link to="/login" className="btn-secondary inline-block">Back to sign in</Link>
+              <Link to="/login" className="btn-secondary inline-block">{t('auth.verify_fail')}</Link>
             </div>
           )}
         </div>

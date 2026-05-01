@@ -3,12 +3,14 @@ import { Link, useNavigate } from 'react-router-dom'
 import { Database, Eye, EyeOff } from 'lucide-react'
 import { authApi } from '../lib/api'
 import { useAuthContext } from '../hooks/useAuth'
+import { useLocale } from '../hooks/useLocale'
 import TwoFactorModal from '../components/TwoFactorModal'
 import type { User } from '../types'
 
 export default function Login() {
   const navigate = useNavigate()
   const { login } = useAuthContext()
+  const { t } = useLocale()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [showPw, setShowPw] = useState(false)
@@ -48,22 +50,22 @@ export default function Login() {
           <div className="w-9 h-9 bg-blue-600 rounded-lg flex items-center justify-center">
             <Database size={20} className="text-white" />
           </div>
-          <span className="text-xl font-semibold text-zinc-900 dark:text-zinc-100">D1 Studio</span>
+          <span className="text-xl font-semibold text-zinc-900 dark:text-zinc-100">{t('app.name')}</span>
         </div>
 
         <div className="card p-6">
-          <h1 className="text-lg font-semibold text-zinc-900 mb-6 dark:text-zinc-100">Sign in</h1>
+          <h1 className="text-lg font-semibold text-zinc-900 mb-6 dark:text-zinc-100">{t('auth.signin')}</h1>
 
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
-              <label className="label">Email</label>
+              <label className="label">{t('auth.email')}</label>
               <input
                 type="email" value={email} onChange={(e) => setEmail(e.target.value)}
                 className="input" placeholder="you@example.com" required autoFocus
               />
             </div>
             <div>
-              <label className="label">Password</label>
+              <label className="label">{t('auth.password')}</label>
               <div className="relative">
                 <input
                   type={showPw ? 'text' : 'password'} value={password}
@@ -82,16 +84,16 @@ export default function Login() {
             {error && <p className="text-sm text-red-400">{error}</p>}
 
             <button type="submit" className="btn-primary w-full" disabled={loading}>
-              {loading ? 'Signing in…' : 'Sign in'}
+              {loading ? t('auth.signing_in') : t('auth.signin')}
             </button>
           </form>
 
           <div className="mt-4 flex items-center justify-between text-sm">
             <Link to="/forgot-password" className="text-zinc-500 hover:text-zinc-300 transition-colors">
-              Forgot password?
+              {t('auth.forgot_password')}
             </Link>
             <Link to="/register" className="text-blue-400 hover:text-blue-300 transition-colors">
-              Create account
+              {t('auth.create_account')}
             </Link>
           </div>
         </div>

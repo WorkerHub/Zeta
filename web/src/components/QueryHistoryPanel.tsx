@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { History, XCircle, CheckCircle2, Clock } from 'lucide-react'
 import { queryApi } from '../lib/api'
+import { useLocale } from '../hooks/useLocale'
 
 interface HistoryItem {
   id: string
@@ -17,6 +18,7 @@ interface Props {
 }
 
 export default function QueryHistoryPanel({ databaseId, onSelect }: Props) {
+  const { t, locale } = useLocale()
   const [items, setItems] = useState<HistoryItem[]>([])
   const [loading, setLoading] = useState(true)
 
@@ -30,6 +32,12 @@ export default function QueryHistoryPanel({ databaseId, onSelect }: Props) {
 
   const timeAgo = (ts: number) => {
     const diff = Math.floor(Date.now() / 1000) - ts
+    if (locale === 'zh') {
+      if (diff < 60) return '刚刚'
+      if (diff < 3600) return `${Math.floor(diff / 60)}分钟前`
+      if (diff < 86400) return `${Math.floor(diff / 3600)}小时前`
+      return `${Math.floor(diff / 86400)}天前`
+    }
     if (diff < 60) return 'just now'
     if (diff < 3600) return `${Math.floor(diff / 60)}m ago`
     if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`
@@ -40,12 +48,12 @@ export default function QueryHistoryPanel({ databaseId, onSelect }: Props) {
     <div className="h-full flex flex-col">
       <div className="flex items-center gap-2 px-4 py-3 border-b border-zinc-200 dark:border-zinc-800">
         <History size={14} className="text-zinc-400 dark:text-zinc-500" />
-        <span className="text-xs font-medium text-zinc-500 uppercase tracking-wider">Query History</span>
+        <span className="text-xs font-medium text-zinc-500 uppercase tracking-wider">{t('query.query_history')}</span>
       </div>
       {loading ? (
-        <div className="flex items-center justify-center flex-1 text-zinc-400 dark:text-zinc-600 text-sm">Loading…</div>
+        <div className="flex items-center justify-center flex-1 text-zinc-400 dark:text-zinc-600 text-sm">{t('common.loading')}</div>
       ) : items.length === 0 ? (
-        <div className="flex items-center justify-center flex-1 text-zinc-400 dark:text-zinc-600 text-sm">No history yet</div>
+        <div className="flex items-center justify-center flex-1 text-zinc-400 dark:text-zinc-600 text-sm">{t('query.no_history')}</div>
       ) : (
         <div className="flex-1 overflow-auto">
           {items.map((item) => (
@@ -69,7 +77,7 @@ export default function QueryHistoryPanel({ databaseId, onSelect }: Props) {
                 {item.row_count !== null && !item.error && (
                   <>
                     <span className="text-zinc-300 dark:text-zinc-700">·</span>
-                    <span className="text-xs text-zinc-400 dark:text-zinc-600">{item.row_count} rows</span>
+                    <span className="text-xs text-zinc-400 dark:text-zinc-600">{item.row_count} {item.row_count === 1 ? t('query.row') : t('query.rows')}</span>
                   </>
                 )}
               </div>

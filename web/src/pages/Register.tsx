@@ -2,9 +2,11 @@ import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { Database } from 'lucide-react'
 import { authApi } from '../lib/api'
+import { useLocale } from '../hooks/useLocale'
 
 export default function Register() {
   const navigate = useNavigate()
+  const { t } = useLocale()
   const [form, setForm] = useState({ name: '', email: '', password: '' })
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
@@ -13,11 +15,11 @@ export default function Register() {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     setError('')
-    if (form.password.length < 8) { setError('Password must be at least 8 characters'); return }
+    if (form.password.length < 8) { setError(t('auth.pw_min_error')); return }
     setLoading(true)
     try {
       await authApi.register(form)
-      setSuccess('Account created! Check your email to verify your address.')
+      setSuccess(t('auth.registration_success'))
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Registration failed')
     } finally {
@@ -37,45 +39,45 @@ export default function Register() {
           <div className="w-9 h-9 bg-blue-600 rounded-lg flex items-center justify-center">
             <Database size={20} className="text-white" />
           </div>
-          <span className="text-xl font-semibold text-zinc-900 dark:text-zinc-100">D1 Studio</span>
+          <span className="text-xl font-semibold text-zinc-900 dark:text-zinc-100">{t('app.name')}</span>
         </div>
 
         <div className="card p-6">
-          <h1 className="text-lg font-semibold text-zinc-900 mb-6 dark:text-zinc-100">Create account</h1>
+          <h1 className="text-lg font-semibold text-zinc-900 mb-6 dark:text-zinc-100">{t('auth.register')}</h1>
 
           {success ? (
             <div className="space-y-4">
               <p className="text-sm text-emerald-400">{success}</p>
               <button onClick={() => navigate('/login')} className="btn-primary w-full">
-                Go to sign in
+                {t('auth.go_to_signin')}
               </button>
             </div>
           ) : (
             <form onSubmit={handleSubmit} className="space-y-4">
               <div>
-                <label className="label">Name</label>
-                <input type="text" {...field('name')} className="input" placeholder="Jane Doe" required autoFocus />
+                <label className="label">{t('auth.name')}</label>
+                <input type="text" {...field('name')} className="input" placeholder="<PERSON>" required autoFocus />
               </div>
               <div>
-                <label className="label">Email</label>
-                <input type="email" {...field('email')} className="input" placeholder="you@example.com" required />
+                <label className="label">{t('auth.email')}</label>
+                <input type="email" {...field('email')} className="input" placeholder="<EMAIL_ADDRESS>" required />
               </div>
               <div>
-                <label className="label">Password</label>
-                <input type="password" {...field('password')} className="input" placeholder="Min. 8 characters" required />
+                <label className="label">{t('auth.password')}</label>
+                <input type="password" {...field('password')} className="input" placeholder={t('auth.pw_min')} required />
               </div>
 
               {error && <p className="text-sm text-red-400">{error}</p>}
 
               <button type="submit" className="btn-primary w-full" disabled={loading}>
-                {loading ? 'Creating account…' : 'Create account'}
+                {loading ? t('auth.creating_account') : t('auth.create_account')}
               </button>
             </form>
           )}
 
           <p className="mt-4 text-sm text-center text-zinc-500">
-            Already have an account?{' '}
-            <Link to="/login" className="text-blue-400 hover:text-blue-300">Sign in</Link>
+            {t('auth.have_account')}{' '}
+            <Link to="/login" className="text-blue-400 hover:text-blue-300">{t('auth.signin')}</Link>
           </p>
         </div>
       </div>

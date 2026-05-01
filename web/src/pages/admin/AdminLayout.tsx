@@ -1,17 +1,19 @@
 import { Link, Routes, Route, useLocation, Navigate } from 'react-router-dom'
 import { Database, Users, Settings, ArrowLeft, Shield } from 'lucide-react'
+import { useLocale } from '../../hooks/useLocale'
 import AdminUsers from './Users'
 import AdminDatabases from './Databases'
 import AdminSettings from './AdminSettings'
 
-const nav = [
-  { to: '/admin/users', label: 'Users', icon: Users },
-  { to: '/admin/databases', label: 'Databases', icon: Database },
-  { to: '/admin/settings', label: 'Settings', icon: Settings },
-]
-
 export default function AdminLayout() {
   const loc = useLocation()
+  const { t } = useLocale()
+
+  const nav = [
+    { to: '/admin/users', label: t('admin.users'), icon: Users },
+    { to: '/admin/databases', label: t('admin.databases'), icon: Database },
+    { to: '/admin/settings', label: t('admin.settings'), icon: Settings },
+  ]
 
   return (
     <div className="flex h-screen bg-zinc-50 dark:bg-zinc-950">
@@ -21,7 +23,7 @@ export default function AdminLayout() {
           <div className="w-7 h-7 bg-blue-600 rounded-md flex items-center justify-center">
             <Shield size={14} className="text-white" />
           </div>
-          <span className="font-semibold text-zinc-900 dark:text-zinc-100 text-sm">Admin Panel</span>
+          <span className="font-semibold text-zinc-900 dark:text-zinc-100 text-sm">{t('admin.title')}</span>
         </div>
         <nav className="flex-1 p-2">
           {nav.map(({ to, label, icon: Icon }) => (
@@ -36,7 +38,7 @@ export default function AdminLayout() {
         </nav>
         <div className="p-2 border-t border-zinc-200 dark:border-zinc-800">
           <Link to="/query" className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm text-zinc-500 hover:text-zinc-700 hover:bg-zinc-100 dark:hover:text-zinc-300 dark:hover:bg-zinc-800 transition-colors">
-            <ArrowLeft size={14} /> Back to query
+            <ArrowLeft size={14} /> {t('admin.back_to_query')}
           </Link>
         </div>
       </aside>

@@ -1,0 +1,375 @@
+import type { Locale } from './i18n'
+
+const translations: Record<Locale, Record<string, string>> = {
+  en: {
+    // App
+    'app.name': 'D1 Studio',
+
+    // Auth pages
+    'auth.signin': 'Sign in',
+    'auth.signing_in': 'Signing in…',
+    'auth.email': 'Email',
+    'auth.password': 'Password',
+    'auth.forgot_password': 'Forgot password?',
+    'auth.create_account': 'Create account',
+    'auth.register': 'Create account',
+    'auth.creating_account': 'Creating account…',
+    'auth.name': 'Name',
+    'auth.pw_min': 'Min. 8 characters',
+    'auth.have_account': 'Already have an account?',
+    'auth.forgot_title': 'Forgot password',
+    'auth.forgot_desc': "Enter your email and we'll send a reset link.",
+    'auth.sending': 'Sending…',
+    'auth.send_reset': 'Send reset link',
+    'auth.back_to_signin': 'Back to sign in',
+    'auth.reset_title': 'Set new password',
+    'auth.new_password': 'New password',
+    'auth.confirm_password': 'Confirm password',
+    'auth.repeat_password': 'Repeat password',
+    'auth.saving': 'Saving…',
+    'auth.set_password': 'Set password',
+    'auth.invalid_reset': 'Invalid reset link.',
+    'auth.request_new': 'Request a new link',
+    'auth.verify_title': 'Verifying…',
+    'auth.verify_success': 'Sign in',
+    'auth.verify_fail': 'Back to sign in',
+    'auth.pw_mismatch': 'Passwords do not match',
+    'auth.pw_min_error': 'Password must be at least 8 characters',
+    'auth.registration_success': 'Account created! Check your email to verify your address.',
+    'auth.go_to_signin': 'Go to sign in',
+    'auth.reset_success': 'Password reset successfully. You can now sign in.',
+
+    // 2FA
+    '2fa.title': 'Two-factor verification',
+    '2fa.authenticator': 'Authenticator',
+    '2fa.email_otp': 'Email OTP',
+    '2fa.enter_code': 'Enter 6-digit code',
+    '2fa.send_code': 'Send code to email',
+    '2fa.sending': 'Sending…',
+    '2fa.code_sent': 'Code sent! Check your email.',
+    '2fa.verify': 'Verify',
+    '2fa.verifying': 'Verifying…',
+    '2fa.cancel': 'Cancel',
+
+    // Query page
+    'query.sql_editor': 'SQL Editor',
+    'query.run': 'Run',
+    'query.run_selection': 'Run Selection',
+    'query.shortcut': '⌘+Enter to run',
+    'query.running': 'Running query…',
+    'query.error': 'Query error',
+    'query.rows': 'rows',
+    'query.row': 'row',
+    'query.no_results': 'Run a query to see results',
+    'query.select_db': 'Select database',
+    'query.no_databases': 'No databases available',
+    'query.history': 'History',
+    'query.query_history': 'Query History',
+    'query.no_history': 'No history yet',
+
+    // Theme
+    'theme.auto': 'Auto',
+    'theme.light': 'Light',
+    'theme.dark': 'Dark',
+
+    // User menu
+    'user.profile_security': 'Profile & Security',
+    'user.admin_panel': 'Admin Panel',
+    'user.sign_out': 'Sign out',
+
+    // Profile
+    'profile.title': 'Profile & Security',
+    'profile.back_to_query': 'Back to query',
+    'profile.account': 'Account',
+    'profile.role': 'Role',
+    'profile.change_password': 'Change Password',
+    'profile.current_password': 'Current password',
+    'profile.new_password': 'New password',
+    'profile.confirm_new_password': 'Confirm new password',
+    'profile.update_password': 'Update password',
+    'profile.saving': 'Saving…',
+    'profile.password_changed': 'Password changed',
+    'profile.totp_title': 'Authenticator App (TOTP)',
+    'profile.totp_added': 'Added',
+    'profile.totp_add': 'Add authenticator app',
+    'profile.totp_scan': 'Scan the QR code in your authenticator app, or enter the secret manually.',
+    'profile.totp_generating': 'Generating…',
+    'profile.totp_enter_code': 'Enter the 6-digit code to confirm',
+    'profile.totp_confirm': 'Confirm & save',
+    'profile.totp_confirming': 'Confirming…',
+    'profile.passkey_title': 'Passkeys (Face ID / Touch ID)',
+    'profile.passkey': 'Passkey',
+    'profile.passkey_add': 'Add passkey',
+    'profile.passkey_waiting': 'Waiting for device…',
+    'profile.passkey_cancelled': 'Passkey registration was cancelled.',
+
+    // Admin
+    'admin.title': 'Admin Panel',
+    'admin.users': 'Users',
+    'admin.databases': 'Databases',
+    'admin.settings': 'Settings',
+    'admin.back_to_query': 'Back to query',
+
+    // Admin Users
+    'admin_users.total': 'total',
+    'admin_users.search': 'Search by name or email…',
+    'admin_users.user': 'User',
+    'admin_users.verified': 'Verified',
+    'admin_users.role': 'Role',
+    'admin_users.joined': 'Joined',
+    'admin_users.loading': 'Loading…',
+    'admin_users.no_users': 'No users found',
+    'admin_users.prev': 'Prev',
+    'admin_users.next': 'Next',
+
+    // Admin Databases
+    'admin_db.add_database': 'Add database',
+    'admin_db.register_title': 'Register a D1 database',
+    'admin_db.register_desc': "The binding must already exist in your Worker's wrangler.toml.",
+    'admin_db.display_name': 'Display name',
+    'admin_db.binding_name': 'Binding name',
+    'admin_db.description': 'Description (optional)',
+    'admin_db.description_placeholder': "What's in this database?",
+    'admin_db.cancel': 'Cancel',
+    'admin_db.register': 'Register',
+    'admin_db.name': 'Name',
+    'admin_db.binding': 'Binding',
+    'admin_db.status': 'Status',
+    'admin_db.active': 'Active',
+    'admin_db.inactive': 'Inactive',
+    'admin_db.permissions': 'Permissions',
+    'admin_db.permissions_for': 'Permissions for',
+    'admin_db.perm_note': 'Admins always have full write access. These permissions apply to members only.',
+    'admin_db.select_user': 'Select user…',
+    'admin_db.grant': 'Grant',
+    'admin_db.no_permissions': 'No member permissions set. Only admins can access this database.',
+    'admin_db.loading': 'Loading…',
+    'admin_db.no_databases': 'No databases registered yet',
+    'admin_db.confirm_delete': 'Delete database "{name}" from registry? This does not delete the actual D1 database.',
+
+    // Admin Settings
+    'admin_settings.save_changes': 'Save changes',
+    'admin_settings.saved': 'Saved!',
+    'admin_settings.general': 'General',
+    'admin_settings.app_name': 'App name',
+    'admin_settings.registration_open': 'Registration open',
+    'admin_settings.registration_desc': 'Allow new users to register',
+    'admin_settings.require_verification': 'Require email verification',
+    'admin_settings.require_verification_desc': 'Users must verify before logging in',
+    'admin_settings.enforce_2fa': 'Enforce 2FA for all users',
+    'admin_settings.enforce_2fa_desc': 'Require 2FA even if not individually set',
+    'admin_settings.email_provider': 'Email Provider',
+    'admin_settings.provider': 'Provider',
+    'admin_settings.from_address': 'From address',
+    'admin_settings.resend_api_key': 'Resend API key',
+    'admin_settings.smtp_host': 'SMTP host',
+    'admin_settings.smtp_port': 'Port',
+    'admin_settings.smtp_username': 'Username',
+    'admin_settings.smtp_password': 'Password',
+    'admin_settings.loading': 'Loading…',
+
+    // Language
+    'lang.en': 'English',
+    'lang.zh': '中文',
+    'lang.label': 'Language',
+
+    // Common
+    'common.loading': 'Loading…',
+  },
+  zh: {
+    // App
+    'app.name': 'D1 Studio',
+
+    // Auth pages
+    'auth.signin': '登录',
+    'auth.signing_in': '登录中…',
+    'auth.email': '邮箱',
+    'auth.password': '密码',
+    'auth.forgot_password': '忘记密码？',
+    'auth.create_account': '创建账号',
+    'auth.register': '创建账号',
+    'auth.creating_account': '创建中…',
+    'auth.name': '姓名',
+    'auth.pw_min': '至少 8 个字符',
+    'auth.have_account': '已有账号？',
+    'auth.forgot_title': '忘记密码',
+    'auth.forgot_desc': '输入邮箱，我们将发送重置链接。',
+    'auth.sending': '发送中…',
+    'auth.send_reset': '发送重置链接',
+    'auth.back_to_signin': '返回登录',
+    'auth.reset_title': '设置新密码',
+    'auth.new_password': '新密码',
+    'auth.confirm_password': '确认密码',
+    'auth.repeat_password': '再次输入密码',
+    'auth.saving': '保存中…',
+    'auth.set_password': '设置密码',
+    'auth.invalid_reset': '无效的重置链接。',
+    'auth.request_new': '请求新链接',
+    'auth.verify_title': '验证中…',
+    'auth.verify_success': '登录',
+    'auth.verify_fail': '返回登录',
+    'auth.pw_mismatch': '两次输入的密码不一致',
+    'auth.pw_min_error': '密码至少需要 8 个字符',
+    'auth.registration_success': '账号已创建！请查看邮箱验证您的地址。',
+    'auth.go_to_signin': '前往登录',
+    'auth.reset_success': '密码已重置，您现在可以登录了。',
+
+    // 2FA
+    '2fa.title': '两步验证',
+    '2fa.authenticator': '验证器',
+    '2fa.email_otp': '邮箱验证码',
+    '2fa.enter_code': '输入 6 位验证码',
+    '2fa.send_code': '发送验证码到邮箱',
+    '2fa.sending': '发送中…',
+    '2fa.code_sent': '验证码已发送，请查看邮箱。',
+    '2fa.verify': '验证',
+    '2fa.verifying': '验证中…',
+    '2fa.cancel': '取消',
+
+    // Query page
+    'query.sql_editor': 'SQL 编辑器',
+    'query.run': '运行',
+    'query.run_selection': '运行选中',
+    'query.shortcut': '⌘+Enter 运行',
+    'query.running': '查询运行中…',
+    'query.error': '查询错误',
+    'query.rows': '行',
+    'query.row': '行',
+    'query.no_results': '运行查询以查看结果',
+    'query.select_db': '选择数据库',
+    'query.no_databases': '暂无可用数据库',
+    'query.history': '历史',
+    'query.query_history': '查询历史',
+    'query.no_history': '暂无历史记录',
+
+    // Theme
+    'theme.auto': '跟随系统',
+    'theme.light': '浅色',
+    'theme.dark': '深色',
+
+    // User menu
+    'user.profile_security': '个人资料与安全',
+    'user.admin_panel': '管理面板',
+    'user.sign_out': '退出登录',
+
+    // Profile
+    'profile.title': '个人资料与安全',
+    'profile.back_to_query': '返回查询',
+    'profile.account': '账户',
+    'profile.role': '角色',
+    'profile.change_password': '修改密码',
+    'profile.current_password': '当前密码',
+    'profile.new_password': '新密码',
+    'profile.confirm_new_password': '确认新密码',
+    'profile.update_password': '更新密码',
+    'profile.saving': '保存中…',
+    'profile.password_changed': '密码已修改',
+    'profile.totp_title': '验证器应用 (TOTP)',
+    'profile.totp_added': '添加于',
+    'profile.totp_add': '添加验证器应用',
+    'profile.totp_scan': '在验证器应用中扫描二维码，或手动输入密钥。',
+    'profile.totp_generating': '生成中…',
+    'profile.totp_enter_code': '输入 6 位验证码以确认',
+    'profile.totp_confirm': '确认并保存',
+    'profile.totp_confirming': '确认中…',
+    'profile.passkey_title': '通行密钥 (Face ID / Touch ID)',
+    'profile.passkey': '通行密钥',
+    'profile.passkey_add': '添加通行密钥',
+    'profile.passkey_waiting': '等待设备…',
+    'profile.passkey_cancelled': '通行密钥注册已取消。',
+
+    // Admin
+    'admin.title': '管理面板',
+    'admin.users': '用户',
+    'admin.databases': '数据库',
+    'admin.settings': '设置',
+    'admin.back_to_query': '返回查询',
+
+    // Admin Users
+    'admin_users.total': '总计',
+    'admin_users.search': '按姓名或邮箱搜索…',
+    'admin_users.user': '用户',
+    'admin_users.verified': '已验证',
+    'admin_users.role': '角色',
+    'admin_users.joined': '加入时间',
+    'admin_users.loading': '加载中…',
+    'admin_users.no_users': '未找到用户',
+    'admin_users.prev': '上一页',
+    'admin_users.next': '下一页',
+
+    // Admin Databases
+    'admin_db.add_database': '添加数据库',
+    'admin_db.register_title': '注册 D1 数据库',
+    'admin_db.register_desc': '绑定名称必须已存在于 Worker 的 wrangler.toml 中。',
+    'admin_db.display_name': '显示名称',
+    'admin_db.binding_name': '绑定名称',
+    'admin_db.description': '描述（可选）',
+    'admin_db.description_placeholder': '这个数据库包含什么？',
+    'admin_db.cancel': '取消',
+    'admin_db.register': '注册',
+    'admin_db.name': '名称',
+    'admin_db.binding': '绑定',
+    'admin_db.status': '状态',
+    'admin_db.active': '已启用',
+    'admin_db.inactive': '已禁用',
+    'admin_db.permissions': '权限',
+    'admin_db.permissions_for': '权限管理 —',
+    'admin_db.perm_note': '管理员始终拥有完全写入权限。以下权限仅适用于普通成员。',
+    'admin_db.select_user': '选择用户…',
+    'admin_db.grant': '授权',
+    'admin_db.no_permissions': '未设置成员权限。仅管理员可访问此数据库。',
+    'admin_db.loading': '加载中…',
+    'admin_db.no_databases': '暂无已注册的数据库',
+    'admin_db.confirm_delete': '从注册表中删除数据库"{name}"？这不会删除实际的 D1 数据库。',
+
+    // Admin Settings
+    'admin_settings.save_changes': '保存更改',
+    'admin_settings.saved': '已保存！',
+    'admin_settings.general': '通用',
+    'admin_settings.app_name': '应用名称',
+    'admin_settings.registration_open': '开放注册',
+    'admin_settings.registration_desc': '允许新用户注册',
+    'admin_settings.require_verification': '要求邮箱验证',
+    'admin_settings.require_verification_desc': '用户必须验证邮箱后才能登录',
+    'admin_settings.enforce_2fa': '强制所有用户启用两步验证',
+    'admin_settings.enforce_2fa_desc': '即使未单独设置也要求两步验证',
+    'admin_settings.email_provider': '邮件服务',
+    'admin_settings.provider': '服务提供商',
+    'admin_settings.from_address': '发件地址',
+    'admin_settings.resend_api_key': 'Resend API 密钥',
+    'admin_settings.smtp_host': 'SMTP 主机',
+    'admin_settings.smtp_port': '端口',
+    'admin_settings.smtp_username': '用户名',
+    'admin_settings.smtp_password': '密码',
+    'admin_settings.loading': '加载中…',
+
+    // Language
+    'lang.en': 'English',
+    'lang.zh': '中文',
+    'lang.label': '语言',
+
+    // Common
+    'common.loading': '加载中…',
+  },
+}
+
+let currentLocale: Locale = 'en'
+const listeners = new Set<() => void>()
+
+export function setLocale(locale: Locale) {
+  currentLocale = locale
+  listeners.forEach((fn) => fn())
+}
+
+export function getLocale(): Locale {
+  return currentLocale
+}
+
+export function t(key: string): string {
+  return translations[currentLocale]?.[key] ?? translations.en[key] ?? key
+}
+
+export function subscribeLocale(fn: () => void): () => void {
+  listeners.add(fn)
+  return () => listeners.delete(fn)
+}

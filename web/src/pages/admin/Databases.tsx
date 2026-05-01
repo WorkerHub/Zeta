@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { Plus, Trash2, Power, Users } from 'lucide-react'
 import { adminApi } from '../../lib/api'
+import { useLocale } from '../../hooks/useLocale'
 
 interface DbRecord {
   id: string
@@ -21,6 +22,7 @@ interface Permission {
 }
 
 export default function AdminDatabases() {
+  const { t } = useLocale()
   const [databases, setDatabases] = useState<DbRecord[]>([])
   const [loading, setLoading] = useState(true)
   const [showAdd, setShowAdd] = useState(false)
@@ -62,7 +64,7 @@ export default function AdminDatabases() {
   }
 
   async function deleteDb(id: string, name: string) {
-    if (!confirm(`Delete database "${name}" from registry? This does not delete the actual D1 database.`)) return
+    if (!confirm(t('admin_db.confirm_delete').replace('{name}', name))) return
     await adminApi.deleteDatabase(id)
     load()
   }
@@ -93,40 +95,40 @@ export default function AdminDatabases() {
   return (
     <div className="p-4 sm:p-6 max-w-5xl">
       <div className="flex items-center justify-between mb-6">
-        <h1 className="text-lg font-semibold text-zinc-900 dark:text-zinc-100">Databases</h1>
+        <h1 className="text-lg font-semibold text-zinc-900 dark:text-zinc-100">{t('admin.databases')}</h1>
         <button onClick={() => setShowAdd(!showAdd)} className="btn-primary btn-sm gap-1.5">
-          <Plus size={13} /> Add database
+          <Plus size={13} /> {t('admin_db.add_database')}
         </button>
       </div>
 
       {/* Add form */}
       {showAdd && (
         <div className="card p-5 mb-4 space-y-4">
-          <h2 className="text-sm font-semibold text-zinc-700 dark:text-zinc-300">Register a D1 database</h2>
-          <p className="text-xs text-zinc-500">The binding must already exist in your Worker's wrangler.toml.</p>
+          <h2 className="text-sm font-semibold text-zinc-700 dark:text-zinc-300">{t('admin_db.register_title')}</h2>
+          <p className="text-xs text-zinc-500">{t('admin_db.register_desc')}</p>
           <div className="grid sm:grid-cols-2 gap-4">
             <div>
-              <label className="label">Display name</label>
+              <label className="label">{t('admin_db.display_name')}</label>
               <input type="text" className="input" value={newDb.name}
                 onChange={(e) => setNewDb({ ...newDb, name: e.target.value })} placeholder="My Database" />
             </div>
             <div>
-              <label className="label">Binding name</label>
+              <label className="label">{t('admin_db.binding_name')}</label>
               <input type="text" className="input font-mono" value={newDb.binding_name}
                 onChange={(e) => setNewDb({ ...newDb, binding_name: e.target.value.toUpperCase() })}
                 placeholder="QUERY_DB_1" />
             </div>
             <div className="sm:col-span-2">
-              <label className="label">Description (optional)</label>
+              <label className="label">{t('admin_db.description')}</label>
               <input type="text" className="input" value={newDb.description}
-                onChange={(e) => setNewDb({ ...newDb, description: e.target.value })} placeholder="What's in this database?" />
+                onChange={(e) => setNewDb({ ...newDb, description: e.target.value })} placeholder={t('admin_db.description_placeholder')} />
             </div>
           </div>
           {addError && <p className="text-sm text-red-400">{addError}</p>}
           <div className="flex gap-3">
-            <button onClick={() => setShowAdd(false)} className="btn-secondary">Cancel</button>
+            <button onClick={() => setShowAdd(false)} className="btn-secondary">{t('admin_db.cancel')}</button>
             <button onClick={addDatabase} className="btn-primary" disabled={!newDb.name || !newDb.binding_name}>
-              Register
+              {t('admin_db.register')}
             </button>
           </div>
         </div>
@@ -135,16 +137,16 @@ export default function AdminDatabases() {
       {/* Database list */}
       <div className="card overflow-hidden mb-6">
         {loading ? (
-          <p className="px-4 py-8 text-center text-sm text-zinc-500">Loading…</p>
+          <p className="px-4 py-8 text-center text-sm text-zinc-500">{t('admin_db.loading')}</p>
         ) : databases.length === 0 ? (
-          <p className="px-4 py-8 text-center text-sm text-zinc-500">No databases registered yet</p>
+          <p className="px-4 py-8 text-center text-sm text-zinc-500">{t('admin_db.no_databases')}</p>
         ) : (
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-zinc-200 dark:border-zinc-800 bg-zinc-100/50 dark:bg-zinc-800/30">
-                <th className="text-left px-4 py-3 text-xs font-medium text-zinc-500">Name</th>
-                <th className="text-left px-4 py-3 text-xs font-medium text-zinc-500 hidden md:table-cell">Binding</th>
-                <th className="text-left px-4 py-3 text-xs font-medium text-zinc-500">Status</th>
+                <th className="text-left px-4 py-3 text-xs font-medium text-zinc-500">{t('admin_db.name')}</th>
+                <th className="text-left px-4 py-3 text-xs font-medium text-zinc-500 hidden md:table-cell">{t('admin_db.binding')}</th>
+                <th className="text-left px-4 py-3 text-xs font-medium text-zinc-500">{t('admin_db.status')}</th>
                 <th className="px-4 py-3" />
               </tr>
             </thead>
@@ -162,13 +164,13 @@ export default function AdminDatabases() {
                   </td>
                   <td className="px-4 py-3">
                     <span className={`badge ${db.is_active ? 'badge-green' : 'badge-zinc'}`}>
-                      {db.is_active ? 'Active' : 'Inactive'}
+                      {db.is_active ? t('admin_db.active') : t('admin_db.inactive')}
                     </span>
                   </td>
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-1 justify-end">
                       <button onClick={() => loadPermissions(db)} className="btn-ghost btn-sm gap-1">
-                        <Users size={13} /> Permissions
+                        <Users size={13} /> {t('admin_db.permissions')}
                       </button>
                       <button onClick={() => toggleActive(db)} className="btn-ghost btn-sm p-1.5" title="Toggle active">
                         <Power size={13} className={db.is_active ? 'text-emerald-400' : 'text-zinc-600'} />
@@ -189,15 +191,15 @@ export default function AdminDatabases() {
       {selectedDb && (
         <div className="card p-5">
           <h2 className="text-sm font-semibold text-zinc-700 dark:text-zinc-300 mb-4">
-            Permissions for <span className="text-zinc-900 dark:text-zinc-100">{selectedDb.name}</span>
+            {t('admin_db.permissions_for')} <span className="text-zinc-900 dark:text-zinc-100">{selectedDb.name}</span>
           </h2>
-          <p className="text-xs text-zinc-500 mb-4">Admins always have full write access. These permissions apply to members only.</p>
+          <p className="text-xs text-zinc-500 mb-4">{t('admin_db.perm_note')}</p>
 
           {/* Grant form */}
           <div className="flex gap-2 mb-4 flex-wrap">
             <select value={permUserId} onChange={(e) => setPermUserId(e.target.value)}
               className="input flex-1 min-w-[180px]">
-              <option value="">Select user…</option>
+              <option value="">{t('admin_db.select_user')}</option>
               {allUsers.filter((u) => !permissions.some((p) => p.user_id === u.id)).map((u) => (
                 <option key={u.id} value={u.id}>{u.name} ({u.email})</option>
               ))}
@@ -207,12 +209,12 @@ export default function AdminDatabases() {
               <option value="read">read</option>
               <option value="write">write</option>
             </select>
-            <button onClick={grantPerm} disabled={!permUserId} className="btn-primary btn-sm">Grant</button>
+            <button onClick={grantPerm} disabled={!permUserId} className="btn-primary btn-sm">{t('admin_db.grant')}</button>
           </div>
 
           {/* Current permissions */}
           {permissions.length === 0 ? (
-            <p className="text-sm text-zinc-500">No member permissions set. Only admins can access this database.</p>
+            <p className="text-sm text-zinc-500">{t('admin_db.no_permissions')}</p>
           ) : (
             <ul className="space-y-2">
               {permissions.map((p) => (

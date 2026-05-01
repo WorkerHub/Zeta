@@ -1,6 +1,7 @@
 import { useState } from 'react'
-import { X, Smartphone, Mail, Key } from 'lucide-react'
+import { X, Smartphone, Mail } from 'lucide-react'
 import { authApi } from '../lib/api'
+import { useLocale } from '../hooks/useLocale'
 import type { User } from '../types'
 
 type Method = 'totp' | 'email-otp' | 'passkey'
@@ -12,6 +13,7 @@ interface Props {
 }
 
 export default function TwoFactorModal({ pendingToken, onSuccess, onCancel }: Props) {
+  const { t } = useLocale()
   const [method, setMethod] = useState<Method>('totp')
   const [code, setCode] = useState('')
   const [error, setError] = useState('')
@@ -54,7 +56,7 @@ export default function TwoFactorModal({ pendingToken, onSuccess, onCancel }: Pr
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
       <div className="card w-full max-w-sm p-6 shadow-2xl">
         <div className="flex items-center justify-between mb-6">
-          <h2 className="text-lg font-semibold text-zinc-900 dark:text-zinc-100">Two-factor verification</h2>
+          <h2 className="text-lg font-semibold text-zinc-900 dark:text-zinc-100">{t('2fa.title')}</h2>
           <button onClick={onCancel} className="btn-ghost p-1.5 rounded-lg">
             <X size={16} />
           </button>
@@ -68,7 +70,7 @@ export default function TwoFactorModal({ pendingToken, onSuccess, onCancel }: Pr
               onClick={() => { setMethod(m); setCode(''); setError(''); setOtpSent(false) }}
               className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-medium border transition-colors ${method === m ? 'bg-blue-600 border-blue-600 text-white' : 'bg-zinc-100 border-zinc-200 text-zinc-500 hover:text-zinc-800 dark:bg-zinc-800 dark:border-zinc-700 dark:text-zinc-400 dark:hover:text-zinc-200'}`}
             >
-              {m === 'totp' ? <><Smartphone size={13} /> Authenticator</> : <><Mail size={13} /> Email OTP</>}
+              {m === 'totp' ? <><Smartphone size={13} /> {t('2fa.authenticator')}</> : <><Mail size={13} /> {t('2fa.email_otp')}</>}
             </button>
           ))}
         </div>
@@ -76,7 +78,7 @@ export default function TwoFactorModal({ pendingToken, onSuccess, onCancel }: Pr
         {method === 'totp' && (
           <div className="space-y-4">
             <div>
-              <label className="label">Enter 6-digit code</label>
+              <label className="label">{t('2fa.enter_code')}</label>
               <input
                 type="text" inputMode="numeric" pattern="\d{6}" maxLength={6}
                 value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, ''))}
@@ -92,12 +94,12 @@ export default function TwoFactorModal({ pendingToken, onSuccess, onCancel }: Pr
             {!otpSent ? (
               <button onClick={sendOtp} disabled={loading} className="btn-secondary w-full gap-2">
                 <Mail size={14} />
-                {loading ? 'Sending…' : 'Send code to email'}
+                {loading ? t('2fa.sending') : t('2fa.send_code')}
               </button>
             ) : (
               <div>
-                <p className="text-sm text-emerald-400 mb-4">Code sent! Check your email.</p>
-                <label className="label">Enter 6-digit code</label>
+                <p className="text-sm text-emerald-400 mb-4">{t('2fa.code_sent')}</p>
+                <label className="label">{t('2fa.enter_code')}</label>
                 <input
                   type="text" inputMode="numeric" pattern="\d{6}" maxLength={6}
                   value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, ''))}
@@ -112,10 +114,10 @@ export default function TwoFactorModal({ pendingToken, onSuccess, onCancel }: Pr
         {error && <p className="text-sm text-red-400 mt-3">{error}</p>}
 
         <div className="mt-6 flex gap-3">
-          <button onClick={onCancel} className="btn-secondary flex-1">Cancel</button>
+          <button onClick={onCancel} className="btn-secondary flex-1">{t('2fa.cancel')}</button>
           {(method === 'totp' || (method === 'email-otp' && otpSent)) && (
             <button onClick={verify} disabled={loading || code.length < 6} className="btn-primary flex-1">
-              {loading ? 'Verifying…' : 'Verify'}
+              {loading ? t('2fa.verifying') : t('2fa.verify')}
             </button>
           )}
         </div>
