@@ -18,6 +18,11 @@ export function useNotebooks() {
     notebooksRef.current = notebooks
   }, [notebooks])
 
+  // Clear all pending debounce timers on unmount
+  useEffect(() => {
+    return () => { debounceTimers.current.forEach(clearTimeout) }
+  }, [])
+
   useEffect(() => {
     notebooksApi.list()
       .then(async ({ results }) => {
@@ -44,22 +49,21 @@ export function useNotebooks() {
     if (notebooksRef.current.length >= MAX_NOTEBOOKS) return
     const nb = await notebooksApi.create({})
     setNotebooks(prev => [...prev, nb])
-    setActiveIdState(nb.id)
-    localStorage.setItem(ACTIVE_NOTEBOOK_KEY, nb.id)
-  }, [])
+    setActiveId(nb.id)
+  }, [setActiveId])
 
   const deleteNotebook = useCallback(async (id: string) => {
     const current = notebooksRef.current
     const deletedIdx = current.findIndex(n => n.id === id)
     const remaining = current.filter(n => n.id !== id)
 
-    await notebooksApi.delete(id)
-
-    // Clear any pending debounce for this notebook
+    // Clear any pending debounce before the API call to avoid a 404 race
     const timer = debounceTimers.current.get(id)
     if (timer) { clearTimeout(timer); debounceTimers.current.delete(id) }
 
-    setNotebooks(remaining.map((n, i) => ({ ...n, position: i })))
+    await notebooksApi.delete(id)
+
+    setNotebooks(prev => prev.filter(n => n.id !== id).map((n, i) => ({ ...n, position: i })))
 
     setActiveIdState(prev => {
       if (prev !== id) return prev
