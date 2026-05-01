@@ -98,6 +98,8 @@ notebooks.patch('/:id', async (c) => {
     idx++
   }
 
+  if (updates.length === 1) return c.json({ error: 'No fields to update' }, 400)
+
   bindings.push(notebookId)
   await c.env.DB.prepare(
     `UPDATE ${T.notebooks} SET ${updates.join(', ')} WHERE id = ?${idx}`
