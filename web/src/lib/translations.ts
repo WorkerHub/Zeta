@@ -67,6 +67,12 @@ const translations: Record<Locale, Record<string, string>> = {
     'query.query_history': 'Query History',
     'query.no_history': 'No history yet',
 
+    // Notebooks
+    'notebook.untitled': 'Untitled',
+    'notebook.new': 'New notebook',
+    'notebook.delete_confirm': 'Delete this notebook?',
+    'notebook.limit_reached': 'Maximum 20 notebooks reached',
+
     // Theme
     'theme.auto': 'Auto',
     'theme.light': 'Light',
@@ -241,6 +247,12 @@ const translations: Record<Locale, Record<string, string>> = {
     'query.history': '历史',
     'query.query_history': '查询历史',
     'query.no_history': '暂无历史记录',
+
+    // Notebooks
+    'notebook.untitled': '未命名',
+    'notebook.new': '新建 Notebook',
+    'notebook.delete_confirm': '删除此 Notebook？',
+    'notebook.limit_reached': '已达到 20 个上限',
 
     // Theme
     'theme.auto': '跟随系统',

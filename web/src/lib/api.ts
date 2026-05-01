@@ -1,5 +1,5 @@
 import { getAccessToken, clearSession, setSession, getCurrentUser } from './auth'
-import type { User } from '../types'
+import type { User, Notebook } from '../types'
 
 // ── Base fetch wrapper ─────────────────────────────────────────────────────────
 
@@ -186,4 +186,17 @@ export const adminApi = {
 
   setupStatus: () => apiFetch<{ setupCompleted: boolean; hasUsers: boolean }>('/setup-status'),
   completeSetup: () => apiFetch<{ message: string }>('/admin/setup/complete', { method: 'POST' }),
+}
+
+// ── Notebooks endpoints ───────────────────────────────────────────────────────
+
+export const notebooksApi = {
+  list: () =>
+    apiFetch<{ results: Notebook[] }>('/notebooks'),
+  create: (body: { name?: string; database_id?: string }) =>
+    apiFetch<Notebook>('/notebooks', { method: 'POST', body: JSON.stringify(body) }),
+  update: (id: string, body: Partial<Pick<Notebook, 'name' | 'sql_content' | 'database_id' | 'position'>>) =>
+    apiFetch<{ message: string }>(`/notebooks/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
+  delete: (id: string) =>
+    apiFetch<{ message: string }>(`/notebooks/${id}`, { method: 'DELETE' }),
 }

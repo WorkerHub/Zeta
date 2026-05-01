@@ -37,3 +37,14 @@ export interface QueryHistoryItem {
   error: string | null
   executed_at: number
 }
+
+export interface Notebook {
+  id: string
+  user_id: string
+  name: string
+  sql_content: string
+  database_id: string | null
+  position: number
+  created_at: number
+  updated_at: number
+}
