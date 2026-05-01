@@ -71,10 +71,21 @@ export const authApi = {
   register: (body: { email: string; password: string; name: string }) =>
     apiFetch<{ message: string }>('/auth/register', { method: 'POST', body: JSON.stringify(body) }),
 
-  login: (body: { email: string; password: string }) =>
-    apiFetch<{ accessToken?: string; user?: User; requires2fa?: boolean; pendingToken?: string; userId?: string }>(
-      '/auth/login', { method: 'POST', body: JSON.stringify(body) }
-    ),
+  login: async (body: { email: string; password: string }) => {
+    // Use raw fetch to avoid apiFetch's 401→"Session expired" intercept:
+    // login's 401 means wrong credentials, not an expired session.
+    const res = await fetch('/api/auth/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+      credentials: 'include',
+    })
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}) as { error?: string })
+      throw new ApiError((err as { error?: string }).error ?? res.statusText, res.status)
+    }
+    return res.json() as Promise<{ accessToken?: string; user?: User; requires2fa?: boolean; pendingToken?: string; userId?: string }>
+  },
 
   verify2faTotp: (body: { pendingToken: string; code: string }) =>
     apiFetch<{ accessToken: string; user: User }>(
@@ -87,6 +98,14 @@ export const authApi = {
   verifyEmailOtp: (body: { pendingToken: string; code: string }) =>
     apiFetch<{ accessToken: string; user: User }>(
       '/auth/2fa/email-otp/verify', { method: 'POST', body: JSON.stringify(body) }
+    ),
+
+  passkey2faOptions: (body: { pendingToken: string }) =>
+    apiFetch<Record<string, unknown>>('/auth/2fa/passkey/options', { method: 'POST', body: JSON.stringify(body) }),
+
+  verify2faPasskey: (body: { pendingToken: string; credential: unknown }) =>
+    apiFetch<{ accessToken: string; user: User }>(
+      '/auth/2fa/passkey/verify', { method: 'POST', body: JSON.stringify(body) }
     ),
 
   refresh: () =>

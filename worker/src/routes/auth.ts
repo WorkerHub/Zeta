@@ -1,6 +1,6 @@
 import { Hono } from 'hono'
 import { getCookie, setCookie, deleteCookie } from 'hono/cookie'
-import type { Env, Variables, UserRow } from '../types'
+import type { Env, Variables, UserRow, PasskeyCredentialRow } from '../types'
 import { nanoid, uuid } from '../lib/id'
 import { now, getSetting, audit, tables } from '../lib/db'
 import { KV } from '../lib/kv'
@@ -13,6 +13,10 @@ import {
 } from '../lib/auth'
 import { sendEmail, buildVerificationEmail, buildPasswordResetEmail, buildOtpEmail } from '../lib/email'
 import { verifyTotpCode, decryptTotpSecret } from '../lib/totp'
+import {
+  generateAuthenticationOptions, verifyAuthenticationResponse,
+} from '@simplewebauthn/server'
+import { isoBase64URL } from '@simplewebauthn/server/helpers'
 
 const auth = new Hono<{ Bindings: Env; Variables: Variables }>()
 
@@ -151,7 +155,8 @@ auth.post('/login', async (c) => {
     return c.json({ error: 'Invalid email or password' }, 401)
   }
 
-  if (user.email_verified === 0) {
+  const requireVerify = await getSetting(c.env, 'require_email_verification')
+  if (requireVerify !== 'false' && user.email_verified === 0) {
     return c.json({ error: 'Please verify your email before logging in.' }, 403)
   }
 
@@ -336,6 +341,90 @@ auth.post('/reset-password', async (c) => {
 
   c.executionCtx.waitUntil(audit(c.env, { userId, action: 'password_reset', ip: clientIp(c) }))
   return c.json({ message: 'Password updated.' })
+})
+
+// ── POST /api/auth/2fa/passkey/options ────────────────────────────────────────
+
+auth.post('/2fa/passkey/options', async (c) => {
+  const body = await c.req.json<{ pendingToken?: string }>().catch(() => null)
+  if (!body?.pendingToken) return c.json({ error: 'pendingToken is required' }, 400)
+
+  const pending = await verifyPending2faToken(body.pendingToken, c.env.JWT_SECRET)
+  if (!pending) return c.json({ error: 'Invalid or expired token' }, 401)
+
+  const T = tables(c.env)
+  const credentials = await c.env.DB.prepare(
+    `SELECT credential_id FROM ${T.passkey_credentials} WHERE user_id = ?1`
+  ).bind(pending.sub).all<{ credential_id: string }>()
+
+  if (credentials.results.length === 0) return c.json({ error: 'No passkeys registered' }, 400)
+
+  const appUrl = new URL(c.env.APP_URL)
+  const options = await generateAuthenticationOptions({
+    rpID: appUrl.hostname,
+    allowCredentials: credentials.results.map((r) => ({ id: r.credential_id })),
+    userVerification: 'preferred',
+  })
+
+  await c.env.KV.put(KV.passkeyChallenge(pending.sub), options.challenge, { expirationTtl: 300 })
+  return c.json(options)
+})
+
+// ── POST /api/auth/2fa/passkey/verify ─────────────────────────────────────────
+
+auth.post('/2fa/passkey/verify', async (c) => {
+  const body = await c.req.json<{ pendingToken?: string; credential?: unknown }>().catch(() => null)
+  if (!body?.pendingToken || !body.credential) {
+    return c.json({ error: 'pendingToken and credential are required' }, 400)
+  }
+
+  const pending = await verifyPending2faToken(body.pendingToken, c.env.JWT_SECRET)
+  if (!pending) return c.json({ error: 'Invalid or expired token' }, 401)
+
+  const expectedChallenge = await c.env.KV.get(KV.passkeyChallenge(pending.sub))
+  if (!expectedChallenge) return c.json({ error: 'Challenge expired' }, 400)
+
+  const T = tables(c.env)
+  const credId = (body.credential as { id?: string }).id ?? ''
+  const storedCred = await c.env.DB.prepare(
+    `SELECT id, credential_id, public_key, sign_count FROM ${T.passkey_credentials} WHERE user_id = ?1 AND credential_id = ?2`
+  ).bind(pending.sub, credId).first<Pick<PasskeyCredentialRow, 'id' | 'credential_id' | 'public_key' | 'sign_count'>>()
+
+  if (!storedCred) return c.json({ error: 'Credential not found' }, 400)
+
+  const requestOrigin = c.req.header('origin')
+  const appUrl = new URL(c.env.APP_URL)
+  const expectedOrigin = requestOrigin ?? c.env.APP_URL.replace(/\/$/, '')
+
+  const verification = await verifyAuthenticationResponse({
+    response: body.credential as Parameters<typeof verifyAuthenticationResponse>[0]['response'],
+    expectedChallenge,
+    expectedOrigin,
+    expectedRPID: appUrl.hostname,
+    credential: {
+      id: storedCred.credential_id,
+      publicKey: isoBase64URL.toBuffer(storedCred.public_key),
+      counter: storedCred.sign_count,
+    },
+  })
+
+  if (!verification.verified || !verification.authenticationInfo) {
+    return c.json({ error: 'Verification failed' }, 400)
+  }
+
+  await c.env.KV.delete(KV.passkeyChallenge(pending.sub))
+  await c.env.DB.prepare(`UPDATE ${T.passkey_credentials} SET sign_count = ?1 WHERE id = ?2`)
+    .bind(verification.authenticationInfo.newCounter, storedCred.id).run()
+
+  const user = await c.env.DB.prepare(`SELECT * FROM ${T.users} WHERE id = ?1`).bind(pending.sub).first<UserRow>()
+  if (!user) return c.json({ error: 'User not found' }, 404)
+
+  const accessToken = await createAccessToken(user.id, user.role, c.env.JWT_SECRET)
+  const refreshToken = await createRefreshToken(user.id, c.env.JWT_SECRET)
+  setRefreshCookie(c, refreshToken, isSecure(c.env))
+
+  c.executionCtx.waitUntil(audit(c.env, { userId: user.id, action: 'login_2fa_passkey', ip: clientIp(c) }))
+  return c.json({ accessToken, user: { id: user.id, email: user.email, name: user.name, role: user.role } })
 })
 
 export default auth

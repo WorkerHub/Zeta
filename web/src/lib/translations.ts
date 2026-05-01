@@ -50,6 +50,8 @@ const translations: Record<Locale, Record<string, string>> = {
     '2fa.verify': 'Verify',
     '2fa.verifying': 'Verifying…',
     '2fa.cancel': 'Cancel',
+    '2fa.passkey': 'Passkey',
+    '2fa.use_passkey': 'Sign in with passkey',
 
     // Query page
     'query.sql_editor': 'SQL Editor',
@@ -231,6 +233,8 @@ const translations: Record<Locale, Record<string, string>> = {
     '2fa.verify': '验证',
     '2fa.verifying': '验证中…',
     '2fa.cancel': '取消',
+    '2fa.passkey': '通行密钥',
+    '2fa.use_passkey': '使用通行密钥登录',
 
     // Query page
     'query.sql_editor': 'SQL 编辑器',

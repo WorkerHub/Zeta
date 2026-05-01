@@ -1,5 +1,6 @@
 import { useState } from 'react'
-import { X, Smartphone, Mail } from 'lucide-react'
+import { X, Smartphone, Mail, Fingerprint } from 'lucide-react'
+import { startAuthentication } from '@simplewebauthn/browser'
 import { authApi } from '../lib/api'
 import { useLocale } from '../hooks/useLocale'
 import type { User } from '../types'
@@ -52,6 +53,27 @@ export default function TwoFactorModal({ pendingToken, onSuccess, onCancel }: Pr
     }
   }
 
+  async function signInWithPasskey() {
+    setLoading(true)
+    setError('')
+    try {
+      const options = await authApi.passkey2faOptions({ pendingToken })
+      const credential = await startAuthentication({
+        optionsJSON: options as unknown as Parameters<typeof startAuthentication>[0]['optionsJSON'],
+      })
+      const res = await authApi.verify2faPasskey({ pendingToken, credential })
+      onSuccess(res.accessToken, res.user)
+    } catch (err) {
+      if (err instanceof Error && err.name === 'NotAllowedError') {
+        setError('Passkey authentication was cancelled.')
+      } else {
+        setError(err instanceof Error ? err.message : 'Passkey verification failed')
+      }
+    } finally {
+      setLoading(false)
+    }
+  }
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
       <div className="card w-full max-w-sm p-6 shadow-2xl">
@@ -64,13 +86,15 @@ export default function TwoFactorModal({ pendingToken, onSuccess, onCancel }: Pr
 
         {/* Method selector */}
         <div className="flex gap-2 mb-6">
-          {(['totp', 'email-otp'] as Method[]).map((m) => (
+          {(['totp', 'email-otp', 'passkey'] as Method[]).map((m) => (
             <button
               key={m}
               onClick={() => { setMethod(m); setCode(''); setError(''); setOtpSent(false) }}
               className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-medium border transition-colors ${method === m ? 'bg-blue-600 border-blue-600 text-white' : 'bg-zinc-100 border-zinc-200 text-zinc-500 hover:text-zinc-800 dark:bg-zinc-800 dark:border-zinc-700 dark:text-zinc-400 dark:hover:text-zinc-200'}`}
             >
-              {m === 'totp' ? <><Smartphone size={13} /> {t('2fa.authenticator')}</> : <><Mail size={13} /> {t('2fa.email_otp')}</>}
+              {m === 'totp' ? <><Smartphone size={13} /> {t('2fa.authenticator')}</>
+                : m === 'email-otp' ? <><Mail size={13} /> {t('2fa.email_otp')}</>
+                : <><Fingerprint size={13} /> {t('2fa.passkey')}</>}
             </button>
           ))}
         </div>
@@ -108,6 +132,19 @@ export default function TwoFactorModal({ pendingToken, onSuccess, onCancel }: Pr
                 />
               </div>
             )}
+          </div>
+        )}
+
+        {method === 'passkey' && (
+          <div className="flex flex-col items-center py-2">
+            <button
+              onClick={signInWithPasskey}
+              disabled={loading}
+              className="btn-secondary w-full gap-2"
+            >
+              <Fingerprint size={14} />
+              {loading ? t('profile.passkey_waiting') : t('2fa.use_passkey')}
+            </button>
           </div>
         )}
 

@@ -169,7 +169,7 @@ profile.post('/passkey/register/verify', async (c) => {
   const verification = await verifyRegistrationResponse({
     response: body,
     expectedChallenge,
-    expectedOrigin: c.env.APP_URL,
+    expectedOrigin: c.req.header('origin') ?? c.env.APP_URL.replace(/\/$/, ''),
     expectedRPID: appUrl.hostname,
     requireUserVerification: false,
   })
