@@ -4,14 +4,15 @@ import CodeMirror from '@uiw/react-codemirror'
 import { sql } from '@codemirror/lang-sql'
 import { oneDark } from '@codemirror/theme-one-dark'
 import {
-  Database, Play, Clock, ChevronDown, LogOut, Settings,
+  Database, Play, Clock, ChevronDown, LogOut,
   User as UserIcon, History, AlertCircle, CheckCircle2, Loader2,
-  Shield, Monitor, Sun, Moon, X, Globe
+  Shield, Monitor, Sun, Moon, X, Globe, Plus
 } from 'lucide-react'
 import { databasesApi, queryApi } from '../lib/api'
 import { useAuthContext } from '../hooks/useAuth'
 import { useTheme } from '../hooks/useTheme'
 import { useLocale } from '../hooks/useLocale'
+import { useNotebooks } from '../hooks/useNotebooks'
 import ResultTable from '../components/ResultTable'
 import QueryHistoryPanel from '../components/QueryHistoryPanel'
 import type { Database as DbType } from '../types'
@@ -24,14 +25,24 @@ export default function QueryPage() {
   const { theme, cycleTheme } = useTheme()
   const { t, locale, changeLocale } = useLocale()
   const [databases, setDatabases] = useState<DbType[]>([])
-  const [selectedDb, setSelectedDb] = useState<DbType | null>(null)
-  const [sqlText, setSqlText] = useState('SELECT * FROM sqlite_master\nWHERE type = \'table\';')
+  const {
+    notebooks, activeId, setActiveId,
+    createNotebook, deleteNotebook, renameNotebook,
+    updateContent, updateDatabase,
+    loading: notebooksLoading, canCreate,
+  } = useNotebooks()
+
+  const activeNotebook = notebooks.find(n => n.id === activeId) ?? null
+  const sqlText = activeNotebook?.sql_content ?? ''
+  const selectedDb = databases.find(d => d.id === activeNotebook?.database_id) ?? null
   const [results, setResults] = useState<{ results: Record<string, unknown>[]; duration_ms?: number } | null>(null)
   const [queryError, setQueryError] = useState('')
   const [running, setRunning] = useState(false)
   const [showHistory, setShowHistory] = useState(false)
   const [showDbMenu, setShowDbMenu] = useState(false)
   const [showUserMenu, setShowUserMenu] = useState(false)
+  const [renamingId, setRenamingId] = useState<string | null>(null)
+  const [renameValue, setRenameValue] = useState('')
   const [selectedSql, setSelectedSql] = useState('')
   const dbMenuRef = useRef<HTMLDivElement>(null)
   const userMenuRef = useRef<HTMLDivElement>(null)
@@ -56,10 +67,7 @@ export default function QueryPage() {
   const ThemeIcon = THEME_ICONS[theme]
 
   useEffect(() => {
-    databasesApi.list().then((dbs) => {
-      setDatabases(dbs)
-      if (dbs.length > 0 && !selectedDb) setSelectedDb(dbs[0] ?? null)
-    }).catch(() => {})
+    databasesApi.list().then(setDatabases).catch(() => {})
   }, [])
 
   // Close dropdowns on outside click
@@ -125,6 +133,14 @@ export default function QueryPage() {
     dragging.current = false
   }
 
+  if (notebooksLoading) {
+    return (
+      <div className="flex h-screen items-center justify-center text-zinc-500 text-sm">
+        {t('common.loading')}
+      </div>
+    )
+  }
+
   return (
     <div className="flex flex-col h-screen bg-zinc-50 dark:bg-zinc-950">
       {/* Top bar */}
@@ -158,7 +174,10 @@ export default function QueryPage() {
               ) : databases.map((db) => (
                 <button
                   key={db.id}
-                  onClick={() => { setSelectedDb(db); setShowDbMenu(false) }}
+                  onClick={() => {
+                    if (activeId) updateDatabase(activeId, db.id)
+                    setShowDbMenu(false)
+                  }}
                   className={`w-full text-left px-4 py-2.5 text-sm hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors flex items-center justify-between ${selectedDb?.id === db.id ? 'text-blue-500' : 'text-zinc-700 dark:text-zinc-200'}`}
                 >
                   <span>{db.name}</span>
@@ -231,6 +250,69 @@ export default function QueryPage() {
         </div>
       </header>
 
+      {/* Notebook tab bar */}
+      <div className="flex items-center border-b border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 shrink-0 overflow-x-auto scrollbar-none min-h-[36px]">
+        {notebooks.map((nb) => (
+          <div
+            key={nb.id}
+            className={`group flex items-center gap-1 px-3 py-1.5 text-sm border-r border-zinc-200 dark:border-zinc-800 cursor-pointer shrink-0 select-none transition-colors ${
+              nb.id === activeId
+                ? 'text-blue-600 dark:text-blue-400 bg-zinc-50 dark:bg-zinc-900 border-b-2 border-b-blue-500'
+                : 'text-zinc-500 dark:text-zinc-400 hover:text-zinc-800 dark:hover:text-zinc-200 hover:bg-zinc-50 dark:hover:bg-zinc-900'
+            }`}
+            onClick={() => setActiveId(nb.id)}
+          >
+            {renamingId === nb.id ? (
+              <input
+                autoFocus
+                value={renameValue}
+                onChange={(e) => setRenameValue(e.target.value)}
+                onBlur={() => {
+                  renameNotebook(nb.id, renameValue)
+                  setRenamingId(null)
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') { renameNotebook(nb.id, renameValue); setRenamingId(null) }
+                  if (e.key === 'Escape') setRenamingId(null)
+                }}
+                onClick={(e) => e.stopPropagation()}
+                className="bg-transparent outline-none border-b border-blue-400 w-24 text-sm"
+              />
+            ) : (
+              <span
+                className="max-w-[120px] truncate"
+                onDoubleClick={(e) => {
+                  e.stopPropagation()
+                  setRenamingId(nb.id)
+                  setRenameValue(nb.name)
+                }}
+              >
+                {nb.name}
+              </span>
+            )}
+            {notebooks.length > 1 && (
+              <button
+                onClick={(e) => {
+                  e.stopPropagation()
+                  if (window.confirm(t('notebook.delete_confirm'))) deleteNotebook(nb.id)
+                }}
+                className="opacity-0 group-hover:opacity-100 p-0.5 rounded hover:bg-zinc-200 dark:hover:bg-zinc-700 text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 transition-opacity"
+              >
+                <X size={11} />
+              </button>
+            )}
+          </div>
+        ))}
+        <button
+          onClick={createNotebook}
+          disabled={!canCreate}
+          title={canCreate ? t('notebook.new') : t('notebook.limit_reached')}
+          className="shrink-0 px-2.5 py-1.5 text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+        >
+          <Plus size={14} />
+        </button>
+      </div>
+
       {/* Main content */}
       <div
         ref={containerRef}
@@ -262,7 +344,7 @@ export default function QueryPage() {
             <div className="flex-1 overflow-hidden">
               <CodeMirror
                 value={sqlText}
-                onChange={setSqlText}
+                onChange={(val) => { if (activeId) updateContent(activeId, val) }}
                 onUpdate={(update) => {
                   const sel = update.state.selection.main
                   setSelectedSql(sel.empty ? '' : update.state.sliceDoc(sel.from, sel.to))
@@ -328,7 +410,7 @@ export default function QueryPage() {
           <div className="w-80 border-l border-zinc-200 dark:border-zinc-800 overflow-auto shrink-0 hidden lg:block">
             <QueryHistoryPanel
               databaseId={selectedDb.id}
-              onSelect={(s) => setSqlText(s)}
+              onSelect={(s) => { if (activeId) updateContent(activeId, s) }}
             />
           </div>
         )}
@@ -351,7 +433,10 @@ export default function QueryPage() {
               {databases.map((db) => (
                 <button
                   key={db.id}
-                  onClick={() => { setSelectedDb(db); setShowDbMenu(false) }}
+                  onClick={() => {
+                    if (activeId) updateDatabase(activeId, db.id)
+                    setShowDbMenu(false)
+                  }}
                   className={`w-full text-left px-4 py-2.5 text-sm hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors flex items-center justify-between ${selectedDb?.id === db.id ? 'text-blue-500' : 'text-zinc-700 dark:text-zinc-200'}`}
                 >
                   <span>{db.name}</span>
@@ -395,7 +480,7 @@ export default function QueryPage() {
             <div className="overflow-auto flex-1">
               <QueryHistoryPanel
                 databaseId={selectedDb.id}
-                onSelect={(s) => { setSqlText(s); setShowHistory(false) }}
+                onSelect={(s) => { if (activeId) updateContent(activeId, s); setShowHistory(false) }}
               />
             </div>
           </div>
