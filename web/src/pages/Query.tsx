@@ -112,6 +112,13 @@ export default function QueryPage() {
     return () => window.removeEventListener('keydown', handleKey)
   }, [runQuery])
 
+  // Clear stale results and selection when switching tabs
+  useEffect(() => {
+    setResults(null)
+    setQueryError('')
+    setSelectedSql('')
+  }, [activeId])
+
   // Draggable divider handlers
   function onDividerPointerDown(e: React.PointerEvent) {
     e.preventDefault()
@@ -294,7 +301,7 @@ export default function QueryPage() {
               <button
                 onClick={(e) => {
                   e.stopPropagation()
-                  if (window.confirm(t('notebook.delete_confirm'))) deleteNotebook(nb.id)
+                  if (window.confirm(t('notebook.delete_confirm'))) deleteNotebook(nb.id).catch(() => {})
                 }}
                 className="opacity-0 group-hover:opacity-100 p-0.5 rounded hover:bg-zinc-200 dark:hover:bg-zinc-700 text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 transition-opacity"
               >

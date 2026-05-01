@@ -119,6 +119,13 @@ notebooks.delete('/:id', async (c) => {
   ).bind(notebookId, userId).first<{ position: number }>()
   if (!existing) return c.json({ error: 'Notebook not found' }, 404)
 
+  const countRow = await c.env.DB.prepare(
+    `SELECT COUNT(*) as cnt FROM ${T.notebooks} WHERE user_id = ?1`
+  ).bind(userId).first<{ cnt: number }>()
+  if ((countRow?.cnt ?? 0) <= 1) {
+    return c.json({ error: 'Cannot delete the last notebook' }, 400)
+  }
+
   await c.env.DB.prepare(
     `DELETE FROM ${T.notebooks} WHERE id = ?1`
   ).bind(notebookId).run()

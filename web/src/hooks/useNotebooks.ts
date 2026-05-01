@@ -76,8 +76,13 @@ export function useNotebooks() {
 
   const renameNotebook = useCallback(async (id: string, name: string) => {
     const trimmed = name.trim() || 'Untitled'
+    const prev = notebooksRef.current.find(n => n.id === id)?.name ?? null
     setNotebooks(prev => prev.map(n => n.id === id ? { ...n, name: trimmed } : n))
-    await notebooksApi.update(id, { name: trimmed })
+    try {
+      await notebooksApi.update(id, { name: trimmed })
+    } catch {
+      if (prev !== null) setNotebooks(p => p.map(n => n.id === id ? { ...n, name: prev } : n))
+    }
   }, [])
 
   const updateContent = useCallback((id: string, sql_content: string) => {
@@ -94,8 +99,13 @@ export function useNotebooks() {
   }, [])
 
   const updateDatabase = useCallback(async (id: string, database_id: string | null) => {
-    setNotebooks(prev => prev.map(n => n.id === id ? { ...n, database_id } : n))
-    await notebooksApi.update(id, { database_id })
+    const prev = notebooksRef.current.find(n => n.id === id)?.database_id ?? null
+    setNotebooks(p => p.map(n => n.id === id ? { ...n, database_id } : n))
+    try {
+      await notebooksApi.update(id, { database_id })
+    } catch {
+      setNotebooks(p => p.map(n => n.id === id ? { ...n, database_id: prev } : n))
+    }
   }, [])
 
   return {
