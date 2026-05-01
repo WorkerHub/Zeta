@@ -1,0 +1,109 @@
+import { useState, useEffect, useRef, useCallback } from 'react'
+import { notebooksApi } from '../lib/api'
+import type { Notebook } from '../types'
+
+const ACTIVE_NOTEBOOK_KEY = 'd1studio_active_notebook'
+const DEBOUNCE_MS = 1500
+const MAX_NOTEBOOKS = 20
+
+export function useNotebooks() {
+  const [notebooks, setNotebooks] = useState<Notebook[]>([])
+  const [activeId, setActiveIdState] = useState<string | null>(null)
+  const [loading, setLoading] = useState(true)
+  const debounceTimers = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map())
+  const notebooksRef = useRef<Notebook[]>([])
+
+  // Keep ref in sync so callbacks can read current notebooks without stale closures
+  useEffect(() => {
+    notebooksRef.current = notebooks
+  }, [notebooks])
+
+  useEffect(() => {
+    notebooksApi.list()
+      .then(async ({ results }) => {
+        let nbs = results
+        if (nbs.length === 0) {
+          const created = await notebooksApi.create({})
+          nbs = [created]
+        }
+        setNotebooks(nbs)
+        const stored = localStorage.getItem(ACTIVE_NOTEBOOK_KEY)
+        const validId = stored && nbs.some(n => n.id === stored) ? stored : (nbs[0]?.id ?? null)
+        setActiveIdState(validId)
+      })
+      .catch(() => {})
+      .finally(() => setLoading(false))
+  }, [])
+
+  const setActiveId = useCallback((id: string) => {
+    setActiveIdState(id)
+    localStorage.setItem(ACTIVE_NOTEBOOK_KEY, id)
+  }, [])
+
+  const createNotebook = useCallback(async () => {
+    if (notebooksRef.current.length >= MAX_NOTEBOOKS) return
+    const nb = await notebooksApi.create({})
+    setNotebooks(prev => [...prev, nb])
+    setActiveIdState(nb.id)
+    localStorage.setItem(ACTIVE_NOTEBOOK_KEY, nb.id)
+  }, [])
+
+  const deleteNotebook = useCallback(async (id: string) => {
+    const current = notebooksRef.current
+    const deletedIdx = current.findIndex(n => n.id === id)
+    const remaining = current.filter(n => n.id !== id)
+
+    await notebooksApi.delete(id)
+
+    // Clear any pending debounce for this notebook
+    const timer = debounceTimers.current.get(id)
+    if (timer) { clearTimeout(timer); debounceTimers.current.delete(id) }
+
+    setNotebooks(remaining.map((n, i) => ({ ...n, position: i })))
+
+    setActiveIdState(prev => {
+      if (prev !== id) return prev
+      const next = remaining[Math.max(0, deletedIdx - 1)]
+      const newId = next?.id ?? null
+      if (newId) localStorage.setItem(ACTIVE_NOTEBOOK_KEY, newId)
+      return newId
+    })
+  }, [])
+
+  const renameNotebook = useCallback(async (id: string, name: string) => {
+    const trimmed = name.trim() || 'Untitled'
+    setNotebooks(prev => prev.map(n => n.id === id ? { ...n, name: trimmed } : n))
+    await notebooksApi.update(id, { name: trimmed })
+  }, [])
+
+  const updateContent = useCallback((id: string, sql_content: string) => {
+    setNotebooks(prev => prev.map(n => n.id === id ? { ...n, sql_content } : n))
+
+    const existing = debounceTimers.current.get(id)
+    if (existing) clearTimeout(existing)
+
+    const timer = setTimeout(() => {
+      notebooksApi.update(id, { sql_content }).catch(() => {})
+      debounceTimers.current.delete(id)
+    }, DEBOUNCE_MS)
+    debounceTimers.current.set(id, timer)
+  }, [])
+
+  const updateDatabase = useCallback(async (id: string, database_id: string | null) => {
+    setNotebooks(prev => prev.map(n => n.id === id ? { ...n, database_id } : n))
+    await notebooksApi.update(id, { database_id })
+  }, [])
+
+  return {
+    notebooks,
+    activeId,
+    setActiveId,
+    createNotebook,
+    deleteNotebook,
+    renameNotebook,
+    updateContent,
+    updateDatabase,
+    loading,
+    canCreate: notebooks.length < MAX_NOTEBOOKS,
+  }
+}
