@@ -100,6 +100,104 @@ query.post('/', async (c) => {
   return c.json({ ...(result as Record<string, unknown>), duration_ms: duration })
 })
 
+// ── POST /api/query/batch ─────────────────────────────────────────────────────
+
+query.post('/batch', async (c) => {
+  const body = await c.req.json<{ databaseId?: string; statements?: string[] }>().catch(() => null)
+  if (!body?.databaseId || !Array.isArray(body.statements) || body.statements.length === 0) {
+    return c.json({ error: 'databaseId and a non-empty statements array are required' }, 400)
+  }
+
+  const userId = c.get('userId')
+  const role = c.get('userRole')
+  const T = tables(c.env)
+
+  // Resolve database
+  const db = await c.env.DB.prepare(`SELECT * FROM ${T.d1_databases} WHERE id = ?1 AND is_active = 1`)
+    .bind(body.databaseId).first<DatabaseRow>()
+  if (!db) return c.json({ error: 'Database not found' }, 404)
+
+  // Check permission once
+  let permission: 'read' | 'write' = 'read'
+  if (role === 'admin') {
+    permission = 'write'
+  } else {
+    const perm = await c.env.DB.prepare(
+      `SELECT permission FROM ${T.user_database_permissions} WHERE user_id = ?1 AND database_id = ?2`
+    ).bind(userId, db.id).first<{ permission: string }>()
+    if (!perm) return c.json({ error: 'Access denied' }, 403)
+    permission = (perm.permission as 'read' | 'write') ?? 'read'
+  }
+
+  // Resolve binding
+  const targetDb = c.env[db.binding_name]
+  if (!targetDb || typeof (targetDb as Record<string, unknown>).prepare !== 'function') {
+    return c.json({ error: `Binding "${db.binding_name}" not found. Contact the admin.` }, 500)
+  }
+  const d1 = targetDb as D1Database
+
+  // Run each statement sequentially, continue on error
+  const results: Array<{
+    sql: string
+    results: Record<string, unknown>[]
+    duration_ms: number
+    changes?: number
+    error?: string
+  }> = []
+
+  for (const rawSql of body.statements) {
+    const sql = rawSql.trim()
+    if (!sql) continue
+
+    // Forbidden check — record error, continue
+    if (isForbiddenSql(sql)) {
+      results.push({ sql, results: [], duration_ms: 0, error: 'This SQL statement is not allowed.' })
+      continue
+    }
+
+    // Write permission check
+    if (isWriteSql(sql) && permission !== 'write') {
+      results.push({ sql, results: [], duration_ms: 0, error: 'You only have read access to this database.' })
+      continue
+    }
+
+    const start = Date.now()
+    let stmtResult: Record<string, unknown>[] = []
+    let changes: number | undefined
+    let errorMsg: string | undefined
+
+    try {
+      if (isWriteSql(sql)) {
+        const res = await d1.prepare(sql).run()
+        changes = res.meta.changes ?? 0
+      } else {
+        const res = await d1.prepare(sql).all()
+        stmtResult = res.results as Record<string, unknown>[]
+      }
+    } catch (err) {
+      errorMsg = err instanceof Error ? err.message : String(err)
+    }
+
+    const duration = Date.now() - start
+    const rowCount = errorMsg ? 0 : (changes !== undefined ? changes : stmtResult.length)
+
+    // Save to history (non-blocking)
+    c.executionCtx.waitUntil(
+      c.env.DB.prepare(
+        `INSERT INTO ${T.query_history} (id, user_id, database_id, sql, duration_ms, row_count, error, executed_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)`
+      ).bind(uuid(), userId, db.id, sql, duration, rowCount, errorMsg ?? null, now()).run()
+    )
+
+    const entry: typeof results[number] = { sql, results: stmtResult, duration_ms: duration }
+    if (changes !== undefined) entry.changes = changes
+    if (errorMsg) entry.error = errorMsg
+    results.push(entry)
+  }
+
+  return c.json({ results })
+})
+
 // ── GET /api/query/history ────────────────────────────────────────────────────
 
 query.get('/history', async (c) => {
