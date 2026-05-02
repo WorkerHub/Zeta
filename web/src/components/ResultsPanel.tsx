@@ -45,11 +45,11 @@ export default function ResultsPanel({ results, activeIndex, onSelectIndex }: Pr
                     ? <AlertCircle size={10} className="text-red-400 shrink-0" />
                     : <CheckCircle2 size={10} className="text-emerald-400 shrink-0" />
                   }
-                  <span className={`text-[10px] ${isActive ? 'text-zinc-600 dark:text-zinc-300' : 'text-zinc-500 dark:text-zinc-500'}`}>
+                  <span className={`text-[10px] ${isActive ? 'text-zinc-600 dark:text-zinc-300' : 'text-zinc-500 dark:text-zinc-400'}`}>
                     #{i + 1} · {meta} · {r.duration_ms}ms
                   </span>
                 </div>
-                <div className="text-[10px] text-zinc-400 dark:text-zinc-600 truncate font-mono">{r.sql}</div>
+                <div className="text-[10px] text-zinc-400 dark:text-zinc-500 truncate font-mono">{r.sql}</div>
               </button>
             )
           })}
