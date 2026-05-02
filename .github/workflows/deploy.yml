@@ -46,6 +46,18 @@ jobs:
           sed -i "s/KV_NAMESPACE_ID_PLACEHOLDER/${KV_NAMESPACE_ID}/" wrangler.toml
           sed -i "s/QUERY_DB_1_NAME_PLACEHOLDER/${QUERY_DB_1_NAME}/" wrangler.toml
           sed -i "s/QUERY_DB_1_ID_PLACEHOLDER/${QUERY_DB_1_ID}/" wrangler.toml
+          sed -i "s/QUERY_DB_2_NAME_PLACEHOLDER/${QUERY_DB_2_NAME}/" wrangler.toml
+          sed -i "s/QUERY_DB_2_ID_PLACEHOLDER/${QUERY_DB_2_ID}/" wrangler.toml
+          sed -i "s/QUERY_DB_3_NAME_PLACEHOLDER/${QUERY_DB_3_NAME}/" wrangler.toml
+          sed -i "s/QUERY_DB_3_ID_PLACEHOLDER/${QUERY_DB_3_ID}/" wrangler.toml
+          sed -i "s/QUERY_DB_4_NAME_PLACEHOLDER/${QUERY_DB_4_NAME}/" wrangler.toml
+          sed -i "s/QUERY_DB_4_ID_PLACEHOLDER/${QUERY_DB_4_ID}/" wrangler.toml
+          sed -i "s/QUERY_DB_5_NAME_PLACEHOLDER/${QUERY_DB_5_NAME}/" wrangler.toml
+          sed -i "s/QUERY_DB_5_ID_PLACEHOLDER/${QUERY_DB_5_ID}/" wrangler.toml
+          sed -i "s/QUERY_DB_6_NAME_PLACEHOLDER/${QUERY_DB_6_NAME}/" wrangler.toml
+          sed -i "s/QUERY_DB_6_ID_PLACEHOLDER/${QUERY_DB_6_ID}/" wrangler.toml
+          sed -i "s/QUERY_DB_7_NAME_PLACEHOLDER/${QUERY_DB_7_NAME}/" wrangler.toml
+          sed -i "s/QUERY_DB_7_ID_PLACEHOLDER/${QUERY_DB_7_ID}/" wrangler.toml
 
       - name: Deploy Worker
         working-directory: worker
