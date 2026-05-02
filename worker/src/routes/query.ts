@@ -9,7 +9,6 @@ query.use('*', requireAuth)
 
 // SQL statements that are never allowed regardless of permission level
 const FORBIDDEN_PATTERNS = [
-  /^\s*(drop|truncate)\s+/i,
   /pragma\s+\w+\s*=/i,       // PRAGMA writes
   /attach\s+database/i,
   /detach\s+database/i,
