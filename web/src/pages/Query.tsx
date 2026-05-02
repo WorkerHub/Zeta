@@ -1,21 +1,22 @@
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { Link } from 'react-router-dom'
 import CodeMirror from '@uiw/react-codemirror'
 import { sql } from '@codemirror/lang-sql'
 import { oneDark } from '@codemirror/theme-one-dark'
 import {
-  Database, Play, Clock, ChevronDown, LogOut,
-  User as UserIcon, History, AlertCircle, CheckCircle2, Loader2,
+  Database, Play, ChevronDown, LogOut,
+  User as UserIcon, History, AlertCircle, Loader2,
   Shield, Monitor, Sun, Moon, X, Globe, Plus
 } from 'lucide-react'
-import { databasesApi, queryApi } from '../lib/api'
+import { databasesApi, queryApi, ApiError } from '../lib/api'
 import { useAuthContext } from '../hooks/useAuth'
 import { useTheme } from '../hooks/useTheme'
 import { useLocale } from '../hooks/useLocale'
 import { useNotebooks } from '../hooks/useNotebooks'
-import ResultTable from '../components/ResultTable'
+import ResultsPanel from '../components/ResultsPanel'
 import QueryHistoryPanel from '../components/QueryHistoryPanel'
-import type { Database as DbType } from '../types'
+import { splitSqlStatements } from '../lib/sql'
+import type { Database as DbType, StatementResult } from '../types'
 
 const THEME_ICONS = { auto: Monitor, light: Sun, dark: Moon }
 
@@ -35,8 +36,9 @@ export default function QueryPage() {
   const activeNotebook = notebooks.find(n => n.id === activeId) ?? null
   const sqlText = activeNotebook?.sql_content ?? ''
   const selectedDb = databases.find(d => d.id === activeNotebook?.database_id) ?? null
-  const [results, setResults] = useState<{ results: Record<string, unknown>[]; duration_ms?: number } | null>(null)
-  const [queryError, setQueryError] = useState('')
+  const [statementResults, setStatementResults] = useState<StatementResult[]>([])
+  const [activeResultIdx, setActiveResultIdx] = useState(0)
+  const [runError, setRunError] = useState('')
   const [running, setRunning] = useState(false)
   const [showHistory, setShowHistory] = useState(false)
   const [showDbMenu, setShowDbMenu] = useState(false)
@@ -44,6 +46,7 @@ export default function QueryPage() {
   const [renamingId, setRenamingId] = useState<string | null>(null)
   const [renameValue, setRenameValue] = useState('')
   const [selectedSql, setSelectedSql] = useState('')
+  const sqlHasMultiple = useMemo(() => splitSqlStatements(sqlText).length > 1, [sqlText])
   const dbMenuRef = useRef<HTMLDivElement>(null)
   const dbMenuDesktopRef = useRef<HTMLDivElement>(null)
   const userMenuRef = useRef<HTMLDivElement>(null)
@@ -86,18 +89,42 @@ export default function QueryPage() {
   const runQuery = useCallback(async () => {
     const sqlToRun = selectedSql.trim() || sqlText.trim()
     if (!selectedDb || !sqlToRun) return
+
+    const statements = splitSqlStatements(sqlToRun)
+    if (statements.length === 0) return
+
     setRunning(true)
-    setQueryError('')
-    setResults(null)
+    setRunError('')
+    setStatementResults([])
+    setActiveResultIdx(0)
+
     try {
-      const res = await queryApi.execute({ databaseId: selectedDb.id, sql: sqlToRun })
-      if (res.error) {
-        setQueryError(res.error)
+      if (statements.length === 1) {
+        // Single statement — use existing endpoint
+        const stmt = statements[0]!
+        try {
+          const res = await queryApi.execute({ databaseId: selectedDb.id, sql: stmt })
+          const entry: StatementResult = {
+            sql: stmt,
+            results: (res.results ?? []) as Record<string, unknown>[],
+            duration_ms: res.duration_ms ?? 0,
+            changes: (res.meta as { changes?: number } | undefined)?.changes,
+          }
+          setStatementResults([entry])
+        } catch (err) {
+          if (err instanceof ApiError) {
+            setStatementResults([{ sql: stmt, results: [], duration_ms: 0, error: err.message }])
+          } else {
+            setStatementResults([{ sql: stmt, results: [], duration_ms: 0, error: err instanceof Error ? err.message : 'Query failed' }])
+          }
+        }
       } else {
-        setResults({ results: (res.results ?? []) as Record<string, unknown>[], duration_ms: res.duration_ms })
+        // Multiple statements — use batch endpoint
+        const res = await queryApi.executeBatch({ databaseId: selectedDb.id, statements })
+        setStatementResults(res.results)
       }
     } catch (err) {
-      setQueryError(err instanceof Error ? err.message : 'Query failed')
+      setRunError(err instanceof Error ? err.message : 'Query failed')
     } finally {
       setRunning(false)
     }
@@ -117,8 +144,9 @@ export default function QueryPage() {
 
   // Clear stale results and selection when switching tabs
   useEffect(() => {
-    setResults(null)
-    setQueryError('')
+    setStatementResults([])
+    setActiveResultIdx(0)
+    setRunError('')
     setSelectedSql('')
   }, [activeId])
 
@@ -347,7 +375,7 @@ export default function QueryPage() {
                   className="btn-primary btn-sm gap-1.5 hidden sm:flex"
                 >
                   {running ? <Loader2 size={13} className="animate-spin" /> : <Play size={13} />}
-                  {selectedSql.trim() ? t('query.run_selection') : t('query.run')}
+                  {selectedSql.trim() ? t('query.run_selection') : sqlHasMultiple ? t('query.run_all') : t('query.run')}
                 </button>
               </div>
             </div>
@@ -375,39 +403,32 @@ export default function QueryPage() {
           />
 
           {/* Results */}
-          <div className="flex-1 overflow-auto">
+          <div className="flex-1 overflow-hidden flex flex-col">
             {running && (
               <div className="flex items-center justify-center h-full gap-2 text-zinc-500">
                 <Loader2 size={18} className="animate-spin" />
                 <span className="text-sm">{t('query.running')}</span>
               </div>
             )}
-            {!running && queryError && (
+            {!running && runError && (
               <div className="m-4 flex items-start gap-3 p-4 bg-red-500/10 border border-red-500/20 rounded-xl">
                 <AlertCircle size={18} className="text-red-400 shrink-0 mt-0.5" />
                 <div>
                   <p className="text-sm font-medium text-red-400 mb-1">{t('query.error')}</p>
-                  <pre className="text-xs text-red-300 whitespace-pre-wrap font-mono">{queryError}</pre>
+                  <pre className="text-xs text-red-300 whitespace-pre-wrap font-mono">{runError}</pre>
                 </div>
               </div>
             )}
-            {!running && !queryError && results && (
-              <div className="p-4 space-y-2">
-                <div className="flex items-center gap-2 text-xs text-zinc-500">
-                  <CheckCircle2 size={13} className="text-emerald-400" />
-                  <span>{results.results.length} {results.results.length !== 1 ? t('query.rows') : t('query.row')}</span>
-                  {results.duration_ms !== undefined && (
-                    <>
-                      <span>·</span>
-                      <Clock size={12} />
-                      <span>{results.duration_ms}ms</span>
-                    </>
-                  )}
-                </div>
-                <ResultTable rows={results.results} />
+            {!running && !runError && statementResults.length > 0 && (
+              <div className="flex-1 overflow-hidden">
+                <ResultsPanel
+                  results={statementResults}
+                  activeIndex={activeResultIdx}
+                  onSelectIndex={setActiveResultIdx}
+                />
               </div>
             )}
-            {!running && !queryError && !results && (
+            {!running && !runError && statementResults.length === 0 && (
               <div className="flex items-center justify-center h-full text-zinc-400 dark:text-zinc-600 text-sm">
                 {t('query.no_results')}
               </div>
