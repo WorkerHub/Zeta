@@ -19,7 +19,6 @@ export default function AdminUsers() {
   const [search, setSearch] = useState('')
   const [loading, setLoading] = useState(true)
   const [deleteError, setDeleteError] = useState('')
-  const [pendingDelete, setPendingDelete] = useState<string | null>(null)
   const [page, setPage] = useState(0)
   const limit = 20
 
@@ -27,6 +26,9 @@ export default function AdminUsers() {
   const [form, setForm] = useState(EMPTY_FORM)
   const [formError, setFormError] = useState('')
   const [formLoading, setFormLoading] = useState(false)
+
+  const [deleteTarget, setDeleteTarget] = useState<User | null>(null)
+  const [deleteLoading, setDeleteLoading] = useState(false)
 
   async function load() {
     setLoading(true)
@@ -47,13 +49,17 @@ export default function AdminUsers() {
   }
 
   async function deleteUser(id: string) {
-    setPendingDelete(null)
+    setDeleteLoading(true)
     setDeleteError('')
     try {
       await adminApi.deleteUser(id)
+      setDeleteTarget(null)
       load()
     } catch (err) {
       setDeleteError(err instanceof Error ? err.message : 'Failed to delete user')
+      setDeleteTarget(null)
+    } finally {
+      setDeleteLoading(false)
     }
   }
 
@@ -166,28 +172,14 @@ export default function AdminUsers() {
                 </td>
                 <td className="px-4 py-3 text-right">
                   {u.id !== me?.id && (
-                    pendingDelete === u.id ? (
-                      <div className="flex items-center justify-end gap-1">
-                        <span className="text-xs text-zinc-500 mr-1 hidden sm:inline">{t('admin_users.confirm_delete')}</span>
-                        <button
-                          onClick={() => deleteUser(u.id)}
-                          className="btn-ghost p-1 btn-sm text-xs text-red-400 hover:text-red-300"
-                        >{t('admin_users.confirm')}</button>
-                        <button
-                          onClick={() => setPendingDelete(null)}
-                          className="btn-ghost p-1 btn-sm text-xs text-zinc-500"
-                        >{t('admin_users.cancel')}</button>
-                      </div>
-                    ) : (
-                      <div className="flex items-center justify-end gap-0.5">
-                        <button onClick={() => openEdit(u)} className="btn-ghost p-1.5 btn-sm text-zinc-400">
-                          <Pencil size={13} />
-                        </button>
-                        <button onClick={() => setPendingDelete(u.id)} className="btn-ghost p-1.5 text-red-400 btn-sm">
-                          <Trash2 size={13} />
-                        </button>
-                      </div>
-                    )
+                    <div className="flex items-center justify-end gap-0.5">
+                      <button onClick={() => openEdit(u)} className="btn-ghost p-1.5 btn-sm text-zinc-400">
+                        <Pencil size={13} />
+                      </button>
+                      <button onClick={() => setDeleteTarget(u)} className="btn-ghost p-1.5 text-red-400 btn-sm">
+                        <Trash2 size={13} />
+                      </button>
+                    </div>
                   )}
                 </td>
               </tr>
@@ -205,6 +197,30 @@ export default function AdminUsers() {
           <div className="flex gap-2">
             <button onClick={() => setPage(p => p - 1)} disabled={page === 0} className="btn-secondary btn-sm">{t('admin_users.prev')}</button>
             <button onClick={() => setPage(p => p + 1)} disabled={(page + 1) * limit >= total} className="btn-secondary btn-sm">{t('admin_users.next')}</button>
+          </div>
+        </div>
+      )}
+
+      {/* Delete confirmation modal */}
+      {deleteTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+          <div className="card w-full max-w-sm p-6 shadow-2xl">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-base font-semibold text-zinc-900 dark:text-zinc-100">{t('admin_users.confirm_delete')}</h2>
+              <button onClick={() => setDeleteTarget(null)} className="btn-ghost p-1.5 rounded-lg"><X size={16} /></button>
+            </div>
+            <p className="text-sm text-zinc-500 dark:text-zinc-400">
+              {t('admin_users.confirm_delete_desc')}{' '}
+              <span className="font-medium text-zinc-800 dark:text-zinc-200">{deleteTarget.name}</span>
+              {' '}({deleteTarget.email})?
+            </p>
+            <p className="text-sm text-zinc-500 dark:text-zinc-400 mt-1">{t('admin_users.confirm_delete_warn')}</p>
+            <div className="mt-6 flex gap-3">
+              <button onClick={() => setDeleteTarget(null)} className="btn-secondary flex-1">{t('admin_users.cancel')}</button>
+              <button onClick={() => deleteUser(deleteTarget.id)} disabled={deleteLoading} className="btn-danger flex-1">
+                {deleteLoading ? '…' : t('admin_users.confirm')}
+              </button>
+            </div>
           </div>
         </div>
       )}
