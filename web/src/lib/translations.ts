@@ -150,6 +150,15 @@ const translations: Record<Locale, Record<string, string>> = {
     'admin_users.confirm_delete': 'Delete?',
     'admin_users.confirm': 'Confirm',
     'admin_users.cancel': 'Cancel',
+    'admin_users.add_user': 'Add User',
+    'admin_users.edit_user': 'Edit User',
+    'admin_users.new_user': 'New User',
+    'admin_users.name': 'Name',
+    'admin_users.email': 'Email',
+    'admin_users.password': 'Password',
+    'admin_users.password_hint': 'Leave blank to keep current password',
+    'admin_users.save': 'Save',
+    'admin_users.create': 'Create User',
 
     // Admin Databases
     'admin_db.add_database': 'Add database',
@@ -354,6 +363,15 @@ const translations: Record<Locale, Record<string, string>> = {
     'admin_users.confirm_delete': '确认删除？',
     'admin_users.confirm': '确认',
     'admin_users.cancel': '取消',
+    'admin_users.add_user': '添加用户',
+    'admin_users.edit_user': '编辑用户',
+    'admin_users.new_user': '新建用户',
+    'admin_users.name': '姓名',
+    'admin_users.email': '邮箱',
+    'admin_users.password': '密码',
+    'admin_users.password_hint': '留空则保持当前密码不变',
+    'admin_users.save': '保存',
+    'admin_users.create': '创建用户',
 
     // Admin Databases
     'admin_db.add_database': '添加数据库',

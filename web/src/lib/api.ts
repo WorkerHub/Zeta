@@ -182,7 +182,9 @@ export const adminApi = {
     return apiFetch<{ results: User[]; total: number }>(`/admin/users?${q}`)
   },
   getUser: (id: string) => apiFetch<User>(`/admin/users/${id}`),
-  updateUser: (id: string, body: { role?: string; two_factor_required?: boolean }) =>
+  createUser: (body: { name: string; email: string; password: string; role: string }) =>
+    apiFetch<{ id: string }>('/admin/users', { method: 'POST', body: JSON.stringify(body) }),
+  updateUser: (id: string, body: { role?: string; two_factor_required?: boolean; name?: string; email?: string; password?: string }) =>
     apiFetch<{ message: string }>(`/admin/users/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
   deleteUser: (id: string) => apiFetch<{ message: string }>(`/admin/users/${id}`, { method: 'DELETE' }),
 

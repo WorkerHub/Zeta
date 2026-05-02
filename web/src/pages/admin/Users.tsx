@@ -1,9 +1,15 @@
 import { useState, useEffect } from 'react'
-import { Search, Trash2, CheckCircle, XCircle } from 'lucide-react'
+import { Search, Trash2, CheckCircle, XCircle, X, Pencil, UserPlus } from 'lucide-react'
 import { adminApi } from '../../lib/api'
 import { useAuthContext } from '../../hooks/useAuth'
 import { useLocale } from '../../hooks/useLocale'
 import type { User } from '../../types'
+
+type ModalState =
+  | { mode: 'create' }
+  | { mode: 'edit'; user: User }
+
+const EMPTY_FORM = { name: '', email: '', password: '', role: 'member' }
 
 export default function AdminUsers() {
   const { user: me } = useAuthContext()
@@ -16,6 +22,11 @@ export default function AdminUsers() {
   const [pendingDelete, setPendingDelete] = useState<string | null>(null)
   const [page, setPage] = useState(0)
   const limit = 20
+
+  const [modal, setModal] = useState<ModalState | null>(null)
+  const [form, setForm] = useState(EMPTY_FORM)
+  const [formError, setFormError] = useState('')
+  const [formLoading, setFormLoading] = useState(false)
 
   async function load() {
     setLoading(true)
@@ -46,11 +57,54 @@ export default function AdminUsers() {
     }
   }
 
+  function openCreate() {
+    setForm(EMPTY_FORM)
+    setFormError('')
+    setModal({ mode: 'create' })
+  }
+
+  function openEdit(u: User) {
+    setForm({ name: u.name, email: u.email, password: '', role: u.role })
+    setFormError('')
+    setModal({ mode: 'edit', user: u })
+  }
+
+  function closeModal() {
+    setModal(null)
+    setFormError('')
+  }
+
+  async function submitModal() {
+    setFormError('')
+    setFormLoading(true)
+    try {
+      if (modal?.mode === 'create') {
+        await adminApi.createUser({ name: form.name, email: form.email, password: form.password, role: form.role })
+      } else if (modal?.mode === 'edit') {
+        const patch: Record<string, string> = { name: form.name, email: form.email, role: form.role }
+        if (form.password) patch.password = form.password
+        await adminApi.updateUser(modal.user.id, patch)
+      }
+      closeModal()
+      load()
+    } catch (err) {
+      setFormError(err instanceof Error ? err.message : 'An error occurred')
+    } finally {
+      setFormLoading(false)
+    }
+  }
+
   return (
     <div className="p-4 sm:p-6 max-w-5xl">
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-lg font-semibold text-zinc-900 dark:text-zinc-100">{t('admin.users')}</h1>
-        <span className="badge badge-zinc">{total} {t('admin_users.total')}</span>
+        <div className="flex items-center gap-2">
+          <span className="badge badge-zinc">{total} {t('admin_users.total')}</span>
+          <button onClick={openCreate} className="btn-primary btn-sm flex items-center gap-1.5">
+            <UserPlus size={13} />
+            {t('admin_users.add_user')}
+          </button>
+        </div>
       </div>
 
       {deleteError && (
@@ -125,9 +179,14 @@ export default function AdminUsers() {
                         >{t('admin_users.cancel')}</button>
                       </div>
                     ) : (
-                      <button onClick={() => setPendingDelete(u.id)} className="btn-ghost p-1.5 text-red-400 btn-sm">
-                        <Trash2 size={13} />
-                      </button>
+                      <div className="flex items-center justify-end gap-0.5">
+                        <button onClick={() => openEdit(u)} className="btn-ghost p-1.5 btn-sm text-zinc-400">
+                          <Pencil size={13} />
+                        </button>
+                        <button onClick={() => setPendingDelete(u.id)} className="btn-ghost p-1.5 text-red-400 btn-sm">
+                          <Trash2 size={13} />
+                        </button>
+                      </div>
                     )
                   )}
                 </td>
@@ -146,6 +205,64 @@ export default function AdminUsers() {
           <div className="flex gap-2">
             <button onClick={() => setPage(p => p - 1)} disabled={page === 0} className="btn-secondary btn-sm">{t('admin_users.prev')}</button>
             <button onClick={() => setPage(p => p + 1)} disabled={(page + 1) * limit >= total} className="btn-secondary btn-sm">{t('admin_users.next')}</button>
+          </div>
+        </div>
+      )}
+
+      {/* Add / Edit modal */}
+      {modal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+          <div className="card w-full max-w-md p-6 shadow-2xl">
+            <div className="flex items-center justify-between mb-6">
+              <h2 className="text-lg font-semibold text-zinc-900 dark:text-zinc-100">
+                {modal.mode === 'create' ? t('admin_users.new_user') : t('admin_users.edit_user')}
+              </h2>
+              <button onClick={closeModal} className="btn-ghost p-1.5 rounded-lg"><X size={16} /></button>
+            </div>
+
+            <div className="space-y-4">
+              <div>
+                <label className="label">{t('admin_users.name')}</label>
+                <input
+                  type="text" value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
+                  className="input" required autoFocus
+                />
+              </div>
+              <div>
+                <label className="label">{t('admin_users.email')}</label>
+                <input
+                  type="email" value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))}
+                  className="input" required
+                />
+              </div>
+              <div>
+                <label className="label">{t('admin_users.password')}</label>
+                <input
+                  type="password" value={form.password} onChange={e => setForm(f => ({ ...f, password: e.target.value }))}
+                  className="input" placeholder={modal.mode === 'edit' ? t('admin_users.password_hint') : ''}
+                  required={modal.mode === 'create'}
+                />
+              </div>
+              <div>
+                <label className="label">{t('admin_users.role')}</label>
+                <select
+                  value={form.role} onChange={e => setForm(f => ({ ...f, role: e.target.value }))}
+                  className="input"
+                >
+                  <option value="member">member</option>
+                  <option value="admin">admin</option>
+                </select>
+              </div>
+            </div>
+
+            {formError && <p className="text-sm text-red-400 mt-3">{formError}</p>}
+
+            <div className="mt-6 flex gap-3">
+              <button onClick={closeModal} className="btn-secondary flex-1">{t('admin_users.cancel')}</button>
+              <button onClick={submitModal} disabled={formLoading} className="btn-primary flex-1">
+                {formLoading ? '…' : modal.mode === 'create' ? t('admin_users.create') : t('admin_users.save')}
+              </button>
+            </div>
           </div>
         </div>
       )}

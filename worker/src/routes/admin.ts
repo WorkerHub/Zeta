@@ -53,8 +53,41 @@ admin.get('/users/:id', async (c) => {
   return c.json({ ...user, permissions: perms.results })
 })
 
+admin.post('/users', async (c) => {
+  const body = await c.req.json<{ name?: string; email?: string; password?: string; role?: string }>().catch(() => null)
+  if (!body?.name?.trim() || !body.email?.trim() || !body.password) {
+    return c.json({ error: 'name, email and password are required' }, 400)
+  }
+  if (!['admin', 'member'].includes(body.role ?? 'member')) {
+    return c.json({ error: 'Invalid role' }, 400)
+  }
+  if (body.password.length < 8) {
+    return c.json({ error: 'Password must be at least 8 characters' }, 400)
+  }
+  const T = tables(c.env)
+  const email = body.email.trim().toLowerCase()
+  const existing = await c.env.DB.prepare(`SELECT id FROM ${T.users} WHERE email = ?1`).bind(email).first()
+  if (existing) return c.json({ error: 'Email already in use' }, 409)
+
+  const id = uuid()
+  const passwordHash = await hashPassword(body.password)
+  await c.env.DB.prepare(
+    `INSERT INTO ${T.users} (id, email, name, role, password_hash, email_verified, created_at, updated_at)
+     VALUES (?1, ?2, ?3, ?4, ?5, 1, ?6, ?6)`
+  ).bind(id, email, body.name.trim(), body.role ?? 'member', passwordHash, now()).run()
+
+  c.executionCtx.waitUntil(audit(c.env, {
+    userId: c.get('userId'), action: 'create_user', resource: id,
+    ip: c.req.header('cf-connecting-ip')
+  }))
+  return c.json({ id }, 201)
+})
+
 admin.patch('/users/:id', async (c) => {
-  const body = await c.req.json<{ role?: string; two_factor_required?: boolean }>().catch(() => null)
+  const body = await c.req.json<{
+    role?: string; two_factor_required?: boolean
+    name?: string; email?: string; password?: string
+  }>().catch(() => null)
   if (!body) return c.json({ error: 'Invalid body' }, 400)
 
   const updates: string[] = []
@@ -69,6 +102,28 @@ admin.patch('/users/:id', async (c) => {
   if (body.two_factor_required !== undefined) {
     updates.push(`two_factor_required = ?${i++}`)
     bindings.push(body.two_factor_required ? 1 : 0)
+  }
+  if (body.name !== undefined) {
+    if (!body.name.trim()) return c.json({ error: 'Name cannot be empty' }, 400)
+    updates.push(`name = ?${i++}`)
+    bindings.push(body.name.trim())
+  }
+  if (body.email !== undefined) {
+    if (!body.email.trim()) return c.json({ error: 'Email cannot be empty' }, 400)
+    const email = body.email.trim().toLowerCase()
+    const T2 = tables(c.env)
+    const conflict = await c.env.DB.prepare(
+      `SELECT id FROM ${T2.users} WHERE email = ?1 AND id != ?2`
+    ).bind(email, c.req.param('id')).first()
+    if (conflict) return c.json({ error: 'Email already in use' }, 409)
+    updates.push(`email = ?${i++}`)
+    bindings.push(email)
+  }
+  if (body.password !== undefined && body.password !== '') {
+    if (body.password.length < 8) return c.json({ error: 'Password must be at least 8 characters' }, 400)
+    const hash = await hashPassword(body.password)
+    updates.push(`password_hash = ?${i++}`)
+    bindings.push(hash)
   }
 
   if (updates.length === 0) return c.json({ error: 'Nothing to update' }, 400)
