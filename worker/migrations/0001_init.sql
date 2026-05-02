@@ -118,5 +118,5 @@ INSERT INTO settings (key, value, updated_at) VALUES
   ('smtp_user', '', unixepoch()),
   ('smtp_pass', '', unixepoch()),
   ('smtp_from', '', unixepoch()),
-  ('app_name', 'D1 Studio', unixepoch()),
+  ('app_name', 'Zeta', unixepoch()),
   ('setup_completed', 'false', unixepoch());
