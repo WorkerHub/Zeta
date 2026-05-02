@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Search, Trash2, ChevronDown, CheckCircle, XCircle } from 'lucide-react'
+import { Search, Trash2, CheckCircle, XCircle } from 'lucide-react'
 import { adminApi } from '../../lib/api'
 import { useAuthContext } from '../../hooks/useAuth'
 import { useLocale } from '../../hooks/useLocale'
@@ -13,6 +13,7 @@ export default function AdminUsers() {
   const [search, setSearch] = useState('')
   const [loading, setLoading] = useState(true)
   const [deleteError, setDeleteError] = useState('')
+  const [pendingDelete, setPendingDelete] = useState<string | null>(null)
   const [page, setPage] = useState(0)
   const limit = 20
 
@@ -34,8 +35,8 @@ export default function AdminUsers() {
     load()
   }
 
-  async function deleteUser(id: string, email: string) {
-    if (!confirm(`Delete user ${email}?`)) return
+  async function deleteUser(id: string) {
+    setPendingDelete(null)
     setDeleteError('')
     try {
       await adminApi.deleteUser(id)
@@ -111,9 +112,23 @@ export default function AdminUsers() {
                 </td>
                 <td className="px-4 py-3 text-right">
                   {u.id !== me?.id && (
-                    <button onClick={() => deleteUser(u.id, u.email)} className="btn-ghost p-1.5 text-red-400 btn-sm">
-                      <Trash2 size={13} />
-                    </button>
+                    pendingDelete === u.id ? (
+                      <div className="flex items-center justify-end gap-1">
+                        <span className="text-xs text-zinc-500 mr-1 hidden sm:inline">{t('admin_users.confirm_delete')}</span>
+                        <button
+                          onClick={() => deleteUser(u.id)}
+                          className="btn-ghost p-1 btn-sm text-xs text-red-400 hover:text-red-300"
+                        >{t('admin_users.confirm')}</button>
+                        <button
+                          onClick={() => setPendingDelete(null)}
+                          className="btn-ghost p-1 btn-sm text-xs text-zinc-500"
+                        >{t('admin_users.cancel')}</button>
+                      </div>
+                    ) : (
+                      <button onClick={() => setPendingDelete(u.id)} className="btn-ghost p-1.5 text-red-400 btn-sm">
+                        <Trash2 size={13} />
+                      </button>
+                    )
                   )}
                 </td>
               </tr>

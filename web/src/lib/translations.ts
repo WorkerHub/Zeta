@@ -147,6 +147,9 @@ const translations: Record<Locale, Record<string, string>> = {
     'admin_users.no_users': 'No users found',
     'admin_users.prev': 'Prev',
     'admin_users.next': 'Next',
+    'admin_users.confirm_delete': 'Delete?',
+    'admin_users.confirm': 'Confirm',
+    'admin_users.cancel': 'Cancel',
 
     // Admin Databases
     'admin_db.add_database': 'Add database',
@@ -348,6 +351,9 @@ const translations: Record<Locale, Record<string, string>> = {
     'admin_users.no_users': '未找到用户',
     'admin_users.prev': '上一页',
     'admin_users.next': '下一页',
+    'admin_users.confirm_delete': '确认删除？',
+    'admin_users.confirm': '确认',
+    'admin_users.cancel': '取消',
 
     // Admin Databases
     'admin_db.add_database': '添加数据库',
