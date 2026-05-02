@@ -9,6 +9,7 @@ import ResetPassword from './pages/ResetPassword'
 import VerifyEmail from './pages/VerifyEmail'
 import QueryPage from './pages/Query'
 import ProfilePage from './pages/Profile'
+import AboutPage from './pages/About'
 import AdminPage from './pages/admin/AdminLayout'
 
 function PrivateRoute({ children }: { children: React.ReactNode }) {
@@ -41,6 +42,7 @@ export default function App() {
           <Route path="/verify-email" element={<VerifyEmail />} />
           <Route path="/query" element={<PrivateRoute><QueryPage /></PrivateRoute>} />
           <Route path="/profile" element={<PrivateRoute><ProfilePage /></PrivateRoute>} />
+          <Route path="/about" element={<PrivateRoute><AboutPage /></PrivateRoute>} />
           <Route path="/admin/*" element={<AdminRoute><AdminPage /></AdminRoute>} />
           <Route path="*" element={<Navigate to="/query" replace />} />
         </Routes>
