@@ -1,5 +1,5 @@
 import { getAccessToken, clearSession, setSession, getCurrentUser } from './auth'
-import type { User, Notebook } from '../types'
+import type { User, Notebook, StatementResult } from '../types'
 
 // ── Base fetch wrapper ─────────────────────────────────────────────────────────
 
@@ -160,6 +160,8 @@ export const queryApi = {
     apiFetch<{ results?: unknown[]; meta?: unknown; duration_ms?: number; error?: string }>(
       '/query', { method: 'POST', body: JSON.stringify(body) }
     ),
+  executeBatch: (body: { databaseId: string; statements: string[] }) =>
+    apiFetch<{ results: StatementResult[] }>('/query/batch', { method: 'POST', body: JSON.stringify(body) }),
   history: (params?: { databaseId?: string; limit?: number; offset?: number }) => {
     const q = new URLSearchParams()
     if (params?.databaseId) q.set('databaseId', params.databaseId)
