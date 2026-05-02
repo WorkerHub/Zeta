@@ -1,12 +1,12 @@
 import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { Database } from 'lucide-react'
+import { Database, Globe } from 'lucide-react'
 import { authApi } from '../lib/api'
 import { useLocale } from '../hooks/useLocale'
 
 export default function Register() {
   const navigate = useNavigate()
-  const { t } = useLocale()
+  const { t, locale, changeLocale } = useLocale()
   const [form, setForm] = useState({ name: '', email: '', password: '' })
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
@@ -33,7 +33,14 @@ export default function Register() {
   })
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-4 bg-zinc-50 dark:bg-zinc-950">
+    <div className="relative min-h-screen flex items-center justify-center p-4 bg-zinc-50 dark:bg-zinc-950">
+      <button
+        onClick={() => changeLocale(locale === 'en' ? 'zh' : 'en')}
+        className="absolute top-4 right-4 btn-ghost p-2"
+        title={t('lang.label')}
+      >
+        <Globe size={16} />
+      </button>
       <div className="w-full max-w-sm">
         <div className="flex items-center justify-center gap-2 mb-8">
           <div className="w-9 h-9 bg-blue-600 rounded-lg flex items-center justify-center">
@@ -56,11 +63,11 @@ export default function Register() {
             <form onSubmit={handleSubmit} className="space-y-4">
               <div>
                 <label className="label">{t('auth.name')}</label>
-                <input type="text" {...field('name')} className="input" placeholder="<PERSON>" required autoFocus />
+                <input type="text" {...field('name')} className="input" placeholder={t('auth.placeholder_name')} required autoFocus />
               </div>
               <div>
                 <label className="label">{t('auth.email')}</label>
-                <input type="email" {...field('email')} className="input" placeholder="<EMAIL_ADDRESS>" required />
+                <input type="email" {...field('email')} className="input" placeholder={t('auth.placeholder_email')} required />
               </div>
               <div>
                 <label className="label">{t('auth.password')}</label>

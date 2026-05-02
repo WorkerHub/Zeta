@@ -38,6 +38,8 @@ const translations: Record<Locale, Record<string, string>> = {
     'auth.registration_success': 'Account created! Check your email to verify your address.',
     'auth.go_to_signin': 'Go to sign in',
     'auth.reset_success': 'Password reset successfully. You can now sign in.',
+    'auth.placeholder_email': 'you@example.com',
+    'auth.placeholder_name': 'Your name',
 
     // 2FA
     '2fa.title': 'Two-factor verification',
@@ -237,6 +239,8 @@ const translations: Record<Locale, Record<string, string>> = {
     'auth.registration_success': '账号已创建！请查看邮箱验证您的地址。',
     'auth.go_to_signin': '前往登录',
     'auth.reset_success': '密码已重置，您现在可以登录了。',
+    'auth.placeholder_email': '请输入邮箱',
+    'auth.placeholder_name': '你的姓名',
 
     // 2FA
     '2fa.title': '两步验证',

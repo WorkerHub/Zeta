@@ -1,11 +1,11 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Database } from 'lucide-react'
+import { Database, Globe } from 'lucide-react'
 import { authApi } from '../lib/api'
 import { useLocale } from '../hooks/useLocale'
 
 export default function ForgotPassword() {
-  const { t } = useLocale()
+  const { t, locale, changeLocale } = useLocale()
   const [email, setEmail] = useState('')
   const [message, setMessage] = useState('')
   const [loading, setLoading] = useState(false)
@@ -24,7 +24,14 @@ export default function ForgotPassword() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-4 bg-zinc-50 dark:bg-zinc-950">
+    <div className="relative min-h-screen flex items-center justify-center p-4 bg-zinc-50 dark:bg-zinc-950">
+      <button
+        onClick={() => changeLocale(locale === 'en' ? 'zh' : 'en')}
+        className="absolute top-4 right-4 btn-ghost p-2"
+        title={t('lang.label')}
+      >
+        <Globe size={16} />
+      </button>
       <div className="w-full max-w-sm">
         <div className="flex items-center justify-center gap-2 mb-8">
           <div className="w-9 h-9 bg-blue-600 rounded-lg flex items-center justify-center">
@@ -48,7 +55,7 @@ export default function ForgotPassword() {
                 <label className="label">{t('auth.email')}</label>
                 <input
                   type="email" value={email} onChange={(e) => setEmail(e.target.value)}
-                  className="input" placeholder="<EMAIL_ADDRESS>" required autoFocus
+                  className="input" placeholder={t('auth.placeholder_email')} required autoFocus
                 />
               </div>
               <button type="submit" className="btn-primary w-full" disabled={loading}>

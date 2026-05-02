@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { Database, Eye, EyeOff } from 'lucide-react'
+import { Database, Eye, EyeOff, Globe } from 'lucide-react'
 import { authApi } from '../lib/api'
 import { useAuthContext } from '../hooks/useAuth'
 import { useLocale } from '../hooks/useLocale'
@@ -10,7 +10,7 @@ import type { User } from '../types'
 export default function Login() {
   const navigate = useNavigate()
   const { login } = useAuthContext()
-  const { t } = useLocale()
+  const { t, locale, changeLocale } = useLocale()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [showPw, setShowPw] = useState(false)
@@ -43,7 +43,14 @@ export default function Login() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-4 bg-zinc-50 dark:bg-zinc-950">
+    <div className="relative min-h-screen flex items-center justify-center p-4 bg-zinc-50 dark:bg-zinc-950">
+      <button
+        onClick={() => changeLocale(locale === 'en' ? 'zh' : 'en')}
+        className="absolute top-4 right-4 btn-ghost p-2"
+        title={t('lang.label')}
+      >
+        <Globe size={16} />
+      </button>
       <div className="w-full max-w-sm">
         {/* Logo */}
         <div className="flex items-center justify-center gap-2 mb-8">
@@ -61,7 +68,7 @@ export default function Login() {
               <label className="label">{t('auth.email')}</label>
               <input
                 type="email" value={email} onChange={(e) => setEmail(e.target.value)}
-                className="input" placeholder="you@example.com" required autoFocus
+                className="input" placeholder={t('auth.placeholder_email')} required autoFocus
               />
             </div>
             <div>
