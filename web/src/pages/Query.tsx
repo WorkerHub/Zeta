@@ -46,6 +46,7 @@ export default function QueryPage() {
   const [renamingId, setRenamingId] = useState<string | null>(null)
   const [renameValue, setRenameValue] = useState('')
   const [selectedSql, setSelectedSql] = useState('')
+  const selectedSqlRef = useRef('')
   const sqlHasMultiple = useMemo(() => splitSqlStatements(sqlText).length > 1, [sqlText])
   const dbMenuRef = useRef<HTMLDivElement>(null)
   const dbMenuDesktopRef = useRef<HTMLDivElement>(null)
@@ -87,7 +88,7 @@ export default function QueryPage() {
   }, [])
 
   const runQuery = useCallback(async () => {
-    const sqlToRun = selectedSql.trim() || sqlText.trim()
+    const sqlToRun = selectedSqlRef.current.trim() || sqlText.trim()
     if (!selectedDb || !sqlToRun) return
 
     const statements = splitSqlStatements(sqlToRun)
@@ -128,7 +129,7 @@ export default function QueryPage() {
     } finally {
       setRunning(false)
     }
-  }, [selectedDb, sqlText, selectedSql])
+  }, [selectedDb, sqlText])
 
   // Ctrl/Cmd+Enter to run
   useEffect(() => {
@@ -148,6 +149,7 @@ export default function QueryPage() {
     setActiveResultIdx(0)
     setRunError('')
     setSelectedSql('')
+    selectedSqlRef.current = ''
   }, [activeId])
 
   // Draggable divider handlers
@@ -389,7 +391,9 @@ export default function QueryPage() {
                 onChange={(val) => { if (activeId) updateContent(activeId, val) }}
                 onUpdate={(update) => {
                   const sel = update.state.selection.main
-                  setSelectedSql(sel.empty ? '' : update.state.sliceDoc(sel.from, sel.to))
+                  const selected = sel.empty ? '' : update.state.sliceDoc(sel.from, sel.to)
+                  selectedSqlRef.current = selected
+                  setSelectedSql(selected)
                 }}
                 theme={isDark ? oneDark : 'light'}
                 extensions={[sql()]}
