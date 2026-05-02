@@ -27,6 +27,14 @@ export interface QueryResult {
   error?: string
 }
 
+export interface StatementResult {
+  sql: string
+  results: Record<string, unknown>[]
+  duration_ms: number
+  changes?: number   // present for INSERT/UPDATE/DELETE
+  error?: string
+}
+
 export interface QueryHistoryItem {
   id: string
   user_id: string
