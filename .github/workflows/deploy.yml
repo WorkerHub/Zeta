@@ -10,6 +10,8 @@ jobs:
     name: Deploy to Cloudflare Workers
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    env:
+      WRANGLER_SEND_METRICS: "false"
 
     steps:
       - name: Checkout
@@ -39,25 +41,44 @@ jobs:
           KV_NAMESPACE_ID: ${{ vars.KV_NAMESPACE_ID }}
           QUERY_DB_1_NAME: ${{ vars.QUERY_DB_1_NAME }}
           QUERY_DB_1_ID: ${{ vars.QUERY_DB_1_ID }}
+          QUERY_DB_2_NAME: ${{ vars.QUERY_DB_2_NAME }}
+          QUERY_DB_2_ID: ${{ vars.QUERY_DB_2_ID }}
+          QUERY_DB_3_NAME: ${{ vars.QUERY_DB_3_NAME }}
+          QUERY_DB_3_ID: ${{ vars.QUERY_DB_3_ID }}
+          QUERY_DB_4_NAME: ${{ vars.QUERY_DB_4_NAME }}
+          QUERY_DB_4_ID: ${{ vars.QUERY_DB_4_ID }}
+          QUERY_DB_5_NAME: ${{ vars.QUERY_DB_5_NAME }}
+          QUERY_DB_5_ID: ${{ vars.QUERY_DB_5_ID }}
+          QUERY_DB_6_NAME: ${{ vars.QUERY_DB_6_NAME }}
+          QUERY_DB_6_ID: ${{ vars.QUERY_DB_6_ID }}
+          QUERY_DB_7_NAME: ${{ vars.QUERY_DB_7_NAME }}
+          QUERY_DB_7_ID: ${{ vars.QUERY_DB_7_ID }}
+          QUERY_DB_8_NAME: ${{ vars.QUERY_DB_8_NAME }}
+          QUERY_DB_8_ID: ${{ vars.QUERY_DB_8_ID }}
+          QUERY_DB_9_NAME: ${{ vars.QUERY_DB_9_NAME }}
+          QUERY_DB_9_ID: ${{ vars.QUERY_DB_9_ID }}
+          QUERY_DB_10_NAME: ${{ vars.QUERY_DB_10_NAME }}
+          QUERY_DB_10_ID: ${{ vars.QUERY_DB_10_ID }}
         run: |
           sed -i "s/CLOUDFLARE_ACCOUNT_ID_PLACEHOLDER/${CLOUDFLARE_ACCOUNT_ID}/" wrangler.toml
           sed -i "s/D1_DATABASE_NAME_PLACEHOLDER/${D1_DATABASE_NAME}/" wrangler.toml
           sed -i "s/D1_DATABASE_ID_PLACEHOLDER/${D1_DATABASE_ID}/" wrangler.toml
           sed -i "s/KV_NAMESPACE_ID_PLACEHOLDER/${KV_NAMESPACE_ID}/" wrangler.toml
-          sed -i "s/QUERY_DB_1_NAME_PLACEHOLDER/${QUERY_DB_1_NAME}/" wrangler.toml
-          sed -i "s/QUERY_DB_1_ID_PLACEHOLDER/${QUERY_DB_1_ID}/" wrangler.toml
-          sed -i "s/QUERY_DB_2_NAME_PLACEHOLDER/${QUERY_DB_2_NAME}/" wrangler.toml
-          sed -i "s/QUERY_DB_2_ID_PLACEHOLDER/${QUERY_DB_2_ID}/" wrangler.toml
-          sed -i "s/QUERY_DB_3_NAME_PLACEHOLDER/${QUERY_DB_3_NAME}/" wrangler.toml
-          sed -i "s/QUERY_DB_3_ID_PLACEHOLDER/${QUERY_DB_3_ID}/" wrangler.toml
-          sed -i "s/QUERY_DB_4_NAME_PLACEHOLDER/${QUERY_DB_4_NAME}/" wrangler.toml
-          sed -i "s/QUERY_DB_4_ID_PLACEHOLDER/${QUERY_DB_4_ID}/" wrangler.toml
-          sed -i "s/QUERY_DB_5_NAME_PLACEHOLDER/${QUERY_DB_5_NAME}/" wrangler.toml
-          sed -i "s/QUERY_DB_5_ID_PLACEHOLDER/${QUERY_DB_5_ID}/" wrangler.toml
-          sed -i "s/QUERY_DB_6_NAME_PLACEHOLDER/${QUERY_DB_6_NAME}/" wrangler.toml
-          sed -i "s/QUERY_DB_6_ID_PLACEHOLDER/${QUERY_DB_6_ID}/" wrangler.toml
-          sed -i "s/QUERY_DB_7_NAME_PLACEHOLDER/${QUERY_DB_7_NAME}/" wrangler.toml
-          sed -i "s/QUERY_DB_7_ID_PLACEHOLDER/${QUERY_DB_7_ID}/" wrangler.toml
+
+          for i in $(seq 1 10); do
+            name_var="QUERY_DB_${i}_NAME"
+            id_var="QUERY_DB_${i}_ID"
+            db_name="${!name_var}"
+            db_id="${!id_var}"
+
+            if [[ -n "$db_name" && -n "$db_id" ]]; then
+              printf '\n[[d1_databases]]\nbinding = "QUERY_DB_%d"\ndatabase_name = "%s"\ndatabase_id   = "%s"\n' \
+                "$i" "$db_name" "$db_id" >> wrangler.toml
+              echo "Appended QUERY_DB_${i}: name=${db_name}"
+            elif [[ -n "$db_name" || -n "$db_id" ]]; then
+              echo "WARNING: QUERY_DB_${i} incomplete — both ${name_var} and ${id_var} must be set. Skipping."
+            fi
+          done
 
       - name: Deploy Worker
         working-directory: worker

@@ -169,22 +169,22 @@ Afterwards:
 
 ## Adding a Queryable D1 Database
 
-D1 databases must be bound to the Worker at deploy time.
+D1 databases are injected into the Worker at deploy time via GitHub Actions Variables — no file editing required.
 
-1. Add a `[[d1_databases]]` entry to `worker/wrangler.toml`:
+1. In your GitHub repo → **Settings → Secrets and variables → Actions → Variables**, add two variables:
 
-   ```toml
-   [[d1_databases]]
-   binding = "QUERY_DB_1"
-   database_name = "my-app-db"
-   database_id   = "xxxx-xxxx-xxxx"
-   ```
+   | Name | Value |
+   |------|-------|
+   | `QUERY_DB_N_NAME` | The D1 database name (e.g. `my-app-db`) |
+   | `QUERY_DB_N_ID` | The D1 database ID (UUID from the Cloudflare dashboard) |
 
-2. Push to `main` — the Actions workflow will redeploy automatically.
+   Replace `N` with a number from 1 to 10 (e.g. `QUERY_DB_1_NAME`, `QUERY_DB_1_ID`). Numbers don't need to be consecutive.
 
-3. In the Admin Panel → **Databases**, click **Add database** and enter the binding name (`QUERY_DB_1`).
+2. Push to `main` (or trigger **workflow_dispatch**) — the Actions workflow will automatically append a `[[d1_databases]]` binding for every `QUERY_DB_N` pair that is set.
 
-4. In **Databases → Permissions**, grant access to users.
+3. In **Admin → Databases**, click **Add database** and enter the binding name (e.g. `QUERY_DB_1`).
+
+4. In **Databases → Permissions**, grant users `read` or `write` access.
 
 ---
 
@@ -230,6 +230,8 @@ Then open `http://localhost:5173` in your browser.
 | `D1_DATABASE_NAME` | Variable | D1 database name (e.g. `zeta-db`) |
 | `D1_DATABASE_ID` | Variable | D1 database ID |
 | `KV_NAMESPACE_ID` | Variable | KV namespace ID |
+| `QUERY_DB_N_NAME` | Variable | Query database name for slot N (1–10), e.g. `QUERY_DB_1_NAME` |
+| `QUERY_DB_N_ID` | Variable | Query database ID for slot N (1–10), e.g. `QUERY_DB_1_ID` |
 
 ### Cloudflare Dashboard (set manually)
 

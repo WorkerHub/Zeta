@@ -169,20 +169,20 @@ https://<你的域名>/api/setup/<SETUP_SECRET>
 
 ## 接入更多 D1 数据库
 
-D1 数据库必须在部署时绑定到 Worker，操作步骤如下：
+D1 数据库通过 GitHub Actions Variables 在部署时自动注入 Worker，**无需修改任何文件**。
 
-1. 在 `worker/wrangler.toml` 中添加一个 `[[d1_databases]]` 条目：
+1. 在 GitHub 仓库 → **Settings → Secrets and variables → Actions → Variables** 中添加两个变量：
 
-   ```toml
-   [[d1_databases]]
-   binding = "QUERY_DB_1"
-   database_name = "my-app-db"
-   database_id   = "xxxx-xxxx-xxxx"
-   ```
+   | 名称 | 值 |
+   |------|----|
+   | `QUERY_DB_N_NAME` | D1 数据库名称（例如 `my-app-db`） |
+   | `QUERY_DB_N_ID` | D1 数据库 ID（Cloudflare 控制台中的 UUID） |
 
-2. 推送到 `main` — Actions 工作流会自动重新部署。
+   将 `N` 替换为 1 到 10 之间的数字（例如 `QUERY_DB_1_NAME`、`QUERY_DB_1_ID`），编号无需连续。
 
-3. 在 **管理后台 → 数据库** 中点击**添加数据库**，输入绑定名称（`QUERY_DB_1`）。
+2. 推送到 `main`（或手动触发 **workflow_dispatch**）— Actions 工作流会自动为所有已配置的 `QUERY_DB_N` 变量对追加对应的 `[[d1_databases]]` 绑定。
+
+3. 在**管理后台 → 数据库**中点击**添加数据库**，输入绑定名称（例如 `QUERY_DB_1`）。
 
 4. 在**数据库 → 权限**中为需要访问的用户分配权限（只读 / 读写）。
 
@@ -230,6 +230,8 @@ http://localhost:8787/api/setup/dev-setup-secret
 | `D1_DATABASE_NAME` | Variable | D1 数据库名称（例如 `zeta-db`） |
 | `D1_DATABASE_ID` | Variable | D1 数据库 ID |
 | `KV_NAMESPACE_ID` | Variable | KV 命名空间 ID |
+| `QUERY_DB_N_NAME` | Variable | 第 N 个查询数据库的名称（N 为 1–10），例如 `QUERY_DB_1_NAME` |
+| `QUERY_DB_N_ID` | Variable | 第 N 个查询数据库的 ID（N 为 1–10），例如 `QUERY_DB_1_ID` |
 
 ### Cloudflare 控制台（手动配置）
 
