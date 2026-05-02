@@ -1,6 +1,6 @@
 # Zeta
 
-> **English documentation:** [README.md](./README.md)
+> [**中文文档**](./README_zh-CN.md) | [**English**](./README.md)
 
 自托管的 [Cloudflare D1](https://developers.cloudflare.com/d1/) 数据库 SQL 查询界面。完全运行在 Cloudflare 平台上，无需管理任何服务器。
 
@@ -280,4 +280,4 @@ http://localhost:8787/api/setup/dev-setup-secret
 
 ## 许可证
 
-MIT
+[MIT](LICENSE)

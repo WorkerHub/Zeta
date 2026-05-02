@@ -1,6 +1,6 @@
 # Zeta
 
-> **中文文档：** [README_zh-CN.md](./README_zh-CN.md)
+> [**中文文档**](./README_zh-CN.md) | [**English**](./README.md)
 
 A self-hosted SQL query interface for [Cloudflare D1](https://developers.cloudflare.com/d1/) databases. Runs entirely on Cloudflare — no servers to manage.
 
@@ -280,4 +280,4 @@ All endpoints live under `/api/`. Authentication uses short-lived JWT access tok
 
 ## License
 
-MIT
+[MIT](LICENSE)
