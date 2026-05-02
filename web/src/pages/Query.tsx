@@ -3,6 +3,8 @@ import { Link } from 'react-router-dom'
 import CodeMirror from '@uiw/react-codemirror'
 import { sql } from '@codemirror/lang-sql'
 import { oneDark } from '@codemirror/theme-one-dark'
+import { keymap } from '@codemirror/view'
+import { Prec } from '@codemirror/state'
 import {
   Database, Play, ChevronDown, LogOut,
   User as UserIcon, History, AlertCircle, Loader2,
@@ -131,17 +133,25 @@ export default function QueryPage() {
     }
   }, [selectedDb, sqlText])
 
-  // Ctrl/Cmd+Enter to run
-  useEffect(() => {
-    function handleKey(e: KeyboardEvent) {
-      if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
-        e.preventDefault()
-        runQuery()
-      }
-    }
-    window.addEventListener('keydown', handleKey)
-    return () => window.removeEventListener('keydown', handleKey)
-  }, [runQuery])
+  // Cmd/Ctrl+Enter: override CodeMirror's default Mod-Enter (insertBlankLine)
+  // so we can read the selection directly from view state before it gets cleared.
+  const runQueryRef = useRef(runQuery)
+  useEffect(() => { runQueryRef.current = runQuery }, [runQuery])
+
+  const runShortcutExtension = useMemo(() =>
+    Prec.highest(keymap.of([{
+      key: 'Mod-Enter',
+      run: (view) => {
+        const sel = view.state.selection.main
+        const selected = sel.empty ? '' : view.state.sliceDoc(sel.from, sel.to)
+        selectedSqlRef.current = selected
+        setSelectedSql(selected)
+        runQueryRef.current()
+        return true
+      },
+    }])),
+    []
+  )
 
   // Clear stale results and selection when switching tabs
   useEffect(() => {
@@ -396,7 +406,7 @@ export default function QueryPage() {
                   setSelectedSql(selected)
                 }}
                 theme={isDark ? oneDark : 'light'}
-                extensions={[sql()]}
+                extensions={[sql(), runShortcutExtension]}
                 height="100%"
                 style={{ height: '100%', fontSize: 13, fontFamily: 'JetBrains Mono, monospace' }}
                 basicSetup={{ lineNumbers: true, foldGutter: false, autocompletion: true }}
