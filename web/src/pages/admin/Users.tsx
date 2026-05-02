@@ -12,6 +12,7 @@ export default function AdminUsers() {
   const [total, setTotal] = useState(0)
   const [search, setSearch] = useState('')
   const [loading, setLoading] = useState(true)
+  const [deleteError, setDeleteError] = useState('')
   const [page, setPage] = useState(0)
   const limit = 20
 
@@ -35,8 +36,13 @@ export default function AdminUsers() {
 
   async function deleteUser(id: string, email: string) {
     if (!confirm(`Delete user ${email}?`)) return
-    await adminApi.deleteUser(id)
-    load()
+    setDeleteError('')
+    try {
+      await adminApi.deleteUser(id)
+      load()
+    } catch (err) {
+      setDeleteError(err instanceof Error ? err.message : 'Failed to delete user')
+    }
   }
 
   return (
@@ -45,6 +51,10 @@ export default function AdminUsers() {
         <h1 className="text-lg font-semibold text-zinc-900 dark:text-zinc-100">{t('admin.users')}</h1>
         <span className="badge badge-zinc">{total} {t('admin_users.total')}</span>
       </div>
+
+      {deleteError && (
+        <p className="mb-3 text-sm text-red-400">{deleteError}</p>
+      )}
 
       {/* Search */}
       <div className="relative mb-4">

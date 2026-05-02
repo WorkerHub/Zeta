@@ -89,6 +89,11 @@ admin.delete('/users/:id', async (c) => {
   const id = c.req.param('id')
   if (id === c.get('userId')) return c.json({ error: 'Cannot delete yourself' }, 400)
   const T = tables(c.env)
+  // Clear FK references that have no ON DELETE CASCADE/SET NULL
+  await c.env.DB.prepare(`DELETE FROM ${T.query_history} WHERE user_id = ?1`).bind(id).run()
+  await c.env.DB.prepare(`UPDATE ${T.audit_logs} SET user_id = NULL WHERE user_id = ?1`).bind(id).run()
+  await c.env.DB.prepare(`UPDATE ${T.d1_databases} SET created_by = NULL WHERE created_by = ?1`).bind(id).run()
+  await c.env.DB.prepare(`UPDATE ${T.user_database_permissions} SET granted_by = NULL WHERE granted_by = ?1`).bind(id).run()
   await c.env.DB.prepare(`DELETE FROM ${T.users} WHERE id = ?1`).bind(id).run()
   c.executionCtx.waitUntil(audit(c.env, {
     userId: c.get('userId'), action: 'delete_user', resource: id,
