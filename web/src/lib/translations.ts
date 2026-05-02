@@ -84,7 +84,22 @@ const translations: Record<Locale, Record<string, string>> = {
     // User menu
     'user.profile_security': 'Profile & Security',
     'user.admin_panel': 'Admin Panel',
+    'user.about': 'About',
     'user.sign_out': 'Sign out',
+
+    // About modal
+    'about.description': 'A self-hosted SQL query interface for Cloudflare D1 databases. Runs entirely on Cloudflare — no servers to manage.',
+    'about.features': 'Features',
+    'about.tech_stack': 'Tech Stack',
+    'about.feature_1': 'SQL Notebooks — multiple named tabs, auto-saved, each bound to a database',
+    'about.feature_2': 'SQL Editor — syntax highlighting, Cmd+Enter, partial selection execution',
+    'about.feature_3': 'Multi-statement execution — run all statements, results in vertical tabs',
+    'about.feature_4': 'Query History — last 50 queries per database, click to re-run',
+    'about.feature_5': 'Multi-database — connect multiple D1 databases with per-user read/write access',
+    'about.feature_6': 'Auth — email/password, email verification, TOTP / Email OTP / Passkey (WebAuthn) 2FA',
+    'about.feature_7': 'Admin Panel — manage users, databases, permissions, and app settings',
+    'about.feature_8': 'i18n — English and Chinese (Simplified)',
+    'about.feature_9': 'Dark / Light / Auto theme',
 
     // Profile
     'profile.title': 'Profile & Security',
@@ -268,7 +283,22 @@ const translations: Record<Locale, Record<string, string>> = {
     // User menu
     'user.profile_security': '个人资料与安全',
     'user.admin_panel': '管理面板',
+    'user.about': '关于',
     'user.sign_out': '退出登录',
+
+    // About modal
+    'about.description': '面向 Cloudflare D1 数据库的自托管 SQL 查询界面，完全运行在 Cloudflare 上，无需管理服务器。',
+    'about.features': '功能特性',
+    'about.tech_stack': '技术栈',
+    'about.feature_1': 'SQL 笔记本 — 多个命名标签页，自动保存，每个独立绑定一个数据库',
+    'about.feature_2': 'SQL 编辑器 — 语法高亮，Cmd+Enter 运行，支持选中部分执行',
+    'about.feature_3': '多语句执行 — 一次运行所有语句，结果以纵向标签页展示',
+    'about.feature_4': '查询历史 — 每个数据库最近 50 条记录，点击可重新运行',
+    'about.feature_5': '多数据库 — 连接多个 D1 数据库，支持按用户设置读写权限',
+    'about.feature_6': '身份认证 — 邮箱密码、邮件验证、TOTP / 邮件 OTP / Passkey（WebAuthn）双因素认证',
+    'about.feature_7': '管理面板 — 管理用户、数据库连接、权限及应用设置',
+    'about.feature_8': '国际化 — 支持英文和简体中文',
+    'about.feature_9': '深色 / 浅色 / 自动主题',
 
     // Profile
     'profile.title': '个人资料与安全',

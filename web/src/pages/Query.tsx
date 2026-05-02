@@ -6,7 +6,7 @@ import { oneDark } from '@codemirror/theme-one-dark'
 import {
   Database, Play, ChevronDown, LogOut,
   User as UserIcon, History, AlertCircle, Loader2,
-  Shield, Monitor, Sun, Moon, X, Globe, Plus
+  Shield, Monitor, Sun, Moon, X, Globe, Plus, Info
 } from 'lucide-react'
 import { databasesApi, queryApi, ApiError } from '../lib/api'
 import { useAuthContext } from '../hooks/useAuth'
@@ -15,6 +15,7 @@ import { useLocale } from '../hooks/useLocale'
 import { useNotebooks } from '../hooks/useNotebooks'
 import ResultsPanel from '../components/ResultsPanel'
 import QueryHistoryPanel from '../components/QueryHistoryPanel'
+import AboutModal from '../components/AboutModal'
 import { splitSqlStatements } from '../lib/sql'
 import type { Database as DbType, StatementResult } from '../types'
 
@@ -43,6 +44,7 @@ export default function QueryPage() {
   const [showHistory, setShowHistory] = useState(false)
   const [showDbMenu, setShowDbMenu] = useState(false)
   const [showUserMenu, setShowUserMenu] = useState(false)
+  const [showAbout, setShowAbout] = useState(false)
   const [renamingId, setRenamingId] = useState<string | null>(null)
   const [renameValue, setRenameValue] = useState('')
   const [selectedSql, setSelectedSql] = useState('')
@@ -279,6 +281,10 @@ export default function QueryPage() {
                   <Shield size={14} /> {t('user.admin_panel')}
                 </Link>
               )}
+              <button onClick={() => { setShowAbout(true); setShowUserMenu(false) }}
+                className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-zinc-600 hover:bg-zinc-50 hover:text-zinc-900 dark:text-zinc-300 dark:hover:bg-zinc-800 dark:hover:text-zinc-100 transition-colors">
+                <Info size={14} /> {t('user.about')}
+              </button>
               <button onClick={logout}
                 className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-red-400 hover:bg-zinc-50 dark:hover:bg-zinc-800 transition-colors border-t border-zinc-100 dark:border-zinc-800">
                 <LogOut size={14} /> {t('user.sign_out')}
@@ -517,6 +523,7 @@ export default function QueryPage() {
           </div>
         </div>
       )}
+      {showAbout && <AboutModal onClose={() => setShowAbout(false)} />}
     </div>
   )
 }
