@@ -1,0 +1,126 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: 'Inter', ui-sans-serif, system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, monospace;
+}
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+@layer base {
+  * {
+    box-sizing: border-box;
+  }
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    @apply bg-zinc-300 rounded-full dark:bg-zinc-700;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    @apply bg-zinc-400 dark:bg-zinc-600;
+  }
+}
+
+/* CodeMirror light mode: override default gray foreground with near-black */
+:root:not(.dark) .cm-editor .cm-content,
+:root:not(.dark) .cm-editor .cm-line {
+  color: #18181b;
+}
+:root:not(.dark) .cm-editor .cm-gutters {
+  background-color: #fafafa;
+  color: #a1a1aa;
+  border-right: 1px solid #e4e4e7;
+}
+:root:not(.dark) .cm-editor .cm-activeLineGutter {
+  background-color: #f4f4f5;
+}
+
+@layer components {
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 px-4 py-2 rounded-lg font-medium text-sm transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-white dark:focus-visible:ring-offset-zinc-950 disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+  .btn-primary {
+    @apply inline-flex items-center justify-center gap-2 px-4 py-2 rounded-lg font-medium text-sm transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-white dark:focus-visible:ring-offset-zinc-950 disabled:opacity-50 disabled:cursor-not-allowed bg-blue-600 hover:bg-blue-500 text-white focus-visible:ring-blue-500;
+  }
+  .btn-secondary {
+    @apply inline-flex items-center justify-center gap-2 px-4 py-2 rounded-lg font-medium text-sm transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-white dark:focus-visible:ring-offset-zinc-950 disabled:opacity-50 disabled:cursor-not-allowed bg-zinc-100 hover:bg-zinc-200 text-zinc-800 border border-zinc-200 focus-visible:ring-zinc-400 dark:bg-zinc-800 dark:hover:bg-zinc-700 dark:text-zinc-200 dark:border-zinc-700 dark:focus-visible:ring-zinc-500;
+  }
+  .btn-danger {
+    @apply inline-flex items-center justify-center gap-2 px-4 py-2 rounded-lg font-medium text-sm transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-white dark:focus-visible:ring-offset-zinc-950 disabled:opacity-50 disabled:cursor-not-allowed bg-red-600 hover:bg-red-500 text-white focus-visible:ring-red-500;
+  }
+  .btn-ghost {
+    @apply inline-flex items-center justify-center gap-2 px-4 py-2 rounded-lg font-medium text-sm transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-white dark:focus-visible:ring-offset-zinc-950 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-zinc-100 text-zinc-600 hover:text-zinc-900 focus-visible:ring-zinc-400 dark:hover:bg-zinc-800 dark:text-zinc-400 dark:hover:text-zinc-100 dark:focus-visible:ring-zinc-500;
+  }
+  .btn-sm {
+    @apply px-3 py-1.5 text-xs;
+  }
+  .input {
+    @apply w-full px-3 py-2 rounded-lg bg-zinc-50 border border-zinc-300 text-zinc-900 placeholder:text-zinc-400 text-sm focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-colors dark:bg-zinc-900 dark:border-zinc-700 dark:text-zinc-100 dark:placeholder:text-zinc-500;
+  }
+  .label {
+    @apply block text-sm font-medium text-zinc-600 mb-1.5 dark:text-zinc-400;
+  }
+  .card {
+    @apply bg-white border border-zinc-200 rounded-xl dark:bg-zinc-900 dark:border-zinc-800;
+  }
+  .badge {
+    @apply inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium;
+  }
+  .badge-blue {
+    @apply inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-blue-500/10 text-blue-600 border border-blue-500/20 dark:text-blue-400;
+  }
+  .badge-green {
+    @apply inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-emerald-500/10 text-emerald-600 border border-emerald-500/20 dark:text-emerald-400;
+  }
+  .badge-yellow {
+    @apply inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-amber-500/10 text-amber-600 border border-amber-500/20 dark:text-amber-400;
+  }
+  .badge-red {
+    @apply inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-red-500/10 text-red-600 border border-red-500/20 dark:text-red-400;
+  }
+  .badge-zinc {
+    @apply inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-zinc-200 text-zinc-600 dark:bg-zinc-700 dark:text-zinc-400;
+  }
+
+  /* iOS-style skeuomorphic toggle switch */
+  .toggle-track {
+    @apply relative inline-flex shrink-0 w-11 h-6 rounded-full;
+    appearance: none;
+    border: none;
+    padding: 0;
+    margin: 0;
+    background: #d1d5db;
+    cursor: pointer;
+    transition: background 0.2s, box-shadow 0.2s;
+    box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.15), inset 0 0 1px rgba(0, 0, 0, 0.1);
+  }
+  .toggle-track[aria-checked="true"] {
+    background: #2563eb;
+    box-shadow: inset 0 1px 3px rgba(37, 99, 235, 0.3), inset 0 0 1px rgba(0, 0, 0, 0.1);
+  }
+  :where(.dark) .toggle-track {
+    background: #3f3f46;
+    box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.4), inset 0 0 1px rgba(0, 0, 0, 0.2);
+  }
+  :where(.dark) .toggle-track[aria-checked="true"] {
+    background: #2563eb;
+    box-shadow: inset 0 1px 3px rgba(37, 99, 235, 0.3), inset 0 0 1px rgba(0, 0, 0, 0.1);
+  }
+  .toggle-thumb {
+    @apply absolute top-0.5 w-5 h-5 rounded-full;
+    background: white;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25), 0 0 0 0.5px rgba(0, 0, 0, 0.08);
+    transition: transform 0.2s;
+  }
+  .toggle-track[aria-checked="true"] .toggle-thumb {
+    transform: translateX(1.25rem);
+  }
+  .toggle-track[aria-checked="false"] .toggle-thumb {
+    transform: translateX(0.125rem);
+  }
+}

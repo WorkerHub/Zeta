@@ -1,0 +1,285 @@
+# Zeta
+
+> [**中文文档**](./README_zh-CN.md) | [**English**](./README.md)
+
+A self-hosted SQL query interface for [Cloudflare D1](https://developers.cloudflare.com/d1/) databases. Runs entirely on Cloudflare — no servers to manage.
+
+**Version 1.0.0**
+
+![Stack](https://img.shields.io/badge/Cloudflare-Workers-orange?logo=cloudflare) ![Stack](https://img.shields.io/badge/Hono-v4-blue) ![Stack](https://img.shields.io/badge/React-19-61dafb?logo=react) ![Stack](https://img.shields.io/badge/TypeScript-5-blue?logo=typescript)
+
+---
+
+## Features
+
+- **SQL Notebooks** — Multiple named SQL editor tabs per user, auto-saved, each independently bound to a database; supports rename, reorder, and up to 20 notebooks per user
+- **SQL Editor** — Full SQL input with syntax highlighting (CodeMirror 6), Ctrl/Cmd+Enter to run, partial selection execution, execution time and row count display
+- **Query History** — Last 50 queries per database, click to re-run
+- **Multi-database** — Connect multiple D1 databases; grant per-user `read` or `write` access per database
+- **Auth** — Email + password login, email verification, password reset, optional TOTP / Email OTP / Passkey (WebAuthn) two-factor authentication
+- **Admin Panel** — Manage users, database connections, permissions, and email/app settings
+- **i18n** — Built-in English and Chinese (Simplified) interface
+- **Dark / Light / Auto theme** — Follows system preference by default
+- **100% Cloudflare** — Workers + D1 + KV + Workers Assets; the only external dependency is an email provider (Resend or SMTP)
+
+---
+
+## Architecture
+
+```
+┌─────────────────────────────────┐
+│  Cloudflare Worker (Hono.js)    │
+│  ┌────────────┐  ┌────────────┐ │
+│  │  /api/*    │  │  SPA       │ │
+│  │  REST API  │  │  (Assets)  │ │
+│  └─────┬──────┘  └────────────┘ │
+│        │                        │
+│  ┌─────▼──────┐  ┌────────────┐ │
+│  │  D1 (app)  │  │  KV        │ │
+│  │  + D1 DBs  │  │  (sessions)│ │
+│  └────────────┘  └────────────┘ │
+└─────────────────────────────────┘
+```
+
+| Layer | Technology |
+|-------|-----------|
+| Runtime | Cloudflare Workers |
+| API framework | Hono.js v4 |
+| App database | D1 (SQLite) — users, notebooks, settings, history |
+| Query targets | Additional D1 bindings |
+| Sessions / 2FA state | Cloudflare KV |
+| Frontend | React 19 + Vite + Tailwind CSS v4 |
+
+---
+
+## Deployment via GitHub Actions
+
+Deployment runs automatically on every push to `main`. No local tooling required beyond a browser.
+
+### Step 1 — Create Cloudflare resources
+
+Go to the [Cloudflare dashboard](https://dash.cloudflare.com) and create:
+
+**D1 database** (Workers & Pages → D1 → Create database)
+- Name: `zeta-db` (or any name you like)
+- Note the **Database ID** shown after creation
+
+**KV namespace** (Workers & Pages → KV → Create namespace)
+- Name: `ZETA_KV`
+- Note the **Namespace ID**
+
+**API token** (My Profile → API Tokens → Create Token)
+- Use the **Edit Cloudflare Workers** template
+- Note the token value — it is shown only once
+
+Also note your **Account ID** (right sidebar on the dashboard home).
+
+---
+
+### Step 2 — Configure GitHub repository
+
+In your GitHub repo → **Settings → Secrets and variables → Actions**:
+
+**Secrets** (encrypted, for sensitive values):
+
+| Name | Value |
+|------|-------|
+| `CLOUDFLARE_API_TOKEN` | The API token from Step 1 |
+
+**Variables** (plain-text, for non-sensitive IDs):
+
+| Name | Value |
+|------|-------|
+| `CLOUDFLARE_ACCOUNT_ID` | Your Cloudflare Account ID |
+| `D1_DATABASE_NAME` | e.g. `zeta-db` |
+| `D1_DATABASE_ID` | The D1 Database ID from Step 1 |
+| `KV_NAMESPACE_ID` | The KV Namespace ID from Step 1 |
+
+---
+
+### Step 3 — Configure Cloudflare Worker secrets & variables
+
+These values are sensitive or deployment-specific and are set **directly in the Cloudflare dashboard**, not in GitHub.
+
+Go to **Workers & Pages → zeta → Settings → Variables and Secrets**:
+
+**Secrets** (type: Secret):
+
+| Name | How to generate |
+|------|----------------|
+| `JWT_SECRET` | Any random 64-char string — e.g. `openssl rand -hex 32` |
+| `ENCRYPTION_KEY` | 64-char hex (32 bytes) — e.g. `openssl rand -hex 32` |
+| `SETUP_SECRET` | Any random string — e.g. `openssl rand -hex 16` |
+
+**Variables** (type: Text):
+
+| Name | Value |
+|------|-------|
+| `APP_URL` | Your Worker URL, e.g. `https://zeta.yourname.workers.dev` or your custom domain |
+| `TABLE_PREFIX` | *(Optional)* Prefix for all internal D1 tables, e.g. `kp` → tables become `kp_users`, `kp_settings`, etc. Must be set **before** visiting the setup URL. Cannot be changed after initialisation. |
+
+> These are kept out of GitHub entirely. The `keep_vars = true` setting in `wrangler.toml` ensures each deployment never overwrites values you set here.
+
+---
+
+### Step 4 — Push to deploy
+
+```bash
+git push origin main
+```
+
+The [GitHub Actions workflow](.github/workflows/deploy.yml) will:
+1. Install dependencies
+2. Build the React SPA
+3. Patch `wrangler.toml` with the IDs from GitHub Variables
+4. Run `wrangler deploy`
+
+Watch progress under the **Actions** tab in your repository.
+
+---
+
+### Step 5 — Initialise the database
+
+After the first successful deployment, visit this URL **once**:
+
+```
+https://<your-domain>/api/setup/<SETUP_SECRET>
+```
+
+Expected response:
+
+```json
+{ "ok": true, "message": "Database initialised successfully. You can now register at /register — the first user becomes admin." }
+```
+
+> The endpoint is idempotent — safe to call multiple times.
+
+---
+
+### Step 6 — Create the admin account
+
+Visit `https://<your-domain>/register`. The **first registered user automatically becomes admin**.
+
+Afterwards:
+- Disable registration in **Admin → Settings** if you want to prevent others from signing up
+- Add queryable D1 databases in **Admin → Databases**
+- Grant users access in **Admin → Databases → Permissions**
+
+---
+
+## Adding a Queryable D1 Database
+
+D1 databases are injected into the Worker at deploy time via GitHub Actions Variables — no file editing required.
+
+1. In your GitHub repo → **Settings → Secrets and variables → Actions → Variables**, add two variables:
+
+   | Name | Value |
+   |------|-------|
+   | `QUERY_DB_N_NAME` | The D1 database name (e.g. `my-app-db`) |
+   | `QUERY_DB_N_ID` | The D1 database ID (UUID from the Cloudflare dashboard) |
+
+   Replace `N` with a number from 1 to 10 (e.g. `QUERY_DB_1_NAME`, `QUERY_DB_1_ID`). Numbers don't need to be consecutive.
+
+2. Push to `main` (or trigger **workflow_dispatch**) — the Actions workflow will automatically append a `[[d1_databases]]` binding for every `QUERY_DB_N` pair that is set.
+
+3. In **Admin → Databases**, click **Add database** and enter the binding name (e.g. `QUERY_DB_1`).
+
+4. In **Databases → Permissions**, grant users `read` or `write` access.
+
+---
+
+## Local Development
+
+Run the Worker and web dev server concurrently in two terminals:
+
+```bash
+# Terminal 1 – Worker (port 8787)
+cd worker && pnpm dev
+
+# Terminal 2 – Vite (port 5173, proxies /api → 8787)
+cd web && pnpm dev
+```
+
+Create `worker/.dev.vars` for local secrets:
+
+```ini
+JWT_SECRET=dev-jwt-secret
+ENCRYPTION_KEY=0000000000000000000000000000000000000000000000000000000000000001
+SETUP_SECRET=dev-setup-secret
+APP_URL=http://localhost:8787
+```
+
+Initialise the local database by visiting:
+
+```
+http://localhost:8787/api/setup/dev-setup-secret
+```
+
+Then open `http://localhost:5173` in your browser.
+
+---
+
+## Configuration Reference
+
+### GitHub Secrets & Variables
+
+| Name | Where | Description |
+|------|-------|-------------|
+| `CLOUDFLARE_API_TOKEN` | Secret | Wrangler deploy authentication |
+| `CLOUDFLARE_ACCOUNT_ID` | Variable | Cloudflare account ID |
+| `D1_DATABASE_NAME` | Variable | D1 database name (e.g. `zeta-db`) |
+| `D1_DATABASE_ID` | Variable | D1 database ID |
+| `KV_NAMESPACE_ID` | Variable | KV namespace ID |
+| `QUERY_DB_N_NAME` | Variable | Query database name for slot N (1–10), e.g. `QUERY_DB_1_NAME` |
+| `QUERY_DB_N_ID` | Variable | Query database ID for slot N (1–10), e.g. `QUERY_DB_1_ID` |
+
+### Cloudflare Dashboard (set manually)
+
+| Name | Type | Description |
+|------|------|-------------|
+| `JWT_SECRET` | Secret | Signs access + refresh JWTs (HS256) |
+| `ENCRYPTION_KEY` | Secret | 64-char hex — AES-GCM key for TOTP secrets |
+| `SETUP_SECRET` | Secret | Protects `GET /api/setup/:secret` |
+| `APP_URL` | Variable | Full URL of your deployment |
+| `TABLE_PREFIX` | Variable | *(Optional)* Prefix for internal tables (e.g. `kp`). Set before first setup run. Immutable after initialisation. |
+
+---
+
+## API Overview
+
+All endpoints live under `/api/`. Authentication uses short-lived JWT access tokens (Authorization header) plus an HttpOnly refresh-token cookie.
+
+| Prefix | Description |
+|--------|-------------|
+| `POST /api/auth/*` | Register, login, logout, token refresh, email verification, password reset, 2FA (TOTP / Email OTP / Passkey) |
+| `GET/PATCH /api/profile/*` | Profile, password change, TOTP setup/confirm/delete, passkey registration/delete |
+| `GET /api/databases` | List accessible databases for the current user |
+| `POST /api/query` | Execute SQL against a bound D1 database |
+| `GET /api/query/history` | Query execution history (filterable by database) |
+| `GET/POST/PATCH/DELETE /api/notebooks` | CRUD for SQL notebooks (per-user, max 20) |
+| `GET/POST/PATCH/DELETE /api/admin/*` | Admin-only: users, databases, permissions, settings |
+| `GET /api/setup/:secret` | Idempotent schema initialisation |
+| `GET /api/health` | Health check |
+
+---
+
+## Tech Stack
+
+| | |
+|---|---|
+| **Runtime** | Cloudflare Workers |
+| **API** | [Hono](https://hono.dev) v4 |
+| **Database** | [Cloudflare D1](https://developers.cloudflare.com/d1/) (SQLite) |
+| **KV** | [Cloudflare KV](https://developers.cloudflare.com/kv/) |
+| **Frontend** | React 19, Vite, Tailwind CSS v4 |
+| **SQL Editor** | CodeMirror 6 + `@codemirror/lang-sql` |
+| **Auth** | PBKDF2-SHA256 passwords, HS256 JWTs, WebAuthn passkeys |
+| **2FA** | TOTP (otpauth), Email OTP, Passkey |
+| **Email** | [Resend](https://resend.com) or custom SMTP |
+| **Deploy** | `wrangler deploy` via GitHub Actions |
+
+---
+
+## License
+
+[MIT](LICENSE)
