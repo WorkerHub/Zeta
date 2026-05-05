@@ -18,7 +18,7 @@ export interface Database {
   id: string
   name: string
   description: string | null
-  binding_name: string
+  binding_name?: string
   permission: DbPermission
 }
 

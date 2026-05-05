@@ -18,9 +18,16 @@ export function useNotebooks() {
     notebooksRef.current = notebooks
   }, [notebooks])
 
-  // Clear all pending debounce timers on unmount
+  // Flush all pending debounce saves on unmount
   useEffect(() => {
-    return () => { debounceTimers.current.forEach(clearTimeout) }
+    return () => {
+      debounceTimers.current.forEach((timer, id) => {
+        clearTimeout(timer)
+        const nb = notebooksRef.current.find(n => n.id === id)
+        if (nb) notebooksApi.update(id, { sql_content: nb.sql_content }).catch(() => {})
+      })
+      debounceTimers.current.clear()
+    }
   }, [])
 
   useEffect(() => {
@@ -76,12 +83,12 @@ export function useNotebooks() {
 
   const renameNotebook = useCallback(async (id: string, name: string) => {
     const trimmed = name.trim() || 'Untitled'
-    const prev = notebooksRef.current.find(n => n.id === id)?.name ?? null
-    setNotebooks(prev => prev.map(n => n.id === id ? { ...n, name: trimmed } : n))
+    const prevName = notebooksRef.current.find(n => n.id === id)?.name ?? null
+    setNotebooks(p => p.map(n => n.id === id ? { ...n, name: trimmed } : n))
     try {
       await notebooksApi.update(id, { name: trimmed })
     } catch {
-      if (prev !== null) setNotebooks(p => p.map(n => n.id === id ? { ...n, name: prev } : n))
+      if (prevName !== null) setNotebooks(p => p.map(n => n.id === id ? { ...n, name: prevName } : n))
     }
   }, [])
 

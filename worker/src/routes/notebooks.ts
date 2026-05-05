@@ -8,6 +8,7 @@ const notebooks = new Hono<{ Bindings: Env; Variables: Variables }>()
 notebooks.use('*', requireAuth)
 
 const MAX_NOTEBOOKS = 20
+const MAX_CONTENT_SIZE = 512 * 1024
 
 // GET /api/notebooks
 notebooks.get('/', async (c) => {
@@ -83,6 +84,9 @@ notebooks.patch('/:id', async (c) => {
     idx++
   }
   if (body.sql_content !== undefined) {
+    if (body.sql_content.length > MAX_CONTENT_SIZE) {
+      return c.json({ error: 'Content too large (max 512KB)' }, 400)
+    }
     updates.push(`sql_content = ?${idx}`)
     bindings.push(body.sql_content)
     idx++
@@ -126,14 +130,12 @@ notebooks.delete('/:id', async (c) => {
     return c.json({ error: 'Cannot delete the last notebook' }, 400)
   }
 
-  await c.env.DB.prepare(
-    `DELETE FROM ${T.notebooks} WHERE id = ?1`
-  ).bind(notebookId).run()
-
-  // Re-sequence positions for remaining notebooks
-  await c.env.DB.prepare(
-    `UPDATE ${T.notebooks} SET position = position - 1 WHERE user_id = ?1 AND position > ?2`
-  ).bind(userId, existing.position).run()
+  await c.env.DB.batch([
+    c.env.DB.prepare(`DELETE FROM ${T.notebooks} WHERE id = ?1`).bind(notebookId),
+    c.env.DB.prepare(
+      `UPDATE ${T.notebooks} SET position = position - 1 WHERE user_id = ?1 AND position > ?2`
+    ).bind(userId, existing.position),
+  ])
 
   return c.json({ message: 'Deleted' })
 })

@@ -54,6 +54,34 @@ export function splitSqlStatements(sql: string): string[] {
       continue
     }
 
+    // Double-quoted identifier: "..." with "" escapes
+    if (ch === '"') {
+      current += sql[i++]
+      while (i < sql.length) {
+        if (sql[i] === '"') {
+          current += sql[i++]
+          if (sql[i] === '"') {
+            current += sql[i++]
+          } else {
+            break
+          }
+        } else {
+          current += sql[i++]
+        }
+      }
+      continue
+    }
+
+    // Backtick-quoted identifier: `...`
+    if (ch === '`') {
+      current += sql[i++]
+      while (i < sql.length && sql[i] !== '`') {
+        current += sql[i++]
+      }
+      if (i < sql.length) current += sql[i++]
+      continue
+    }
+
     // Statement terminator
     if (ch === ';') {
       const trimmed = current.trim()

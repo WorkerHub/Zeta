@@ -74,7 +74,9 @@ export function verifyTotpCode(secret: string, code: string): boolean {
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function bufToBase64(buf: Uint8Array): string {
-  return btoa(String.fromCharCode(...buf))
+  let binary = ''
+  for (let i = 0; i < buf.length; i++) binary += String.fromCharCode(buf[i]!)
+  return btoa(binary)
 }
 
 function base64ToBuf(b64: string): Uint8Array {

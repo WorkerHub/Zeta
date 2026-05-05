@@ -1,9 +1,10 @@
 import { Hono } from 'hono'
 import type { Env, Variables, UserRow, DatabaseRow, PermissionRow } from '../types'
 import { requireAdmin } from '../middleware/auth'
-import { nanoid, uuid } from '../lib/id'
+import { uuid } from '../lib/id'
 import { now, getSetting, setSetting, getSettings, audit, tables } from '../lib/db'
 import { hashPassword } from '../lib/auth'
+import { KV } from '../lib/kv'
 
 const admin = new Hono<{ Bindings: Env; Variables: Variables }>()
 admin.use('*', requireAdmin)
@@ -11,8 +12,8 @@ admin.use('*', requireAdmin)
 // ── Users ─────────────────────────────────────────────────────────────────────
 
 admin.get('/users', async (c) => {
-  const limit = Math.min(parseInt(c.req.query('limit') ?? '50', 10), 200)
-  const offset = parseInt(c.req.query('offset') ?? '0', 10)
+  const limit = Math.min(Math.max(parseInt(c.req.query('limit') ?? '50', 10) || 50, 1), 200)
+  const offset = Math.max(parseInt(c.req.query('offset') ?? '0', 10) || 0, 0)
   const search = c.req.query('search')?.trim()
   const T = tables(c.env)
 
@@ -96,6 +97,14 @@ admin.patch('/users/:id', async (c) => {
 
   if (body.role !== undefined) {
     if (!['admin', 'member'].includes(body.role)) return c.json({ error: 'Invalid role' }, 400)
+    if (body.role === 'member') {
+      const T2 = tables(c.env)
+      const adminCount = await c.env.DB.prepare(`SELECT COUNT(*) as n FROM ${T2.users} WHERE role = 'admin'`).first<{ n: number }>()
+      const currentUser = await c.env.DB.prepare(`SELECT role FROM ${T2.users} WHERE id = ?1`).bind(c.req.param('id')).first<{ role: string }>()
+      if (currentUser?.role === 'admin' && (adminCount?.n ?? 0) <= 1) {
+        return c.json({ error: 'Cannot demote the last admin' }, 400)
+      }
+    }
     updates.push(`role = ?${i++}`)
     bindings.push(body.role)
   }
@@ -118,6 +127,8 @@ admin.patch('/users/:id', async (c) => {
     if (conflict) return c.json({ error: 'Email already in use' }, 409)
     updates.push(`email = ?${i++}`)
     bindings.push(email)
+    updates.push(`email_verified = ?${i++}`)
+    bindings.push(0)
   }
   if (body.password !== undefined && body.password !== '') {
     if (body.password.length < 8) return c.json({ error: 'Password must be at least 8 characters' }, 400)
@@ -137,6 +148,14 @@ admin.patch('/users/:id', async (c) => {
     `UPDATE ${T.users} SET ${updates.join(', ')} WHERE id = ?${i}`
   ).bind(...bindings).run()
 
+  if ((body.password !== undefined && body.password !== '') || body.role !== undefined || body.email !== undefined) {
+    await c.env.KV.put(KV.sessionInvalidatedAt(c.req.param('id')), String(now()), { expirationTtl: 7 * 24 * 3600 })
+  }
+
+  c.executionCtx.waitUntil(audit(c.env, {
+    userId: c.get('userId'), action: 'update_user', resource: c.req.param('id'),
+    ip: c.req.header('cf-connecting-ip')
+  }))
   return c.json({ message: 'User updated' })
 })
 
@@ -144,12 +163,24 @@ admin.delete('/users/:id', async (c) => {
   const id = c.req.param('id')
   if (id === c.get('userId')) return c.json({ error: 'Cannot delete yourself' }, 400)
   const T = tables(c.env)
-  // Clear FK references that have no ON DELETE CASCADE/SET NULL
-  await c.env.DB.prepare(`DELETE FROM ${T.query_history} WHERE user_id = ?1`).bind(id).run()
-  await c.env.DB.prepare(`UPDATE ${T.audit_logs} SET user_id = NULL WHERE user_id = ?1`).bind(id).run()
-  await c.env.DB.prepare(`UPDATE ${T.d1_databases} SET created_by = NULL WHERE created_by = ?1`).bind(id).run()
-  await c.env.DB.prepare(`UPDATE ${T.user_database_permissions} SET granted_by = NULL WHERE granted_by = ?1`).bind(id).run()
-  await c.env.DB.prepare(`DELETE FROM ${T.users} WHERE id = ?1`).bind(id).run()
+  const target = await c.env.DB.prepare(`SELECT role FROM ${T.users} WHERE id = ?1`).bind(id).first<{ role: string }>()
+  if (!target) return c.json({ error: 'User not found' }, 404)
+  if (target.role === 'admin') {
+    const adminCount = await c.env.DB.prepare(`SELECT COUNT(*) as n FROM ${T.users} WHERE role = 'admin'`).first<{ n: number }>()
+    if ((adminCount?.n ?? 0) <= 1) return c.json({ error: 'Cannot delete the last admin' }, 400)
+  }
+  // D1 does not enforce FK CASCADE by default — delete/nullify all references manually
+  await c.env.DB.batch([
+    c.env.DB.prepare(`DELETE FROM ${T.totp_credentials} WHERE user_id = ?1`).bind(id),
+    c.env.DB.prepare(`DELETE FROM ${T.passkey_credentials} WHERE user_id = ?1`).bind(id),
+    c.env.DB.prepare(`DELETE FROM ${T.notebooks} WHERE user_id = ?1`).bind(id),
+    c.env.DB.prepare(`DELETE FROM ${T.query_history} WHERE user_id = ?1`).bind(id),
+    c.env.DB.prepare(`DELETE FROM ${T.user_database_permissions} WHERE user_id = ?1`).bind(id),
+    c.env.DB.prepare(`UPDATE ${T.user_database_permissions} SET granted_by = NULL WHERE granted_by = ?1`).bind(id),
+    c.env.DB.prepare(`UPDATE ${T.audit_logs} SET user_id = NULL WHERE user_id = ?1`).bind(id),
+    c.env.DB.prepare(`UPDATE ${T.d1_databases} SET created_by = NULL WHERE created_by = ?1`).bind(id),
+    c.env.DB.prepare(`DELETE FROM ${T.users} WHERE id = ?1`).bind(id),
+  ])
   c.executionCtx.waitUntil(audit(c.env, {
     userId: c.get('userId'), action: 'delete_user', resource: id,
     ip: c.req.header('cf-connecting-ip')
@@ -186,6 +217,10 @@ admin.post('/databases', async (c) => {
      VALUES (?1, ?2, ?3, ?4, 1, ?5, ?6)`
   ).bind(id, body.name, body.description ?? null, body.binding_name, now(), c.get('userId')).run()
 
+  c.executionCtx.waitUntil(audit(c.env, {
+    userId: c.get('userId'), action: 'create_database', resource: id,
+    ip: c.req.header('cf-connecting-ip')
+  }))
   return c.json({ id }, 201)
 })
 
@@ -208,12 +243,25 @@ admin.patch('/databases/:id', async (c) => {
   await c.env.DB.prepare(`UPDATE ${T.d1_databases} SET ${updates.join(', ')} WHERE id = ?${i}`)
     .bind(...bindings).run()
 
+  c.executionCtx.waitUntil(audit(c.env, {
+    userId: c.get('userId'), action: 'update_database', resource: c.req.param('id'),
+    ip: c.req.header('cf-connecting-ip')
+  }))
   return c.json({ message: 'Updated' })
 })
 
 admin.delete('/databases/:id', async (c) => {
   const T = tables(c.env)
-  await c.env.DB.prepare(`DELETE FROM ${T.d1_databases} WHERE id = ?1`).bind(c.req.param('id')).run()
+  const dbId = c.req.param('id')
+  await c.env.DB.batch([
+    c.env.DB.prepare(`DELETE FROM ${T.user_database_permissions} WHERE database_id = ?1`).bind(dbId),
+    c.env.DB.prepare(`DELETE FROM ${T.query_history} WHERE database_id = ?1`).bind(dbId),
+    c.env.DB.prepare(`DELETE FROM ${T.d1_databases} WHERE id = ?1`).bind(dbId),
+  ])
+  c.executionCtx.waitUntil(audit(c.env, {
+    userId: c.get('userId'), action: 'delete_database', resource: dbId,
+    ip: c.req.header('cf-connecting-ip')
+  }))
   return c.json({ message: 'Deleted' })
 })
 
@@ -269,6 +317,9 @@ admin.get('/settings', async (c) => {
   return c.json(cfg)
 })
 
+const BOOLEAN_SETTINGS = new Set(['registration_enabled', 'require_email_verification', 'enforce_2fa'])
+const VALID_EMAIL_PROVIDERS = ['resend', 'smtp']
+
 admin.patch('/settings', async (c) => {
   const body = await c.req.json<Record<string, string>>().catch(() => null)
   if (!body) return c.json({ error: 'Invalid body' }, 400)
@@ -280,7 +331,11 @@ admin.patch('/settings', async (c) => {
     if (!allowed.has(key)) continue
     // Don't overwrite masked values with placeholder
     if (value === '••••••••') continue
-    updates.push([key, String(value)])
+    const v = String(value)
+    if (BOOLEAN_SETTINGS.has(key) && v !== 'true' && v !== 'false') continue
+    if (key === 'email_provider' && !VALID_EMAIL_PROVIDERS.includes(v)) continue
+    if (key === 'smtp_port' && (isNaN(Number(v)) || Number(v) < 1 || Number(v) > 65535)) continue
+    updates.push([key, v])
   }
 
   await Promise.all(updates.map(([k, v]) => setSetting(c.env, k, v)))

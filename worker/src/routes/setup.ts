@@ -55,7 +55,7 @@ function buildDDL(T: ReturnType<typeof tables>): string[] {
       id TEXT PRIMARY KEY,
       user_id TEXT NOT NULL REFERENCES ${T.users}(id) ON DELETE CASCADE,
       database_id TEXT NOT NULL REFERENCES ${T.d1_databases}(id) ON DELETE CASCADE,
-      permission TEXT NOT NULL DEFAULT 'read' CHECK (permission IN ('read', 'write')),
+      permission TEXT NOT NULL DEFAULT 'read' CHECK (permission IN ('read', 'write', 'write_drop')),
       granted_by TEXT REFERENCES ${T.users}(id),
       granted_at INTEGER NOT NULL,
       UNIQUE (user_id, database_id)
@@ -135,7 +135,11 @@ setup.get('/:secret', async (c) => {
   if (!expected || expected.trim() === '') {
     return c.json({ error: 'SETUP_SECRET is not configured on this Worker.' }, 500)
   }
-  if (secret !== expected) {
+  let diff = secret.length ^ expected.length
+  for (let i = 0; i < expected.length; i++) {
+    diff |= (secret.charCodeAt(i) || 0) ^ expected.charCodeAt(i)
+  }
+  if (diff !== 0) {
     return c.json({ error: 'Invalid setup secret.' }, 403)
   }
 

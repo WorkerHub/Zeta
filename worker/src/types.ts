@@ -7,7 +7,7 @@ export interface Env {
   ASSETS: Fetcher
   // Secrets (set via CF dashboard)
   JWT_SECRET: string
-  ENCRYPTION_KEY: string   // 32-char hex key for TOTP secret encryption
+  ENCRYPTION_KEY: string   // 64-char hex string (32 bytes) for AES-GCM TOTP encryption
   SETUP_SECRET: string     // random secret used for the /api/setup/:secret endpoint
   // Vars (set via CF dashboard)
   APP_URL: string
@@ -69,7 +69,7 @@ export interface PermissionRow {
   id: string
   user_id: string
   database_id: string
-  permission: 'read' | 'write'
+  permission: 'read' | 'write' | 'write_drop'
   granted_by: string | null
   granted_at: number
 }

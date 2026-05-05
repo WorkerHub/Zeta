@@ -1,5 +1,5 @@
 import { Hono } from 'hono'
-import { getCookie, setCookie, deleteCookie } from 'hono/cookie'
+import { getCookie } from 'hono/cookie'
 import type { Env, Variables, UserRow, PasskeyCredentialRow } from '../types'
 import { nanoid, uuid } from '../lib/id'
 import { now, getSetting, audit, tables } from '../lib/db'
@@ -9,7 +9,9 @@ import {
   createAccessToken, createRefreshToken, createPending2faToken,
   verifyRefreshToken, verifyPending2faToken,
   revokeRefreshToken, isRefreshTokenRevoked,
-  checkLoginRateLimit, incrementLoginAttempts, resetLoginAttempts,
+  checkLoginRateLimit, resetLoginAttempts,
+  check2faRateLimit, reset2faAttempts,
+  checkEmailRateLimit, checkRegisterRateLimit,
 } from '../lib/auth'
 import { sendEmail, buildVerificationEmail, buildPasswordResetEmail, buildOtpEmail } from '../lib/email'
 import { verifyTotpCode, decryptTotpSecret } from '../lib/totp'
@@ -45,6 +47,10 @@ auth.post('/register', async (c) => {
   const regEnabled = await getSetting(c.env, 'registration_enabled')
   if (regEnabled === 'false') return c.json({ error: 'Registration is disabled' }, 403)
 
+  if (!(await checkRegisterRateLimit(c.env, clientIp(c)))) {
+    return c.json({ error: 'Too many registration attempts. Try again later.' }, 429)
+  }
+
   const body = await c.req.json<{ email?: string; password?: string; name?: string }>().catch(() => null)
   if (!body?.email || !body.password || !body.name) {
     return c.json({ error: 'email, password, and name are required' }, 400)
@@ -59,18 +65,14 @@ auth.post('/register', async (c) => {
   const existing = await c.env.DB.prepare(`SELECT id FROM ${T.users} WHERE email = ?1`).bind(email).first()
   if (existing) return c.json({ error: 'Email already registered' }, 409)
 
-  // First registered user becomes admin
-  const countRow = await c.env.DB.prepare(`SELECT COUNT(*) as n FROM ${T.users}`).first<{ n: number }>()
-  const isFirstUser = (countRow?.n ?? 0) === 0
-
   const id = uuid()
   const passwordHash = await hashPassword(body.password)
   const ts = now()
 
   await c.env.DB.prepare(
     `INSERT INTO ${T.users} (id, email, password_hash, name, role, email_verified, created_at, updated_at)
-     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?7)`
-  ).bind(id, email, passwordHash, body.name.trim(), isFirstUser ? 'admin' : 'member', 0, ts).run()
+     VALUES (?1, ?2, ?3, ?4, (SELECT CASE WHEN COUNT(*) = 0 THEN 'admin' ELSE 'member' END FROM ${T.users}), ?5, ?6, ?6)`
+  ).bind(id, email, passwordHash, body.name.trim(), 0, ts).run()
 
   // Email verification
   const requireVerify = await getSetting(c.env, 'require_email_verification')
@@ -114,6 +116,10 @@ auth.post('/resend-verification', async (c) => {
   const body = await c.req.json<{ email?: string }>().catch(() => null)
   if (!body?.email) return c.json({ error: 'email is required' }, 400)
 
+  if (!(await checkEmailRateLimit(c.env, clientIp(c)))) {
+    return c.json({ error: 'Too many requests. Try again later.' }, 429)
+  }
+
   const email = body.email.toLowerCase().trim()
   const T = tables(c.env)
   const user = await c.env.DB.prepare(`SELECT id, email_verified FROM ${T.users} WHERE email = ?1`)
@@ -151,7 +157,6 @@ auth.post('/login', async (c) => {
   const valid = await verifyPassword(body.password, hashToCheck)
 
   if (!user || !valid) {
-    await incrementLoginAttempts(c.env, ip)
     return c.json({ error: 'Invalid email or password' }, 401)
   }
 
@@ -193,6 +198,9 @@ auth.post('/2fa/totp', async (c) => {
   const pending = await verifyPending2faToken(body.pendingToken, c.env.JWT_SECRET)
   if (!pending) return c.json({ error: 'Invalid or expired token' }, 401)
 
+  if (await c.env.KV.get(KV.jtiDeny(pending.jti))) return c.json({ error: 'Token already used' }, 401)
+  if (!(await check2faRateLimit(c.env, pending.sub))) return c.json({ error: 'Too many attempts. Try again later.' }, 429)
+
   const T = tables(c.env)
   const totp = await c.env.DB.prepare(
     `SELECT encrypted_secret FROM ${T.totp_credentials} WHERE user_id = ?1`
@@ -200,7 +208,17 @@ auth.post('/2fa/totp', async (c) => {
   if (!totp) return c.json({ error: 'TOTP not configured' }, 400)
 
   const secret = await decryptTotpSecret(c.env, totp.encrypted_secret)
-  if (!verifyTotpCode(secret, body.code)) return c.json({ error: 'Invalid code' }, 401)
+
+  const totpUsedKey = KV.totpUsed(pending.sub, body.code)
+  if (await c.env.KV.get(totpUsedKey)) return c.json({ error: 'Code already used' }, 401)
+
+  if (!verifyTotpCode(secret, body.code)) {
+    return c.json({ error: 'Invalid code' }, 401)
+  }
+
+  await c.env.KV.put(totpUsedKey, '1', { expirationTtl: 90 })
+  await c.env.KV.put(KV.jtiDeny(pending.jti), '1', { expirationTtl: 10 * 60 })
+  await reset2faAttempts(c.env, pending.sub)
 
   const user = await c.env.DB.prepare(`SELECT * FROM ${T.users} WHERE id = ?1`).bind(pending.sub).first<UserRow>()
   if (!user) return c.json({ error: 'User not found' }, 404)
@@ -222,13 +240,15 @@ auth.post('/2fa/email-otp/send', async (c) => {
   const pending = await verifyPending2faToken(body.pendingToken, c.env.JWT_SECRET)
   if (!pending) return c.json({ error: 'Invalid or expired token' }, 401)
 
+  if (await c.env.KV.get(KV.jtiDeny(pending.jti))) return c.json({ error: 'Token already used' }, 401)
+
   const T = tables(c.env)
   const user = await c.env.DB.prepare(`SELECT email FROM ${T.users} WHERE id = ?1`)
     .bind(pending.sub).first<{ email: string }>()
   if (!user) return c.json({ error: 'User not found' }, 404)
 
   // Generate 6-digit OTP
-  const otp = String(Math.floor(100000 + Math.random() * 900000))
+  const otp = String(crypto.getRandomValues(new Uint32Array(1))[0]! % 900000 + 100000)
   await c.env.KV.put(KV.emailOtp(pending.sub), otp, { expirationTtl: 600 })
 
   const appName = (await getSetting(c.env, 'app_name')) ?? 'Zeta'
@@ -244,10 +264,24 @@ auth.post('/2fa/email-otp/verify', async (c) => {
   const pending = await verifyPending2faToken(body.pendingToken, c.env.JWT_SECRET)
   if (!pending) return c.json({ error: 'Invalid or expired token' }, 401)
 
+  if (await c.env.KV.get(KV.jtiDeny(pending.jti))) return c.json({ error: 'Token already used' }, 401)
+  if (!(await check2faRateLimit(c.env, pending.sub))) return c.json({ error: 'Too many attempts. Try again later.' }, 429)
+
   const stored = await c.env.KV.get(KV.emailOtp(pending.sub))
-  if (!stored || stored !== body.code) return c.json({ error: 'Invalid or expired code' }, 401)
+
+  let valid = false
+  if (stored && stored.length === body.code.length) {
+    let diff = 0
+    for (let i = 0; i < stored.length; i++) diff |= stored.charCodeAt(i) ^ body.code.charCodeAt(i)
+    valid = diff === 0
+  }
+  if (!valid) {
+    return c.json({ error: 'Invalid or expired code' }, 401)
+  }
 
   await c.env.KV.delete(KV.emailOtp(pending.sub))
+  await c.env.KV.put(KV.jtiDeny(pending.jti), '1', { expirationTtl: 10 * 60 })
+  await reset2faAttempts(c.env, pending.sub)
 
   const T = tables(c.env)
   const user = await c.env.DB.prepare(`SELECT * FROM ${T.users} WHERE id = ?1`).bind(pending.sub).first<UserRow>()
@@ -272,6 +306,11 @@ auth.post('/refresh', async (c) => {
 
   if (await isRefreshTokenRevoked(c.env, payload.jti)) {
     return c.json({ error: 'Refresh token revoked' }, 401)
+  }
+
+  const invalidatedAt = await c.env.KV.get(KV.sessionInvalidatedAt(payload.sub))
+  if (invalidatedAt && payload.iat <= parseInt(invalidatedAt, 10)) {
+    return c.json({ error: 'Session invalidated due to password change' }, 401)
   }
 
   const T = tables(c.env)
@@ -304,6 +343,10 @@ auth.post('/logout', async (c) => {
 auth.post('/forgot-password', async (c) => {
   const body = await c.req.json<{ email?: string }>().catch(() => null)
   if (!body?.email) return c.json({ error: 'email is required' }, 400)
+
+  if (!(await checkEmailRateLimit(c.env, clientIp(c)))) {
+    return c.json({ error: 'Too many requests. Try again later.' }, 429)
+  }
 
   const email = body.email.toLowerCase().trim()
   const T = tables(c.env)
@@ -338,6 +381,7 @@ auth.post('/reset-password', async (c) => {
   await c.env.DB.prepare(`UPDATE ${T.users} SET password_hash = ?1, updated_at = ?2 WHERE id = ?3`)
     .bind(hash, now(), userId).run()
   await c.env.KV.delete(KV.passwordReset(body.token))
+  await c.env.KV.put(KV.sessionInvalidatedAt(userId), String(now()), { expirationTtl: 7 * 24 * 3600 })
 
   c.executionCtx.waitUntil(audit(c.env, { userId, action: 'password_reset', ip: clientIp(c) }))
   return c.json({ message: 'Password updated.' })
@@ -351,6 +395,8 @@ auth.post('/2fa/passkey/options', async (c) => {
 
   const pending = await verifyPending2faToken(body.pendingToken, c.env.JWT_SECRET)
   if (!pending) return c.json({ error: 'Invalid or expired token' }, 401)
+
+  if (await c.env.KV.get(KV.jtiDeny(pending.jti))) return c.json({ error: 'Token already used' }, 401)
 
   const T = tables(c.env)
   const credentials = await c.env.DB.prepare(
@@ -381,6 +427,9 @@ auth.post('/2fa/passkey/verify', async (c) => {
   const pending = await verifyPending2faToken(body.pendingToken, c.env.JWT_SECRET)
   if (!pending) return c.json({ error: 'Invalid or expired token' }, 401)
 
+  if (await c.env.KV.get(KV.jtiDeny(pending.jti))) return c.json({ error: 'Token already used' }, 401)
+  if (!(await check2faRateLimit(c.env, pending.sub))) return c.json({ error: 'Too many attempts. Try again later.' }, 429)
+
   const expectedChallenge = await c.env.KV.get(KV.passkeyChallenge(pending.sub))
   if (!expectedChallenge) return c.json({ error: 'Challenge expired' }, 400)
 
@@ -392,9 +441,8 @@ auth.post('/2fa/passkey/verify', async (c) => {
 
   if (!storedCred) return c.json({ error: 'Credential not found' }, 400)
 
-  const requestOrigin = c.req.header('origin')
   const appUrl = new URL(c.env.APP_URL)
-  const expectedOrigin = requestOrigin ?? c.env.APP_URL.replace(/\/$/, '')
+  const expectedOrigin = c.env.APP_URL.replace(/\/$/, '')
 
   const verification = await verifyAuthenticationResponse({
     response: body.credential as Parameters<typeof verifyAuthenticationResponse>[0]['response'],
@@ -413,6 +461,8 @@ auth.post('/2fa/passkey/verify', async (c) => {
   }
 
   await c.env.KV.delete(KV.passkeyChallenge(pending.sub))
+  await c.env.KV.put(KV.jtiDeny(pending.jti), '1', { expirationTtl: 10 * 60 })
+  await reset2faAttempts(c.env, pending.sub)
   await c.env.DB.prepare(`UPDATE ${T.passkey_credentials} SET sign_count = ?1 WHERE id = ?2`)
     .bind(verification.authenticationInfo.newCounter, storedCred.id).run()
 

@@ -129,6 +129,8 @@ const translations: Record<Locale, Record<string, string>> = {
     'profile.passkey_add': 'Add passkey',
     'profile.passkey_waiting': 'Waiting for device…',
     'profile.passkey_cancelled': 'Passkey registration was cancelled.',
+    'profile.confirm_delete_totp': 'Are you sure you want to remove this authenticator?',
+    'profile.confirm_delete_passkey': 'Are you sure you want to remove this passkey?',
 
     // Admin
     'admin.title': 'Admin Panel',
@@ -348,6 +350,8 @@ const translations: Record<Locale, Record<string, string>> = {
     'profile.passkey_add': '添加通行密钥',
     'profile.passkey_waiting': '等待设备…',
     'profile.passkey_cancelled': '通行密钥注册已取消。',
+    'profile.confirm_delete_totp': '确定要移除此验证器吗？',
+    'profile.confirm_delete_passkey': '确定要移除此通行密钥吗？',
 
     // Admin
     'admin.title': '管理面板',

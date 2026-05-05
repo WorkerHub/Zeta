@@ -38,8 +38,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       if (!data) { clearSession(); setUser(null); return }
 
-      // Fetch user info with new token
-      setSession(data.accessToken, getCurrentUser()!)
+      setSession(data.accessToken, getCurrentUser() ?? { id: '', email: '', name: '', role: 'member' } as User)
       const me = await profileApi.me()
       setSession(data.accessToken, me)
       setUser(me)

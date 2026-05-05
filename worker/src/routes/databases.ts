@@ -32,17 +32,20 @@ databases.get('/', async (c) => {
   }
 
   // Annotate with user's permission level
-  const perms = await c.env.DB.prepare(
-    `SELECT database_id, permission FROM ${T.user_database_permissions} WHERE user_id = ?1`
-  ).bind(userId).all<{ database_id: string; permission: string }>()
-  const permMap = new Map(perms.results.map((r) => [r.database_id, r.permission]))
+  let permMap = new Map<string, string>()
+  if (role !== 'admin') {
+    const perms = await c.env.DB.prepare(
+      `SELECT database_id, permission FROM ${T.user_database_permissions} WHERE user_id = ?1`
+    ).bind(userId).all<{ database_id: string; permission: string }>()
+    permMap = new Map(perms.results.map((r) => [r.database_id, r.permission]))
+  }
 
   return c.json(rows.map((db) => ({
     id: db.id,
     name: db.name,
     description: db.description,
-    binding_name: db.binding_name,
-    permission: role === 'admin' ? 'write' : (permMap.get(db.id) ?? 'read'),
+    ...(role === 'admin' ? { binding_name: db.binding_name } : {}),
+    permission: role === 'admin' ? 'write_drop' : (permMap.get(db.id) ?? 'read'),
   })))
 })
 

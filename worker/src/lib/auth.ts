@@ -24,7 +24,8 @@ export async function verifyPassword(password: string, stored: string): Promise<
   const parts = stored.split(':')
   if (parts.length !== 4 || parts[0] !== 'pbkdf2') return false
   const [, iterStr, saltHex, hashHex] = parts
-  const iterations = Math.min(parseInt(iterStr ?? '0', 10), 100_000)
+  const iterations = parseInt(iterStr ?? '0', 10)
+  if (isNaN(iterations) || iterations <= 0 || iterations > 600_000) return false
   const salt = hexToBuf(saltHex ?? '')
   const expected = hexToBuf(hashHex ?? '')
   const keyMaterial = await crypto.subtle.importKey(
@@ -63,6 +64,7 @@ export interface RefreshTokenPayload {
 
 export interface Pending2faTokenPayload {
   sub: string
+  jti: string
   iat: number
   exp: number
   type: 'pending_2fa'
@@ -81,7 +83,9 @@ async function hmacKey(secret: string): Promise<CryptoKey> {
 
 function b64url(buf: ArrayBuffer | Uint8Array): string {
   const arr = buf instanceof Uint8Array ? buf : new Uint8Array(buf)
-  return btoa(String.fromCharCode(...arr))
+  let binary = ''
+  for (let i = 0; i < arr.length; i++) binary += String.fromCharCode(arr[i]!)
+  return btoa(binary)
     .replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '')
 }
 
@@ -103,6 +107,10 @@ async function verifyJwt<T>(token: string, secret: string): Promise<T | null> {
   const parts = token.split('.')
   if (parts.length !== 3) return null
   const [header, body, sig] = parts as [string, string, string]
+  try {
+    const headerObj = JSON.parse(new TextDecoder().decode(b64urlDecode(header))) as { alg?: string }
+    if (headerObj.alg !== 'HS256') return null
+  } catch { return null }
   const key = await hmacKey(secret)
   const valid = await crypto.subtle.verify(
     'HMAC', key,
@@ -136,7 +144,7 @@ export async function createRefreshToken(userId: string, secret: string): Promis
 export async function createPending2faToken(userId: string, secret: string): Promise<string> {
   const now = Math.floor(Date.now() / 1000)
   return signJwt({
-    sub: userId, iat: now, exp: now + PENDING_TTL, type: 'pending_2fa'
+    sub: userId, jti: crypto.randomUUID(), iat: now, exp: now + PENDING_TTL, type: 'pending_2fa'
   }, secret)
 }
 
@@ -180,17 +188,41 @@ export async function isRefreshTokenRevoked(env: Env, jti: string): Promise<bool
 export async function checkLoginRateLimit(env: Env, ip: string): Promise<boolean> {
   const key = KV.loginAttempts(ip)
   const count = parseInt((await env.KV.get(key)) ?? '0', 10)
-  return count < 10
-}
-
-export async function incrementLoginAttempts(env: Env, ip: string): Promise<void> {
-  const key = KV.loginAttempts(ip)
-  const count = parseInt((await env.KV.get(key)) ?? '0', 10)
+  if (count >= 10) return false
   await env.KV.put(key, String(count + 1), { expirationTtl: 15 * 60 })
+  return true
 }
 
 export async function resetLoginAttempts(env: Env, ip: string): Promise<void> {
   await env.KV.delete(KV.loginAttempts(ip))
+}
+
+export async function check2faRateLimit(env: Env, userId: string): Promise<boolean> {
+  const key = KV.twoFactorAttempts(userId)
+  const count = parseInt((await env.KV.get(key)) ?? '0', 10)
+  if (count >= 5) return false
+  await env.KV.put(key, String(count + 1), { expirationTtl: 10 * 60 })
+  return true
+}
+
+export async function reset2faAttempts(env: Env, userId: string): Promise<void> {
+  await env.KV.delete(KV.twoFactorAttempts(userId))
+}
+
+export async function checkEmailRateLimit(env: Env, ip: string): Promise<boolean> {
+  const key = KV.emailAttempts(ip)
+  const count = parseInt((await env.KV.get(key)) ?? '0', 10)
+  if (count >= 3) return false
+  await env.KV.put(key, String(count + 1), { expirationTtl: 15 * 60 })
+  return true
+}
+
+export async function checkRegisterRateLimit(env: Env, ip: string): Promise<boolean> {
+  const key = KV.registerAttempts(ip)
+  const count = parseInt((await env.KV.get(key)) ?? '0', 10)
+  if (count >= 5) return false
+  await env.KV.put(key, String(count + 1), { expirationTtl: 15 * 60 })
+  return true
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────────

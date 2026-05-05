@@ -15,7 +15,11 @@ const app = new Hono<{ Bindings: Env; Variables: Variables }>()
 // ── Global middleware ─────────────────────────────────────────────────────────
 
 app.use('/api/*', cors({
-  origin: (origin, c) => origin ?? c.env.APP_URL,
+  origin: (origin, c) => {
+    const allowed = c.env.APP_URL?.replace(/\/$/, '')
+    if (!origin || !allowed) return allowed ?? null
+    return origin.replace(/\/$/, '') === allowed ? origin : null
+  },
   credentials: true,
   allowMethods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   allowHeaders: ['Content-Type', 'Authorization'],
@@ -38,18 +42,6 @@ app.route('/api/setup', setup)
 app.get('/api/health', (c) => c.json({ ok: true }))
 
 // ── Serve SPA (Workers Assets fallback) ──────────────────────────────────────
-
-const SPA_PREFIXES = new Set([
-  '/login', '/register', '/verify-email', '/reset-password',
-  '/forgot-password', '/dashboard', '/query', '/admin', '/profile',
-])
-
-app.get('/:slug', async (c, next) => {
-  const slug = c.req.param('slug')
-  if (SPA_PREFIXES.has(`/${slug}`)) return next()
-  if (slug.includes('.')) return next()
-  return next()
-})
 
 app.all('*', (c) => c.env.ASSETS.fetch(c.req.raw) as unknown as Response)
 

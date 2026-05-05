@@ -44,18 +44,24 @@ export async function sendEmail(env: Env, payload: EmailPayload): Promise<void> 
 
 // ── Template helpers ──────────────────────────────────────────────────────────
 
+function escapeHtml(s: string): string {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
+}
+
 export function buildVerificationEmail(opts: {
   appName: string
   appUrl: string
   toEmail: string
   token: string
 }): EmailPayload {
-  const link = `${opts.appUrl}/verify-email?token=${opts.token}`
+  const link = `${opts.appUrl}/verify-email?token=${encodeURIComponent(opts.token)}`
+  const safeName = escapeHtml(opts.appName)
+  const safeLink = escapeHtml(link)
   return {
     to: opts.toEmail,
     subject: `Verify your ${opts.appName} email`,
-    html: `<p>Click <a href="${link}">here</a> to verify your email address. This link expires in 24 hours.</p>`,
-    text: `Verify your email: ${link}`,
+    html: `<p>Click <a href="${safeLink}">here</a> to verify your email address. This link expires in 24 hours.</p>`,
+    text: `Verify your ${safeName} email: ${link}`,
   }
 }
 
@@ -65,12 +71,14 @@ export function buildPasswordResetEmail(opts: {
   toEmail: string
   token: string
 }): EmailPayload {
-  const link = `${opts.appUrl}/reset-password?token=${opts.token}`
+  const link = `${opts.appUrl}/reset-password?token=${encodeURIComponent(opts.token)}`
+  const safeName = escapeHtml(opts.appName)
+  const safeLink = escapeHtml(link)
   return {
     to: opts.toEmail,
     subject: `Reset your ${opts.appName} password`,
-    html: `<p>Click <a href="${link}">here</a> to reset your password. This link expires in 1 hour.</p>`,
-    text: `Reset your password: ${link}`,
+    html: `<p>Click <a href="${safeLink}">here</a> to reset your password. This link expires in 1 hour.</p>`,
+    text: `Reset your ${safeName} password: ${link}`,
   }
 }
 
@@ -79,10 +87,11 @@ export function buildOtpEmail(opts: {
   toEmail: string
   otp: string
 }): EmailPayload {
+  const safeName = escapeHtml(opts.appName)
   return {
     to: opts.toEmail,
     subject: `Your ${opts.appName} verification code`,
-    html: `<p>Your verification code is: <strong>${opts.otp}</strong>. It expires in 10 minutes.</p>`,
-    text: `Your verification code: ${opts.otp}`,
+    html: `<p>Your ${safeName} verification code is: <strong>${escapeHtml(opts.otp)}</strong>. It expires in 10 minutes.</p>`,
+    text: `Your ${opts.appName} verification code: ${opts.otp}`,
   }
 }

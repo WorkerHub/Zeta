@@ -88,9 +88,14 @@ export default function ProfilePage() {
   }
 
   async function deleteTotpCred(id: string) {
-    await profileApi.deleteTotp(id)
-    const updated = await profileApi.me()
-    setUser(updated)
+    if (!window.confirm(t('profile.confirm_delete_totp'))) return
+    try {
+      await profileApi.deleteTotp(id)
+      const updated = await profileApi.me()
+      setUser(updated)
+    } catch (err) {
+      setTotpError(err instanceof Error ? err.message : 'Failed to delete TOTP credential')
+    }
   }
 
   function copySecret() {
@@ -121,9 +126,14 @@ export default function ProfilePage() {
   }
 
   async function deletePasskeyCred(id: string) {
-    await profileApi.deletePasskey(id)
-    const updated = await profileApi.me()
-    setUser(updated)
+    if (!window.confirm(t('profile.confirm_delete_passkey'))) return
+    try {
+      await profileApi.deletePasskey(id)
+      const updated = await profileApi.me()
+      setUser(updated)
+    } catch (err) {
+      setPasskeyError(err instanceof Error ? err.message : 'Failed to delete passkey')
+    }
   }
 
   if (loading) {

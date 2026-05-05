@@ -46,7 +46,19 @@ export class ApiError extends Error {
   }
 }
 
+let refreshPromise: Promise<boolean> | null = null
+
 async function tryRefresh(): Promise<boolean> {
+  if (refreshPromise) return refreshPromise
+  refreshPromise = doRefresh()
+  try {
+    return await refreshPromise
+  } finally {
+    refreshPromise = null
+  }
+}
+
+async function doRefresh(): Promise<boolean> {
   try {
     const res = await fetch('/api/auth/refresh', {
       method: 'POST', credentials: 'include',
@@ -121,7 +133,7 @@ export const authApi = {
     apiFetch<{ message: string }>('/auth/reset-password', { method: 'POST', body: JSON.stringify(body) }),
 
   verifyEmail: (token: string) =>
-    apiFetch<{ message: string }>(`/auth/verify-email?token=${token}`),
+    apiFetch<{ message: string }>(`/auth/verify-email?token=${encodeURIComponent(token)}`),
 
   resendVerification: (body: { email: string }) =>
     apiFetch<{ message: string }>('/auth/resend-verification', { method: 'POST', body: JSON.stringify(body) }),
@@ -150,7 +162,7 @@ export const profileApi = {
 // ── Databases endpoints ───────────────────────────────────────────────────────
 
 export const databasesApi = {
-  list: () => apiFetch<Array<{ id: string; name: string; description: string | null; binding_name: string; permission: 'read' | 'write' | 'write_drop' }>>('/databases'),
+  list: () => apiFetch<Array<{ id: string; name: string; description: string | null; binding_name?: string; permission: 'read' | 'write' | 'write_drop' }>>('/databases'),
 }
 
 // ── Query endpoints ───────────────────────────────────────────────────────────

@@ -1,8 +1,8 @@
 import { Hono } from 'hono'
 import type { Env, Variables, UserRow, TotpCredentialRow, PasskeyCredentialRow } from '../types'
 import { requireAuth } from '../middleware/auth'
-import { nanoid, uuid } from '../lib/id'
-import { now, audit, tables } from '../lib/db'
+import { uuid } from '../lib/id'
+import { now, audit, tables, getSetting } from '../lib/db'
 import { hashPassword, verifyPassword } from '../lib/auth'
 import {
   generateTotpSecret, encryptTotpSecret, decryptTotpSecret,
@@ -77,6 +77,7 @@ profile.post('/change-password', async (c) => {
   const hash = await hashPassword(body.newPassword)
   await c.env.DB.prepare(`UPDATE ${T.users} SET password_hash = ?1, updated_at = ?2 WHERE id = ?3`)
     .bind(hash, now(), c.get('userId')).run()
+  await c.env.KV.put(KV.sessionInvalidatedAt(c.get('userId')), String(now()), { expirationTtl: 7 * 24 * 3600 })
 
   c.executionCtx.waitUntil(audit(c.env, { userId: c.get('userId'), action: 'change_password', ip: clientIp(c) }))
   return c.json({ message: 'Password changed' })
@@ -92,9 +93,9 @@ profile.post('/totp/setup', async (c) => {
 
   const secret = generateTotpSecret()
   // Store plaintext secret temporarily in KV (5min) before user confirms
-  await c.env.KV.put(`totp_setup:${c.get('userId')}`, secret, { expirationTtl: 300 })
+  await c.env.KV.put(KV.totpSetup(c.get('userId')), secret, { expirationTtl: 300 })
 
-  const appName = 'Zeta'
+  const appName = (await getSetting(c.env, 'app_name')) ?? 'Zeta'
   const uri = getTotpUri(secret, user.email, appName)
 
   return c.json({ secret, uri })
@@ -104,13 +105,13 @@ profile.post('/totp/confirm', async (c) => {
   const body = await c.req.json<{ code?: string; name?: string }>().catch(() => null)
   if (!body?.code) return c.json({ error: 'code is required' }, 400)
 
-  const secret = await c.env.KV.get(`totp_setup:${c.get('userId')}`)
+  const secret = await c.env.KV.get(KV.totpSetup(c.get('userId')))
   if (!secret) return c.json({ error: 'Setup session expired. Start over.' }, 400)
 
   if (!verifyTotpCode(secret, body.code)) return c.json({ error: 'Invalid code' }, 401)
 
   const encryptedSecret = await encryptTotpSecret(c.env, secret)
-  await c.env.KV.delete(`totp_setup:${c.get('userId')}`)
+  await c.env.KV.delete(KV.totpSetup(c.get('userId')))
 
   const T = tables(c.env)
   const id = uuid()
@@ -151,10 +152,10 @@ profile.post('/passkey/register/options', async (c) => {
     excludeCredentials: existingCredentials.results.map((r) => ({
       id: r.credential_id,
     })),
-    authenticatorSelection: { residentKey: 'required', userVerification: 'preferred' },
+    authenticatorSelection: { residentKey: 'required', userVerification: 'required' },
   })
 
-  await c.env.KV.put(KV.passkeyChallenge(user.id), options.challenge, { expirationTtl: 300 })
+  await c.env.KV.put(KV.passkeyRegChallenge(user.id), options.challenge, { expirationTtl: 300 })
   return c.json(options)
 })
 
@@ -162,23 +163,23 @@ profile.post('/passkey/register/verify', async (c) => {
   const body = await c.req.json().catch(() => null)
   if (!body) return c.json({ error: 'Invalid body' }, 400)
 
-  const expectedChallenge = await c.env.KV.get(KV.passkeyChallenge(c.get('userId')))
+  const expectedChallenge = await c.env.KV.get(KV.passkeyRegChallenge(c.get('userId')))
   if (!expectedChallenge) return c.json({ error: 'Challenge expired' }, 400)
 
   const appUrl = new URL(c.env.APP_URL)
   const verification = await verifyRegistrationResponse({
     response: body,
     expectedChallenge,
-    expectedOrigin: c.req.header('origin') ?? c.env.APP_URL.replace(/\/$/, ''),
+    expectedOrigin: c.env.APP_URL.replace(/\/$/, ''),
     expectedRPID: appUrl.hostname,
-    requireUserVerification: false,
+    requireUserVerification: true,
   })
 
   if (!verification.verified || !verification.registrationInfo) {
     return c.json({ error: 'Verification failed' }, 400)
   }
 
-  await c.env.KV.delete(KV.passkeyChallenge(c.get('userId')))
+  await c.env.KV.delete(KV.passkeyRegChallenge(c.get('userId')))
 
   const { credential } = verification.registrationInfo
   const credId = credential.id

@@ -1,7 +1,9 @@
 import type { Env } from '../types'
+import { nanoid } from './id'
 
 export function tables(env: Pick<Env, 'TABLE_PREFIX'>) {
   const p = env.TABLE_PREFIX ? `${env.TABLE_PREFIX}_` : ''
+  if (p && !/^[A-Za-z0-9_]+$/.test(p)) throw new Error('TABLE_PREFIX contains invalid characters')
   return {
     users:                     `${p}users`,
     totp_credentials:          `${p}totp_credentials`,
@@ -36,6 +38,7 @@ export async function setSetting(env: Env, key: string, value: string): Promise<
 }
 
 export async function getSettings(env: Env, keys: string[]): Promise<Record<string, string>> {
+  if (keys.length === 0) return {}
   const T = tables(env)
   const placeholders = keys.map((_, i) => `?${i + 1}`).join(',')
   const rows = await env.DB.prepare(
@@ -51,7 +54,6 @@ export async function audit(
   opts: { userId?: string; action: string; resource?: string; metadata?: unknown; ip?: string; userAgent?: string }
 ): Promise<void> {
   const T = tables(env)
-  const { nanoid } = await import('./id')
   await env.DB.prepare(
     `INSERT INTO ${T.audit_logs} (id, user_id, action, resource, metadata, ip, user_agent, created_at)
      VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)`
