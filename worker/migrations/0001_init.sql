@@ -50,7 +50,7 @@ CREATE TABLE user_database_permissions (
   id TEXT PRIMARY KEY,
   user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   database_id TEXT NOT NULL REFERENCES d1_databases(id) ON DELETE CASCADE,
-  permission TEXT NOT NULL DEFAULT 'read' CHECK (permission IN ('read', 'write')),
+  permission TEXT NOT NULL DEFAULT 'read' CHECK (permission IN ('read', 'write', 'write_drop')),
   granted_by TEXT REFERENCES users(id),
   granted_at INTEGER NOT NULL,
   UNIQUE (user_id, database_id)
