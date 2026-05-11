@@ -116,7 +116,7 @@ export default function AdminSettings() {
   if (loading) return <div className="p-6 text-sm text-zinc-500">{t('admin_settings.loading')}</div>
 
   return (
-    <div className="p-4 sm:p-6 max-w-2xl">
+    <div className="p-4 sm:p-6 max-w-5xl">
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-lg font-semibold text-zinc-900 dark:text-zinc-100">{t('admin.settings')}</h1>
         <button onClick={save} disabled={saving} className="btn-primary gap-2">
