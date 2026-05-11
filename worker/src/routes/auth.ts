@@ -82,7 +82,7 @@ auth.post('/register', async (c) => {
     const appName = (await getSetting(c.env, 'app_name')) ?? 'Zeta'
     await sendEmail(c.env, buildVerificationEmail({
       appName, appUrl: c.env.APP_URL, toEmail: email, token
-    })).catch(() => { /* non-fatal – user can resend */ })
+    })) // non-fatal – user can resend
   }
 
   c.executionCtx.waitUntil(audit(c.env, {
@@ -132,7 +132,7 @@ auth.post('/resend-verification', async (c) => {
   const appName = (await getSetting(c.env, 'app_name')) ?? 'Zeta'
   await sendEmail(c.env, buildVerificationEmail({
     appName, appUrl: c.env.APP_URL, toEmail: email, token
-  })).catch(() => {})
+  }))
 
   return c.json({ message: 'If the address exists, a new link was sent.' })
 })
@@ -252,7 +252,8 @@ auth.post('/2fa/email-otp/send', async (c) => {
   await c.env.KV.put(KV.emailOtp(pending.sub), otp, { expirationTtl: 600 })
 
   const appName = (await getSetting(c.env, 'app_name')) ?? 'Zeta'
-  await sendEmail(c.env, buildOtpEmail({ appName, toEmail: user.email, otp }))
+  const result = await sendEmail(c.env, buildOtpEmail({ appName, toEmail: user.email, otp }))
+  if (!result.success) return c.json({ error: result.error || 'Failed to send OTP' }, 500)
 
   return c.json({ message: 'OTP sent' })
 })
@@ -360,7 +361,7 @@ auth.post('/forgot-password', async (c) => {
     const appName = (await getSetting(c.env, 'app_name')) ?? 'Zeta'
     await sendEmail(c.env, buildPasswordResetEmail({
       appName, appUrl: c.env.APP_URL, toEmail: email, token
-    })).catch(() => {})
+    }))
   }
 
   return c.json({ message: 'If the address exists, a reset link was sent.' })

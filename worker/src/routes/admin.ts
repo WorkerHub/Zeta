@@ -5,6 +5,7 @@ import { uuid } from '../lib/id'
 import { now, getSetting, setSetting, getSettings, audit, tables } from '../lib/db'
 import { hashPassword } from '../lib/auth'
 import { KV } from '../lib/kv'
+import { sendEmail } from '../lib/email'
 
 const admin = new Hono<{ Bindings: Env; Variables: Variables }>()
 admin.use('*', requireAdmin)
@@ -305,46 +306,98 @@ admin.delete('/databases/:id/permissions/:userId', async (c) => {
 
 const EXPOSED_SETTINGS = [
   'registration_enabled', 'require_email_verification', 'enforce_2fa',
-  'email_provider', 'resend_api_key', 'smtp_host', 'smtp_port',
-  'smtp_user', 'smtp_pass', 'smtp_from', 'app_name',
+  'email_provider', 'smtp_config', 'resend_config', 'app_name',
 ]
 
 admin.get('/settings', async (c) => {
   const cfg = await getSettings(c.env, EXPOSED_SETTINGS)
-  // Mask secrets
-  if (cfg['resend_api_key']) cfg['resend_api_key'] = '••••••••'
-  if (cfg['smtp_pass']) cfg['smtp_pass'] = '••••••••'
+  // Mask secrets in JSON blobs
+  if (cfg['smtp_config']) {
+    try {
+      const smtp = JSON.parse(cfg['smtp_config'])
+      if (smtp.password) smtp.password = '••••••'
+      cfg['smtp_config'] = JSON.stringify(smtp)
+    } catch { /* ignore malformed */ }
+  }
+  if (cfg['resend_config']) {
+    try {
+      const resend = JSON.parse(cfg['resend_config'])
+      if (resend.api_key) resend.api_key = '••••••'
+      cfg['resend_config'] = JSON.stringify(resend)
+    } catch { /* ignore malformed */ }
+  }
   return c.json(cfg)
 })
 
 const BOOLEAN_SETTINGS = new Set(['registration_enabled', 'require_email_verification', 'enforce_2fa'])
-const VALID_EMAIL_PROVIDERS = ['resend', 'smtp']
+const VALID_EMAIL_PROVIDERS = ['none', 'resend', 'smtp']
 
 admin.patch('/settings', async (c) => {
   const body = await c.req.json<Record<string, string>>().catch(() => null)
   if (!body) return c.json({ error: 'Invalid body' }, 400)
 
   const allowed = new Set(EXPOSED_SETTINGS)
-  const updates: Array<[string, string]> = []
+  const existingSettings = await getSettings(c.env, EXPOSED_SETTINGS)
 
   for (const [key, value] of Object.entries(body)) {
     if (!allowed.has(key)) continue
-    // Don't overwrite masked values with placeholder
-    if (value === '••••••••') continue
+
     const v = String(value)
     if (BOOLEAN_SETTINGS.has(key) && v !== 'true' && v !== 'false') continue
     if (key === 'email_provider' && !VALID_EMAIL_PROVIDERS.includes(v)) continue
-    if (key === 'smtp_port' && (isNaN(Number(v)) || Number(v) < 1 || Number(v) > 65535)) continue
-    updates.push([key, v])
-  }
 
-  await Promise.all(updates.map(([k, v]) => setSetting(c.env, k, v)))
+    if (key === 'smtp_config') {
+      let newConfig: Record<string, unknown>
+      try { newConfig = JSON.parse(v) } catch { continue }
+      // Don't overwrite password with redacted placeholder
+      if (!newConfig.password) {
+        let existing: Record<string, unknown> = {}
+        try { existing = existingSettings['smtp_config'] ? JSON.parse(existingSettings['smtp_config']) : {} } catch { /* */ }
+        newConfig.password = (existing as Record<string, string>).password || ''
+      }
+      await setSetting(c.env, key, JSON.stringify(newConfig))
+    } else if (key === 'resend_config') {
+      let newConfig: Record<string, unknown>
+      try { newConfig = JSON.parse(v) } catch { continue }
+      // Don't overwrite api_key with redacted placeholder
+      if (!newConfig.api_key) {
+        let existing: Record<string, unknown> = {}
+        try { existing = existingSettings['resend_config'] ? JSON.parse(existingSettings['resend_config']) : {} } catch { /* */ }
+        newConfig.api_key = (existing as Record<string, string>).api_key || ''
+      }
+      await setSetting(c.env, key, JSON.stringify(newConfig))
+    } else {
+      await setSetting(c.env, key, v)
+    }
+  }
 
   c.executionCtx.waitUntil(audit(c.env, {
     userId: c.get('userId'), action: 'update_settings',
     ip: c.req.header('cf-connecting-ip')
   }))
   return c.json({ message: 'Settings saved' })
+})
+
+// ── Test email ─────────────────────────────────────────────────────────────────
+
+const EMAIL_RE = /^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$/
+
+admin.post('/settings/test-email', async (c) => {
+  const { to } = await c.req.json<{ to: string }>()
+  if (!to || !EMAIL_RE.test(to)) return c.json({ error: 'Invalid email address' }, 400)
+
+  const result = await sendEmail(c.env, {
+    to,
+    subject: 'Zeta Test Email',
+    html: '<p>This is a test email from Zeta. Your email configuration is working correctly.</p>',
+    text: 'This is a test email from Zeta. Your email configuration is working correctly.',
+  })
+
+  if (!result.success) {
+    return c.json({ error: result.error || 'Failed to send email' }, 500)
+  }
+
+  return c.json({ success: true })
 })
 
 // ── Setup (first-run) ─────────────────────────────────────────────────────────

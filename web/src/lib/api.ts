@@ -218,6 +218,8 @@ export const adminApi = {
   getSettings: () => apiFetch<Record<string, string>>('/admin/settings'),
   updateSettings: (body: Record<string, string>) =>
     apiFetch<{ message: string }>('/admin/settings', { method: 'PATCH', body: JSON.stringify(body) }),
+  testEmail: (to: string) =>
+    apiFetch<{ success: boolean }>('/admin/settings/test-email', { method: 'POST', body: JSON.stringify({ to }) }),
 
   setupStatus: () => apiFetch<{ setupCompleted: boolean; hasUsers: boolean }>('/setup-status'),
   completeSetup: () => apiFetch<{ message: string }>('/admin/setup/complete', { method: 'POST' }),
