@@ -142,7 +142,7 @@ profile.post('/passkey/register/options', async (c) => {
     `SELECT credential_id FROM ${T.passkey_credentials} WHERE user_id = ?1`
   ).bind(user.id).all<{ credential_id: string }>()
 
-  const appUrl = new URL(c.env.APP_URL)
+  const appUrl = new URL(c.env.APP_URL.trim())
   const options = await generateRegistrationOptions({
     rpName: 'Zeta',
     rpID: appUrl.hostname,
@@ -166,11 +166,11 @@ profile.post('/passkey/register/verify', async (c) => {
   const expectedChallenge = await c.env.KV.get(KV.passkeyRegChallenge(c.get('userId')))
   if (!expectedChallenge) return c.json({ error: 'Challenge expired' }, 400)
 
-  const appUrl = new URL(c.env.APP_URL)
+  const appUrl = new URL(c.env.APP_URL.trim())
   const verification = await verifyRegistrationResponse({
     response: body,
     expectedChallenge,
-    expectedOrigin: c.env.APP_URL.replace(/\/$/, ''),
+    expectedOrigin: c.env.APP_URL.trim().replace(/\/$/, ''),
     expectedRPID: appUrl.hostname,
     requireUserVerification: true,
   })

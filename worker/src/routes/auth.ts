@@ -81,7 +81,7 @@ auth.post('/register', async (c) => {
     await c.env.KV.put(KV.emailVerify(token), id, { expirationTtl: 24 * 3600 })
     const appName = (await getSetting(c.env, 'app_name')) ?? 'Zeta'
     await sendEmail(c.env, buildVerificationEmail({
-      appName, appUrl: c.env.APP_URL, toEmail: email, token
+      appName, appUrl: c.env.APP_URL.trim(), toEmail: email, token
     })) // non-fatal – user can resend
   }
 
@@ -131,7 +131,7 @@ auth.post('/resend-verification', async (c) => {
   await c.env.KV.put(KV.emailVerify(token), user.id, { expirationTtl: 24 * 3600 })
   const appName = (await getSetting(c.env, 'app_name')) ?? 'Zeta'
   await sendEmail(c.env, buildVerificationEmail({
-    appName, appUrl: c.env.APP_URL, toEmail: email, token
+    appName, appUrl: c.env.APP_URL.trim(), toEmail: email, token
   }))
 
   return c.json({ message: 'If the address exists, a new link was sent.' })
@@ -360,7 +360,7 @@ auth.post('/forgot-password', async (c) => {
     await c.env.KV.put(KV.passwordReset(token), user.id, { expirationTtl: 3600 })
     const appName = (await getSetting(c.env, 'app_name')) ?? 'Zeta'
     await sendEmail(c.env, buildPasswordResetEmail({
-      appName, appUrl: c.env.APP_URL, toEmail: email, token
+      appName, appUrl: c.env.APP_URL.trim(), toEmail: email, token
     }))
   }
 
@@ -406,7 +406,7 @@ auth.post('/2fa/passkey/options', async (c) => {
 
   if (credentials.results.length === 0) return c.json({ error: 'No passkeys registered' }, 400)
 
-  const appUrl = new URL(c.env.APP_URL)
+  const appUrl = new URL(c.env.APP_URL.trim())
   const options = await generateAuthenticationOptions({
     rpID: appUrl.hostname,
     allowCredentials: credentials.results.map((r) => ({ id: r.credential_id })),
@@ -442,8 +442,8 @@ auth.post('/2fa/passkey/verify', async (c) => {
 
   if (!storedCred) return c.json({ error: 'Credential not found' }, 400)
 
-  const appUrl = new URL(c.env.APP_URL)
-  const expectedOrigin = c.env.APP_URL.replace(/\/$/, '')
+  const appUrl = new URL(c.env.APP_URL.trim())
+  const expectedOrigin = c.env.APP_URL.trim().replace(/\/$/, '')
 
   const verification = await verifyAuthenticationResponse({
     response: body.credential as Parameters<typeof verifyAuthenticationResponse>[0]['response'],

@@ -16,7 +16,7 @@ const app = new Hono<{ Bindings: Env; Variables: Variables }>()
 
 app.use('/api/*', cors({
   origin: (origin, c) => {
-    const allowed = c.env.APP_URL?.replace(/\/$/, '')
+    const allowed = c.env.APP_URL?.trim().replace(/\/$/, '')
     if (!origin || !allowed) return allowed ?? null
     return origin.replace(/\/$/, '') === allowed ? origin : null
   },
