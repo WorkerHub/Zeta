@@ -1,16 +1,22 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
+import { lazy, Suspense } from 'react'
 import { AuthProvider, useAuthContext } from './hooks/useAuth'
 import { useTheme } from './hooks/useTheme'
 import { useLocale } from './hooks/useLocale'
-import Login from './pages/Login'
-import Register from './pages/Register'
-import ForgotPassword from './pages/ForgotPassword'
-import ResetPassword from './pages/ResetPassword'
-import VerifyEmail from './pages/VerifyEmail'
-import QueryPage from './pages/Query'
-import ProfilePage from './pages/Profile'
-import AboutPage from './pages/About'
-import AdminPage from './pages/admin/AdminLayout'
+
+const Login = lazy(() => import('./pages/Login'))
+const Register = lazy(() => import('./pages/Register'))
+const ForgotPassword = lazy(() => import('./pages/ForgotPassword'))
+const ResetPassword = lazy(() => import('./pages/ResetPassword'))
+const VerifyEmail = lazy(() => import('./pages/VerifyEmail'))
+const QueryPage = lazy(() => import('./pages/Query'))
+const ProfilePage = lazy(() => import('./pages/Profile'))
+const AboutPage = lazy(() => import('./pages/About'))
+const AdminPage = lazy(() => import('./pages/admin/AdminLayout'))
+
+function RouteLoading() {
+  return <div className="flex h-screen items-center justify-center text-zinc-500 text-sm">Loading...</div>
+}
 
 function PrivateRoute({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuthContext()
@@ -34,18 +40,20 @@ export default function App() {
   return (
     <AuthProvider>
       <BrowserRouter>
-        <Routes>
-          <Route path="/login" element={<Login />} />
-          <Route path="/register" element={<Register />} />
-          <Route path="/forgot-password" element={<ForgotPassword />} />
-          <Route path="/reset-password" element={<ResetPassword />} />
-          <Route path="/verify-email" element={<VerifyEmail />} />
-          <Route path="/query" element={<PrivateRoute><QueryPage /></PrivateRoute>} />
-          <Route path="/profile" element={<PrivateRoute><ProfilePage /></PrivateRoute>} />
-          <Route path="/about" element={<PrivateRoute><AboutPage /></PrivateRoute>} />
-          <Route path="/admin/*" element={<AdminRoute><AdminPage /></AdminRoute>} />
-          <Route path="*" element={<Navigate to="/query" replace />} />
-        </Routes>
+        <Suspense fallback={<RouteLoading />}>
+          <Routes>
+            <Route path="/login" element={<Login />} />
+            <Route path="/register" element={<Register />} />
+            <Route path="/forgot-password" element={<ForgotPassword />} />
+            <Route path="/reset-password" element={<ResetPassword />} />
+            <Route path="/verify-email" element={<VerifyEmail />} />
+            <Route path="/query" element={<PrivateRoute><QueryPage /></PrivateRoute>} />
+            <Route path="/profile" element={<PrivateRoute><ProfilePage /></PrivateRoute>} />
+            <Route path="/about" element={<PrivateRoute><AboutPage /></PrivateRoute>} />
+            <Route path="/admin/*" element={<AdminRoute><AdminPage /></AdminRoute>} />
+            <Route path="*" element={<Navigate to="/query" replace />} />
+          </Routes>
+        </Suspense>
       </BrowserRouter>
     </AuthProvider>
   )

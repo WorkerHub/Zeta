@@ -12,15 +12,52 @@
     },
     {
       "groupName": "Cloudflare packages",
-      "matchPackageNames": [
-        "/^@cloudflare//"
-      ]
+      "matchPackagePatterns": [
+        "^@cloudflare/"
+      ],
+      "matchUpdateTypes": ["patch", "minor"],
+      "automerge": true
     },
     {
       "groupName": "SimpleWebAuthn packages",
-      "matchPackageNames": [
-        "/^@simplewebauthn//"
-      ]
+      "matchPackagePatterns": [
+        "^@simplewebauthn/"
+      ],
+      "matchUpdateTypes": ["patch", "minor"],
+      "automerge": true
+    },
+    {
+      "groupName": "CodeMirror packages",
+      "matchPackagePatterns": [
+        "^@codemirror/",
+        "^@uiw/react-codemirror$",
+        "^codemirror$"
+      ],
+      "matchUpdateTypes": ["patch", "minor"],
+      "automerge": true
+    },
+    {
+      "groupName": "React ecosystem",
+      "matchPackagePatterns": [
+        "^react$",
+        "^react-dom$",
+        "^react-router-dom$"
+      ],
+      "matchUpdateTypes": ["patch", "minor"],
+      "automerge": true
+    },
+    {
+      "groupName": "Build tooling",
+      "matchPackagePatterns": [
+        "^typescript$",
+        "^vite$",
+        "^vitest$",
+        "^@vitejs/plugin-react$",
+        "^tailwindcss$",
+        "^@tailwindcss/vite$"
+      ],
+      "matchUpdateTypes": ["patch", "minor"],
+      "automerge": true
     }
   ]
 }
