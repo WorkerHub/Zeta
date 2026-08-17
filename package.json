@@ -18,7 +18,7 @@
     "format": "biome format --write .",
     "check": "biome check ."
   },
-  "packageManager": "pnpm@11.21.0",
+  "packageManager": "pnpm@11.22.0",
   "devDependencies": {
     "@biomejs/biome": "^2.5.0"
   }
