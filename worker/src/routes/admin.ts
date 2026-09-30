@@ -175,7 +175,7 @@ admin.delete('/users/:id', async (c) => {
     c.env.DB.prepare(`DELETE FROM ${T.totp_credentials} WHERE user_id = ?1`).bind(id),
     c.env.DB.prepare(`DELETE FROM ${T.passkey_credentials} WHERE user_id = ?1`).bind(id),
     c.env.DB.prepare(`DELETE FROM ${T.notebooks} WHERE user_id = ?1`).bind(id),
-    c.env.DB.prepare(`DELETE FROM ${T.query_history} WHERE user_id = ?1`).bind(id),
+    c.env.DB.prepare(`UPDATE ${T.query_history} SET user_id = NULL WHERE user_id = ?1`).bind(id),
     c.env.DB.prepare(`DELETE FROM ${T.user_database_permissions} WHERE user_id = ?1`).bind(id),
     c.env.DB.prepare(`UPDATE ${T.user_database_permissions} SET granted_by = NULL WHERE granted_by = ?1`).bind(id),
     c.env.DB.prepare(`UPDATE ${T.audit_logs} SET user_id = NULL WHERE user_id = ?1`).bind(id),
@@ -272,7 +272,7 @@ admin.delete('/databases/:id', async (c) => {
   await c.env.DB.batch([
     c.env.DB.prepare(`UPDATE ${T.notebooks} SET database_id = NULL WHERE database_id = ?1`).bind(dbId),
     c.env.DB.prepare(`DELETE FROM ${T.user_database_permissions} WHERE database_id = ?1`).bind(dbId),
-    c.env.DB.prepare(`DELETE FROM ${T.query_history} WHERE database_id = ?1`).bind(dbId),
+    c.env.DB.prepare(`UPDATE ${T.query_history} SET database_id = NULL WHERE database_id = ?1`).bind(dbId),
     c.env.DB.prepare(`DELETE FROM ${T.d1_databases} WHERE id = ?1`).bind(dbId),
   ])
   c.executionCtx.waitUntil(audit(c.env, {
