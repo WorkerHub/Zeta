@@ -1,4 +1,5 @@
 import type { Env } from '../types'
+import { openSecret } from './secrets'
 import { getSetting } from './db'
 import { connect } from 'cloudflare:sockets'
 
@@ -59,8 +60,12 @@ async function sendViaResend(env: Env, payload: EmailPayload): Promise<{ success
   const configStr = await getSetting(env, 'resend_config')
   if (!configStr) return { success: false, error: 'Resend not configured' }
 
-  const config: ResendConfig = JSON.parse(configStr)
+  let config: ResendConfig
+  try { config = JSON.parse(configStr) } catch { return { success: false, error: 'Resend config is invalid' } }
   if (!config.api_key) return { success: false, error: 'Resend API key not configured' }
+  try { config.api_key = await openSecret(env, config.api_key) } catch {
+    return { success: false, error: 'Resend API key could not be decrypted' }
+  }
 
   const from = payload.from || config.from || 'noreply@example.com'
   const fromName = (payload.fromName || config.from_name || 'Zeta').replace(/[\r\n]/g, '')
@@ -94,6 +99,11 @@ async function sendViaSMTP(env: Env, payload: EmailPayload): Promise<{ success: 
   let config: SMTPConfig
   try { config = JSON.parse(configStr) } catch { return { success: false, error: 'SMTP config is invalid' } }
   if (!config.host) return { success: false, error: 'SMTP host not configured' }
+  if (config.password) {
+    try { config.password = await openSecret(env, config.password) } catch {
+      return { success: false, error: 'SMTP password could not be decrypted' }
+    }
+  }
 
   const from = payload.from || config.from || 'noreply@example.com'
   const fromName = (payload.fromName || config.from_name || 'Zeta').replace(/[\r\n]/g, '')

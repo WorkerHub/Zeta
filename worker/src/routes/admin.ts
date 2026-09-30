@@ -5,6 +5,7 @@ import { uuid } from '../lib/id'
 import { now, getSetting, setSetting, getSettings, audit, tables } from '../lib/db'
 import { hashPassword } from '../lib/auth'
 import { KV } from '../lib/kv'
+import { sealSecret } from '../lib/secrets'
 import { sendEmail } from '../lib/email'
 
 const admin = new Hono<{ Bindings: Env; Variables: Variables }>()
@@ -384,6 +385,10 @@ admin.patch('/settings', async (c) => {
         let existing: Record<string, unknown> = {}
         try { existing = existingSettings[key] ? JSON.parse(existingSettings[key]) : {} } catch { /* */ }
         newConfig[secretField] = existing[secretField] || ''
+      }
+      // Encrypt at rest; also upgrades legacy plaintext values the next time settings are saved.
+      if (typeof newConfig[secretField] === 'string') {
+        newConfig[secretField] = await sealSecret(c.env, newConfig[secretField] as string)
       }
       await setSetting(c.env, key, JSON.stringify(newConfig))
     } else {
