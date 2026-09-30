@@ -65,8 +65,8 @@ function buildDDL(T: ReturnType<typeof tables>): string[] {
 
     `CREATE TABLE IF NOT EXISTS ${T.query_history} (
       id TEXT PRIMARY KEY,
-      user_id TEXT NOT NULL REFERENCES ${T.users}(id),
-      database_id TEXT NOT NULL REFERENCES ${T.d1_databases}(id),
+      user_id TEXT REFERENCES ${T.users}(id),
+      database_id TEXT REFERENCES ${T.d1_databases}(id),
       sql TEXT NOT NULL,
       duration_ms INTEGER,
       row_count INTEGER,
@@ -75,6 +75,7 @@ function buildDDL(T: ReturnType<typeof tables>): string[] {
     )`,
     `CREATE INDEX IF NOT EXISTS idx_${T.query_history}_user ON ${T.query_history}(user_id)`,
     `CREATE INDEX IF NOT EXISTS idx_${T.query_history}_db   ON ${T.query_history}(database_id)`,
+    `CREATE INDEX IF NOT EXISTS idx_${T.query_history}_executed ON ${T.query_history}(executed_at)`,
 
     `CREATE TABLE IF NOT EXISTS ${T.settings} (
       key TEXT PRIMARY KEY,
@@ -115,14 +116,7 @@ const DEFAULT_SETTINGS: Array<[string, string]> = [
   ['require_email_verification', 'false'],
   ['enforce_2fa', 'false'],
   ['email_provider', 'resend'],
-  ['resend_api_key', ''],
-  ['smtp_host', ''],
-  ['smtp_port', '587'],
-  ['smtp_user', ''],
-  ['smtp_pass', ''],
-  ['smtp_from', ''],
   ['app_name', 'Zeta'],
-  ['setup_completed', 'true'],
 ]
 
 // ── GET /api/setup/:secret ────────────────────────────────────────────────────

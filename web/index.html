@@ -8,15 +8,7 @@
     <meta name="description" content="Zeta – Query your Cloudflare D1 databases" />
     <title>Zeta</title>
     <!-- Blocking theme script: runs before first paint to prevent flash -->
-    <script>
-      (function () {
-        var t = localStorage.getItem('theme') || 'auto'
-        var dark = t === 'dark' || (t === 'auto' && window.matchMedia('(prefers-color-scheme: dark)').matches)
-        document.documentElement.classList.toggle('dark', dark)
-        var m = document.querySelector('meta[name="theme-color"]')
-        if (m) m.content = dark ? '#09090b' : '#fafafa'
-      })()
-    </script>
+    <script src="/theme-init.js"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />

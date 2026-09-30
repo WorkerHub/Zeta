@@ -7,7 +7,7 @@ export default function ResultTable({ rows }: Props) {
     return <p className="text-sm text-zinc-500 py-4 text-center">No rows returned</p>
   }
 
-  const columns = Object.keys(rows[0] ?? {})
+  const columns = Array.from(new Set(rows.flatMap((r) => Object.keys(r))))
 
   return (
     <div className="overflow-x-auto rounded-lg border border-zinc-200 dark:border-zinc-800">
@@ -28,7 +28,7 @@ export default function ResultTable({ rows }: Props) {
                 const val = row[col]
                 return (
                   <td key={col} className="px-3 py-2 text-xs text-zinc-700 dark:text-zinc-300 whitespace-nowrap max-w-[300px] truncate">
-                    {val === null ? (
+                    {val === null || val === undefined ? (
                       <span className="text-zinc-400 italic dark:text-zinc-600">NULL</span>
                     ) : typeof val === 'object' ? (
                       <span className="text-amber-600 dark:text-amber-400">{JSON.stringify(val)}</span>

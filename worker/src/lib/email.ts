@@ -1,4 +1,5 @@
 import type { Env } from '../types'
+import { openSecret } from './secrets'
 import { getSetting } from './db'
 import { connect } from 'cloudflare:sockets'
 
@@ -59,8 +60,12 @@ async function sendViaResend(env: Env, payload: EmailPayload): Promise<{ success
   const configStr = await getSetting(env, 'resend_config')
   if (!configStr) return { success: false, error: 'Resend not configured' }
 
-  const config: ResendConfig = JSON.parse(configStr)
+  let config: ResendConfig
+  try { config = JSON.parse(configStr) } catch { return { success: false, error: 'Resend config is invalid' } }
   if (!config.api_key) return { success: false, error: 'Resend API key not configured' }
+  try { config.api_key = await openSecret(env, config.api_key) } catch {
+    return { success: false, error: 'Resend API key could not be decrypted' }
+  }
 
   const from = payload.from || config.from || 'noreply@example.com'
   const fromName = (payload.fromName || config.from_name || 'Zeta').replace(/[\r\n]/g, '')
@@ -91,8 +96,14 @@ async function sendViaSMTP(env: Env, payload: EmailPayload): Promise<{ success: 
   const configStr = await getSetting(env, 'smtp_config')
   if (!configStr) return { success: false, error: 'SMTP not configured' }
 
-  const config: SMTPConfig = JSON.parse(configStr)
+  let config: SMTPConfig
+  try { config = JSON.parse(configStr) } catch { return { success: false, error: 'SMTP config is invalid' } }
   if (!config.host) return { success: false, error: 'SMTP host not configured' }
+  if (config.password) {
+    try { config.password = await openSecret(env, config.password) } catch {
+      return { success: false, error: 'SMTP password could not be decrypted' }
+    }
+  }
 
   const from = payload.from || config.from || 'noreply@example.com'
   const fromName = (payload.fromName || config.from_name || 'Zeta').replace(/[\r\n]/g, '')
@@ -101,7 +112,7 @@ async function sendViaSMTP(env: Env, payload: EmailPayload): Promise<{ success: 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const socket: any = connect(
     { hostname: config.host, port: config.port },
-    { secureTransport: isImplicitTls ? 'on' : 'off' } as any,
+    { secureTransport: isImplicitTls ? 'on' : 'starttls' } as any,
   )
 
   try {
@@ -112,7 +123,8 @@ async function sendViaSMTP(env: Env, payload: EmailPayload): Promise<{ success: 
     await session.expect(250)
 
     if (!isImplicitTls) {
-      await session.tryStartTls()
+      // Never send credentials over a connection that could not be upgraded to TLS.
+      await session.tryStartTls(Boolean(config.username && config.password))
     }
 
     if (config.username && config.password) {
@@ -147,10 +159,13 @@ class SmtpSession {
     this.writer = socket.writable.getWriter()
   }
 
-  async tryStartTls(): Promise<void> {
+  async tryStartTls(required: boolean): Promise<void> {
     await this.cmd('STARTTLS')
     const resp = await this.readResponse()
-    if (resp.code !== 220) return
+    if (resp.code !== 220) {
+      if (required) throw new Error('Server refused STARTTLS; refusing to authenticate in plaintext')
+      return
+    }
 
     this.reader.releaseLock()
     this.writer.releaseLock()

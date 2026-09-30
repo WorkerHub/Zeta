@@ -185,16 +185,34 @@ export async function isRefreshTokenRevoked(env: Env, jti: string): Promise<bool
 
 // ── Rate limiting ─────────────────────────────────────────────────────────────
 
-export async function checkLoginRateLimit(env: Env, ip: string): Promise<boolean> {
-  const key = KV.loginAttempts(ip)
-  const count = parseInt((await env.KV.get(key)) ?? '0', 10)
-  if (count >= 10) return false
-  await env.KV.put(key, String(count + 1), { expirationTtl: 15 * 60 })
-  return true
+async function overLimit(env: Env, key: string, limit: number): Promise<boolean> {
+  return parseInt((await env.KV.get(key)) ?? '0', 10) >= limit
 }
 
-export async function resetLoginAttempts(env: Env, ip: string): Promise<void> {
-  await env.KV.delete(KV.loginAttempts(ip))
+async function bump(env: Env, key: string, ttl: number): Promise<void> {
+  const count = parseInt((await env.KV.get(key)) ?? '0', 10)
+  await env.KV.put(key, String(count + 1), { expirationTtl: ttl })
+}
+
+// Returns false when either the IP or the targeted account has too many recent failures.
+export async function isLoginBlocked(env: Env, ip: string, email: string): Promise<boolean> {
+  const [byIp, byAccount] = await Promise.all([
+    overLimit(env, KV.loginAttempts(ip), 20),
+    overLimit(env, KV.loginAttempts(`acct:${email}`), 10),
+  ])
+  return byIp || byAccount
+}
+
+export async function recordLoginFailure(env: Env, ip: string, email: string): Promise<void> {
+  await Promise.all([
+    bump(env, KV.loginAttempts(ip), 15 * 60),
+    bump(env, KV.loginAttempts(`acct:${email}`), 15 * 60),
+  ])
+}
+
+// Only the account counter is cleared: a successful login must not wipe the IP's failure history.
+export async function resetLoginAttempts(env: Env, email: string): Promise<void> {
+  await env.KV.delete(KV.loginAttempts(`acct:${email}`))
 }
 
 export async function check2faRateLimit(env: Env, userId: string): Promise<boolean> {
