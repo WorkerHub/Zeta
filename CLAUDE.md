@@ -15,7 +15,7 @@ cd web && pnpm build            # build SPA to web/dist/
 cd web && pnpm type-check
 
 # Deploy (from root)
-pnpm deploy   # builds web then deploys worker (which embeds the SPA)
+pnpm run deploy   # builds web then deploys worker (which embeds the SPA)
 ```
 
 ## Key Files
@@ -38,13 +38,13 @@ pnpm deploy   # builds web then deploys worker (which embeds the SPA)
 4. Set Worker vars:
    - `APP_URL` — your custom domain (e.g. `https://zeta.example.com`)
    - `TABLE_PREFIX` — (optional) prefix for all internal tables, e.g. `kp` → tables become `kp_users`, `kp_settings`, etc. Must be set **before** running setup. Cannot be changed after initialisation.
-5. `pnpm deploy` to build & deploy
+5. `pnpm run deploy` to build & deploy
 6. Visit `https://<your-domain>/api/setup/<SETUP_SECRET>` to initialise the database
 7. Register at `/register` — first user automatically becomes admin
 
 ## Adding a Queryable D1 Database
 
 1. Add a `[[d1_databases]]` entry to `wrangler.toml` with your new binding name (e.g. `QUERY_DB_1`)
-2. `pnpm deploy` to redeploy the Worker with the new binding
+2. `pnpm run deploy` to redeploy the Worker with the new binding
 3. In the Admin Panel → Databases, register the binding name
 4. Grant users access in Admin → Databases → Permissions

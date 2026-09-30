@@ -32,7 +32,7 @@ export default function QueryPage() {
   const {
     notebooks, activeId, setActiveId,
     createNotebook, deleteNotebook, renameNotebook,
-    updateContent, updateDatabase,
+    updateContent, updateDatabase, saveError,
     loading: notebooksLoading, canCreate,
   } = useNotebooks()
 
@@ -118,6 +118,7 @@ export default function QueryPage() {
             results: (res.results ?? []) as Record<string, unknown>[],
             duration_ms: res.duration_ms ?? 0,
             changes: (res.meta as { changes?: number } | undefined)?.changes,
+            truncated: res.truncated,
           }
           setStatementResults([entry])
         } catch (err) {
@@ -190,13 +191,11 @@ export default function QueryPage() {
     dragging.current = false
   }
 
-  function toggleLayout() {
-    setLayout(prev => {
-      const next = prev === 'vertical' ? 'horizontal' : 'vertical'
-      localStorage.setItem('query-layout', next)
-      setEditorPct(40)
-      return next
-    })
+  function changeLayout(next: 'vertical' | 'horizontal') {
+    if (next === layout) return
+    localStorage.setItem('query-layout', next)
+    setEditorPct(40)
+    setLayout(next)
   }
 
   if (notebooksLoading) {
@@ -400,20 +399,25 @@ export default function QueryPage() {
                 {/* Layout toggle buttons */}
                 <div className="hidden sm:flex items-center gap-0.5 rounded-md border border-zinc-200 dark:border-zinc-700 p-0.5">
                   <button
-                    onClick={toggleLayout}
+                    onClick={() => changeLayout('vertical')}
                     className={`p-1 rounded transition-colors ${layout === 'vertical' ? 'bg-zinc-200 dark:bg-zinc-700 text-zinc-800 dark:text-zinc-200' : 'text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300'}`}
                     title="Top / Bottom"
                   >
                     <LayoutPanelTop size={13} />
                   </button>
                   <button
-                    onClick={toggleLayout}
+                    onClick={() => changeLayout('horizontal')}
                     className={`p-1 rounded transition-colors ${layout === 'horizontal' ? 'bg-zinc-200 dark:bg-zinc-700 text-zinc-800 dark:text-zinc-200' : 'text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300'}`}
                     title="Left / Right"
                   >
                     <Columns2 size={13} />
                   </button>
                 </div>
+                {saveError && (
+                  <span className="text-xs text-amber-500" title="Your latest edits could not be saved. They will be retried on the next change.">
+                    Autosave failed
+                  </span>
+                )}
                 <span className="text-xs text-zinc-400 dark:text-zinc-600 hidden sm:block">{t('query.shortcut')}</span>
                 <button
                   onClick={runQuery}

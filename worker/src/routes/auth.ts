@@ -9,7 +9,7 @@ import {
   createAccessToken, createRefreshToken, createPending2faToken,
   verifyRefreshToken, verifyPending2faToken,
   revokeRefreshToken, isRefreshTokenRevoked,
-  checkLoginRateLimit, resetLoginAttempts,
+  isLoginBlocked, recordLoginFailure, resetLoginAttempts,
   check2faRateLimit, reset2faAttempts,
   checkEmailRateLimit, checkRegisterRateLimit,
 } from '../lib/auth'
@@ -52,8 +52,12 @@ auth.post('/register', async (c) => {
   }
 
   const body = await c.req.json<{ email?: string; password?: string; name?: string }>().catch(() => null)
-  if (!body?.email || !body.password || !body.name) {
+  if (typeof body?.email !== 'string' || typeof body.password !== 'string' || typeof body.name !== 'string'
+    || !body.email || !body.password || !body.name) {
     return c.json({ error: 'email, password, and name are required' }, 400)
+  }
+  if (body.password.length > 256 || body.name.length > 100 || body.email.length > 254) {
+    return c.json({ error: 'Input too long' }, 400)
   }
 
   const email = body.email.toLowerCase().trim()
@@ -80,9 +84,9 @@ auth.post('/register', async (c) => {
     const token = nanoid(32)
     await c.env.KV.put(KV.emailVerify(token), id, { expirationTtl: 24 * 3600 })
     const appName = (await getSetting(c.env, 'app_name')) ?? 'Zeta'
-    await sendEmail(c.env, buildVerificationEmail({
+    c.executionCtx.waitUntil(sendEmail(c.env, buildVerificationEmail({
       appName, appUrl: c.env.APP_URL.trim(), toEmail: email, token
-    })) // non-fatal – user can resend
+    })).catch(() => {})) // non-fatal – user can resend
   }
 
   c.executionCtx.waitUntil(audit(c.env, {
@@ -130,9 +134,9 @@ auth.post('/resend-verification', async (c) => {
   const token = nanoid(32)
   await c.env.KV.put(KV.emailVerify(token), user.id, { expirationTtl: 24 * 3600 })
   const appName = (await getSetting(c.env, 'app_name')) ?? 'Zeta'
-  await sendEmail(c.env, buildVerificationEmail({
+  c.executionCtx.waitUntil(sendEmail(c.env, buildVerificationEmail({
     appName, appUrl: c.env.APP_URL.trim(), toEmail: email, token
-  }))
+  })).catch(() => {}))
 
   return c.json({ message: 'If the address exists, a new link was sent.' })
 })
@@ -141,14 +145,15 @@ auth.post('/resend-verification', async (c) => {
 
 auth.post('/login', async (c) => {
   const ip = clientIp(c)
-  if (!(await checkLoginRateLimit(c.env, ip))) {
-    return c.json({ error: 'Too many login attempts. Try again later.' }, 429)
+  const body = await c.req.json<{ email?: string; password?: string }>().catch(() => null)
+  if (typeof body?.email !== 'string' || typeof body.password !== 'string' || !body.email || !body.password) {
+    return c.json({ error: 'email and password are required' }, 400)
   }
 
-  const body = await c.req.json<{ email?: string; password?: string }>().catch(() => null)
-  if (!body?.email || !body.password) return c.json({ error: 'email and password are required' }, 400)
-
   const email = body.email.toLowerCase().trim()
+  if (await isLoginBlocked(c.env, ip, email)) {
+    return c.json({ error: 'Too many login attempts. Try again later.' }, 429)
+  }
   const T = tables(c.env)
   const user = await c.env.DB.prepare(`SELECT * FROM ${T.users} WHERE email = ?1`).bind(email).first<UserRow>()
 
@@ -157,6 +162,7 @@ auth.post('/login', async (c) => {
   const valid = await verifyPassword(body.password, hashToCheck)
 
   if (!user || !valid) {
+    await recordLoginFailure(c.env, ip, email)
     return c.json({ error: 'Invalid email or password' }, 401)
   }
 
@@ -165,7 +171,7 @@ auth.post('/login', async (c) => {
     return c.json({ error: 'Please verify your email before logging in.' }, 403)
   }
 
-  await resetLoginAttempts(c.env, ip)
+  await resetLoginAttempts(c.env, email)
 
   // Check if 2FA is required
   const enforce2fa = await getSetting(c.env, 'enforce_2fa')
@@ -202,19 +208,20 @@ auth.post('/2fa/totp', async (c) => {
   if (!(await check2faRateLimit(c.env, pending.sub))) return c.json({ error: 'Too many attempts. Try again later.' }, 429)
 
   const T = tables(c.env)
-  const totp = await c.env.DB.prepare(
+  const totpRows = await c.env.DB.prepare(
     `SELECT encrypted_secret FROM ${T.totp_credentials} WHERE user_id = ?1`
-  ).bind(pending.sub).first<{ encrypted_secret: string }>()
-  if (!totp) return c.json({ error: 'TOTP not configured' }, 400)
-
-  const secret = await decryptTotpSecret(c.env, totp.encrypted_secret)
+  ).bind(pending.sub).all<{ encrypted_secret: string }>()
+  if (totpRows.results.length === 0) return c.json({ error: 'TOTP not configured' }, 400)
 
   const totpUsedKey = KV.totpUsed(pending.sub, body.code)
   if (await c.env.KV.get(totpUsedKey)) return c.json({ error: 'Code already used' }, 401)
 
-  if (!verifyTotpCode(secret, body.code)) {
-    return c.json({ error: 'Invalid code' }, 401)
+  let totpValid = false
+  for (const row of totpRows.results) {
+    const secret = await decryptTotpSecret(c.env, row.encrypted_secret)
+    if (verifyTotpCode(secret, body.code)) { totpValid = true; break }
   }
+  if (!totpValid) return c.json({ error: 'Invalid code' }, 401)
 
   await c.env.KV.put(totpUsedKey, '1', { expirationTtl: 90 })
   await c.env.KV.put(KV.jtiDeny(pending.jti), '1', { expirationTtl: 10 * 60 })
@@ -241,6 +248,9 @@ auth.post('/2fa/email-otp/send', async (c) => {
   if (!pending) return c.json({ error: 'Invalid or expired token' }, 401)
 
   if (await c.env.KV.get(KV.jtiDeny(pending.jti))) return c.json({ error: 'Token already used' }, 401)
+  if (!(await checkEmailRateLimit(c.env, `otp:${pending.sub}`))) {
+    return c.json({ error: 'Too many requests. Try again later.' }, 429)
+  }
 
   const T = tables(c.env)
   const user = await c.env.DB.prepare(`SELECT email FROM ${T.users} WHERE id = ?1`)
@@ -359,9 +369,9 @@ auth.post('/forgot-password', async (c) => {
     const token = nanoid(32)
     await c.env.KV.put(KV.passwordReset(token), user.id, { expirationTtl: 3600 })
     const appName = (await getSetting(c.env, 'app_name')) ?? 'Zeta'
-    await sendEmail(c.env, buildPasswordResetEmail({
+    c.executionCtx.waitUntil(sendEmail(c.env, buildPasswordResetEmail({
       appName, appUrl: c.env.APP_URL.trim(), toEmail: email, token
-    }))
+    })).catch(() => {}))
   }
 
   return c.json({ message: 'If the address exists, a reset link was sent.' })

@@ -3,7 +3,13 @@ import type { User, Notebook, StatementResult } from '../types'
 
 // ── Base fetch wrapper ─────────────────────────────────────────────────────────
 
-async function apiFetch<T>(path: string, init: RequestInit = {}): Promise<T> {
+interface ApiOptions {
+  // A 401 from this endpoint means bad credentials, not an expired session:
+  // surface the error instead of refreshing and redirecting to /login.
+  noSessionRetry?: boolean
+}
+
+async function apiFetch<T>(path: string, init: RequestInit = {}, opts: ApiOptions = {}): Promise<T> {
   const token = getAccessToken()
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
@@ -13,7 +19,7 @@ async function apiFetch<T>(path: string, init: RequestInit = {}): Promise<T> {
 
   const res = await fetch(`/api${path}`, { ...init, headers, credentials: 'include' })
 
-  if (res.status === 401) {
+  if (res.status === 401 && !opts.noSessionRetry) {
     // Try to refresh silently
     const refreshed = await tryRefresh()
     if (refreshed) {
@@ -101,23 +107,23 @@ export const authApi = {
 
   verify2faTotp: (body: { pendingToken: string; code: string }) =>
     apiFetch<{ accessToken: string; user: User }>(
-      '/auth/2fa/totp', { method: 'POST', body: JSON.stringify(body) }
+      '/auth/2fa/totp', { method: 'POST', body: JSON.stringify(body) }, { noSessionRetry: true }
     ),
 
   sendEmailOtp: (body: { pendingToken: string }) =>
-    apiFetch<{ message: string }>('/auth/2fa/email-otp/send', { method: 'POST', body: JSON.stringify(body) }),
+    apiFetch<{ message: string }>('/auth/2fa/email-otp/send', { method: 'POST', body: JSON.stringify(body) }, { noSessionRetry: true }),
 
   verifyEmailOtp: (body: { pendingToken: string; code: string }) =>
     apiFetch<{ accessToken: string; user: User }>(
-      '/auth/2fa/email-otp/verify', { method: 'POST', body: JSON.stringify(body) }
+      '/auth/2fa/email-otp/verify', { method: 'POST', body: JSON.stringify(body) }, { noSessionRetry: true }
     ),
 
   passkey2faOptions: (body: { pendingToken: string }) =>
-    apiFetch<Record<string, unknown>>('/auth/2fa/passkey/options', { method: 'POST', body: JSON.stringify(body) }),
+    apiFetch<Record<string, unknown>>('/auth/2fa/passkey/options', { method: 'POST', body: JSON.stringify(body) }, { noSessionRetry: true }),
 
   verify2faPasskey: (body: { pendingToken: string; credential: unknown }) =>
     apiFetch<{ accessToken: string; user: User }>(
-      '/auth/2fa/passkey/verify', { method: 'POST', body: JSON.stringify(body) }
+      '/auth/2fa/passkey/verify', { method: 'POST', body: JSON.stringify(body) }, { noSessionRetry: true }
     ),
 
   refresh: () =>
@@ -130,7 +136,7 @@ export const authApi = {
     apiFetch<{ message: string }>('/auth/forgot-password', { method: 'POST', body: JSON.stringify(body) }),
 
   resetPassword: (body: { token: string; password: string }) =>
-    apiFetch<{ message: string }>('/auth/reset-password', { method: 'POST', body: JSON.stringify(body) }),
+    apiFetch<{ message: string }>('/auth/reset-password', { method: 'POST', body: JSON.stringify(body) }, { noSessionRetry: true }),
 
   verifyEmail: (token: string) =>
     apiFetch<{ message: string }>(`/auth/verify-email?token=${encodeURIComponent(token)}`),
@@ -169,7 +175,7 @@ export const databasesApi = {
 
 export const queryApi = {
   execute: (body: { databaseId: string; sql: string }) =>
-    apiFetch<{ results?: unknown[]; meta?: unknown; duration_ms?: number; error?: string }>(
+    apiFetch<{ results?: unknown[]; meta?: unknown; duration_ms?: number; truncated?: boolean; error?: string }>(
       '/query', { method: 'POST', body: JSON.stringify(body) }
     ),
   executeBatch: (body: { databaseId: string; statements: string[] }) =>

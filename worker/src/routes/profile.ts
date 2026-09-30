@@ -71,7 +71,7 @@ profile.post('/change-password', async (c) => {
   if (!user?.password_hash) return c.json({ error: 'No password set' }, 400)
 
   if (!(await verifyPassword(body.currentPassword, user.password_hash))) {
-    return c.json({ error: 'Current password is incorrect' }, 401)
+    return c.json({ error: 'Current password is incorrect' }, 403)
   }
 
   const hash = await hashPassword(body.newPassword)
@@ -108,7 +108,7 @@ profile.post('/totp/confirm', async (c) => {
   const secret = await c.env.KV.get(KV.totpSetup(c.get('userId')))
   if (!secret) return c.json({ error: 'Setup session expired. Start over.' }, 400)
 
-  if (!verifyTotpCode(secret, body.code)) return c.json({ error: 'Invalid code' }, 401)
+  if (!verifyTotpCode(secret, body.code)) return c.json({ error: 'Invalid code' }, 400)
 
   const encryptedSecret = await encryptTotpSecret(c.env, secret)
   await c.env.KV.delete(KV.totpSetup(c.get('userId')))

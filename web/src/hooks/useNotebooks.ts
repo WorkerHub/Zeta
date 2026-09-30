@@ -10,6 +10,7 @@ export function useNotebooks() {
   const [notebooks, setNotebooks] = useState<Notebook[]>([])
   const [activeId, setActiveIdState] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
+  const [saveError, setSaveError] = useState(false)
   const debounceTimers = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map())
   const notebooksRef = useRef<Notebook[]>([])
 
@@ -99,7 +100,9 @@ export function useNotebooks() {
     if (existing) clearTimeout(existing)
 
     const timer = setTimeout(() => {
-      notebooksApi.update(id, { sql_content }).catch(() => {})
+      notebooksApi.update(id, { sql_content })
+        .then(() => setSaveError(false))
+        .catch(() => setSaveError(true))
       debounceTimers.current.delete(id)
     }, DEBOUNCE_MS)
     debounceTimers.current.set(id, timer)
@@ -124,6 +127,7 @@ export function useNotebooks() {
     renameNotebook,
     updateContent,
     updateDatabase,
+    saveError,
     loading,
     canCreate: notebooks.length < MAX_NOTEBOOKS,
   }

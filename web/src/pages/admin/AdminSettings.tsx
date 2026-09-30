@@ -73,7 +73,9 @@ export default function AdminSettings() {
   async function save() {
     setSaving(true); setError(''); setSaved(false)
     try {
-      const payload: Record<string, string> = { ...settings, email_provider: emailProvider }
+      // The loaded smtp/resend blobs contain masked secrets; only send a config the admin is editing.
+      const { smtp_config: _smtp, resend_config: _resend, ...rest } = settings
+      const payload: Record<string, string> = { ...rest, email_provider: emailProvider }
 
       if (emailProvider === 'smtp') {
         const smtpPayload: Record<string, any> = { ...smtp, port: Number(smtp.port) || 587 }

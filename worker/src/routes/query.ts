@@ -2,151 +2,30 @@ import { Hono } from 'hono'
 import type { Env, Variables, DatabaseRow } from '../types'
 import { requireAuth } from '../middleware/auth'
 import { uuid } from '../lib/id'
-import { now, audit, tables } from '../lib/db'
+import { now, tables } from '../lib/db'
+import { classifySql, checkSqlAccess, isWriteClass, type Permission } from '../lib/sql-guard'
+
+const MAX_RESULT_ROWS = 5000
+const MAX_SQL_LENGTH = 100_000
 
 const query = new Hono<{ Bindings: Env; Variables: Variables }>()
 query.use('*', requireAuth)
-
-// SQL statements that are never allowed regardless of permission level.
-// Anchored to ^ so they only match as the SQL command, not inside string literals.
-const FORBIDDEN_PATTERNS = [
-  /^\s*pragma\s+\w+\s*=/i,
-  /^\s*attach\s+database/i,
-  /^\s*detach\s+database/i,
-]
-
-function stripAllComments(sql: string): string {
-  let result = ''
-  let i = 0
-  while (i < sql.length) {
-    if (sql[i] === '-' && sql[i + 1] === '-') {
-      while (i < sql.length && sql[i] !== '\n') i++
-      result += ' '
-    } else if (sql[i] === '/' && sql[i + 1] === '*') {
-      i += 2
-      while (i < sql.length) {
-        if (i + 1 < sql.length && sql[i] === '*' && sql[i + 1] === '/') {
-          i += 2
-          break
-        }
-        i++
-      }
-      result += ' '
-    } else if (sql[i] === "'" || sql[i] === '"') {
-      const quote = sql[i]!
-      result += sql[i++]
-      while (i < sql.length) {
-        result += sql[i]
-        if (sql[i] === quote) {
-          i++
-          if (i >= sql.length || sql[i] !== quote) break
-          result += sql[i++]
-        } else {
-          i++
-        }
-      }
-    } else {
-      result += sql[i++]
-    }
-  }
-  return result
-}
-
-function skipBalancedParens(s: string, start: number): number {
-  let depth = 0
-  for (let i = start; i < s.length; i++) {
-    if (s[i] === "'" || s[i] === '"') {
-      const quote = s[i]!
-      i++
-      while (i < s.length) {
-        if (s[i] === quote) {
-          if (i + 1 < s.length && s[i + 1] === quote) { i += 2; continue }
-          break
-        }
-        i++
-      }
-      continue
-    }
-    if (s[i] === '(') depth++
-    else if (s[i] === ')') { depth--; if (depth === 0) return i }
-  }
-  return -1
-}
-
-function stripOneCte(s: string): { rest: string; hasMore: boolean } | null {
-  const parenStart = s.indexOf('(')
-  if (parenStart === -1) return null
-
-  const parenEnd = skipBalancedParens(s, parenStart)
-  if (parenEnd === -1) return null
-
-  let rest = s.slice(parenEnd + 1).trim()
-
-  // If rest starts with AS, the paren was a column list — find the actual CTE body
-  if (/^as\s/i.test(rest)) {
-    rest = rest.slice(2).trim()
-    const bodyStart = rest.indexOf('(')
-    if (bodyStart === -1) return null
-    const bodyEnd = skipBalancedParens(rest, bodyStart)
-    if (bodyEnd === -1) return null
-    rest = rest.slice(bodyEnd + 1).trim()
-  }
-
-  if (rest.startsWith(',')) {
-    return { rest: rest.slice(1).trim(), hasMore: true }
-  }
-  return { rest, hasMore: false }
-}
-
-function normalizeForClassification(sql: string): string {
-  const noComments = stripAllComments(sql)
-  let s = noComments.trim()
-
-  if (!/^with\s+/i.test(s)) return s
-
-  const MAX_CTES = 20
-  for (let n = 0; n < MAX_CTES; n++) {
-    const result = stripOneCte(s)
-    if (!result) break
-    if (!result.hasMore) return result.rest
-    s = result.rest
-  }
-
-  return s
-}
-
-function isForbiddenSql(sql: string): boolean {
-  const noComments = stripAllComments(sql)
-  return FORBIDDEN_PATTERNS.some((re) => re.test(noComments))
-}
-
-function isWriteSql(sql: string): boolean {
-  const normalized = normalizeForClassification(sql)
-  return /^\s*(insert|update|delete|create|alter|drop|truncate|replace)\s+/i.test(normalized)
-}
-
-function isDestructiveSql(sql: string): boolean {
-  const normalized = normalizeForClassification(sql)
-  return /^\s*(drop|truncate)\s+/i.test(normalized)
-}
-
-type Permission = 'read' | 'write' | 'write_drop'
 
 // ── POST /api/query ────────────────────────────────────────────────────────────
 
 query.post('/', async (c) => {
   const body = await c.req.json<{ databaseId?: string; sql?: string }>().catch(() => null)
-  if (!body?.databaseId || !body.sql?.trim()) {
+  if (typeof body?.databaseId !== 'string' || typeof body.sql !== 'string' || !body.sql.trim()) {
     return c.json({ error: 'databaseId and sql are required' }, 400)
   }
+  if (body.sql.length > MAX_SQL_LENGTH) return c.json({ error: 'SQL is too long' }, 413)
 
   const userId = c.get('userId')
   const role = c.get('userRole')
   const sql = body.sql.trim()
 
-  if (isForbiddenSql(sql)) {
-    return c.json({ error: 'This SQL statement is not allowed.' }, 403)
-  }
+  const kind = classifySql(sql)
+  if (kind === 'forbidden') return c.json({ error: 'This SQL statement is not allowed.' }, 403)
 
   // Resolve database + permission
   const T = tables(c.env)
@@ -165,12 +44,8 @@ query.post('/', async (c) => {
     permission = (perm.permission as Permission) ?? 'read'
   }
 
-  if (isDestructiveSql(sql) && permission !== 'write_drop') {
-    return c.json({ error: 'This statement requires elevated permissions (level 3: write & drop).' }, 403)
-  }
-  if (isWriteSql(sql) && permission === 'read') {
-    return c.json({ error: 'You only have read access to this database.' }, 403)
-  }
+  const denied = checkSqlAccess(kind, permission)
+  if (denied) return c.json({ error: denied }, kind === 'multiple' || kind === 'empty' ? 400 : 403)
 
   // Resolve the CF Worker binding
   const targetDb = c.env[db.binding_name]
@@ -185,14 +60,15 @@ query.post('/', async (c) => {
   let rowCount = 0
 
   try {
-    if (isWriteSql(sql)) {
+    if (isWriteClass(kind)) {
       const res = await d1.prepare(sql).run()
       rowCount = res.meta.changes ?? 0
       result = { meta: res.meta, results: [] }
     } else {
       const res = await d1.prepare(sql).all()
       rowCount = res.results.length
-      result = { results: res.results, meta: res.meta }
+      const truncated = rowCount > MAX_RESULT_ROWS
+      result = { results: truncated ? res.results.slice(0, MAX_RESULT_ROWS) : res.results, meta: res.meta, truncated }
     }
   } catch (err) {
     errorMsg = err instanceof Error ? err.message : String(err)
@@ -216,9 +92,15 @@ query.post('/', async (c) => {
 
 query.post('/batch', async (c) => {
   const body = await c.req.json<{ databaseId?: string; statements?: string[] }>().catch(() => null)
-  if (!body?.databaseId || !Array.isArray(body.statements) || body.statements.length === 0) {
+  if (
+    typeof body?.databaseId !== 'string' ||
+    !Array.isArray(body.statements) ||
+    body.statements.length === 0 ||
+    body.statements.some((x) => typeof x !== 'string')
+  ) {
     return c.json({ error: 'databaseId and a non-empty statements array are required' }, 400)
   }
+  if (body.statements.some((x) => x.length > MAX_SQL_LENGTH)) return c.json({ error: 'SQL is too long' }, 413)
   if (body.statements.length > 100) {
     return c.json({ error: 'Maximum 100 statements per batch' }, 400)
   }
@@ -258,25 +140,17 @@ query.post('/batch', async (c) => {
     duration_ms: number
     changes?: number
     error?: string
+    truncated?: boolean
   }> = []
 
   for (const rawSql of body.statements) {
     const sql = rawSql.trim()
     if (!sql) continue
 
-    // Forbidden check — record error, continue
-    if (isForbiddenSql(sql)) {
-      results.push({ sql, results: [], duration_ms: 0, error: 'This SQL statement is not allowed.' })
-      continue
-    }
-
-    // Permission checks
-    if (isDestructiveSql(sql) && permission !== 'write_drop') {
-      results.push({ sql, results: [], duration_ms: 0, error: 'This statement requires elevated permissions (level 3: write & drop).' })
-      continue
-    }
-    if (isWriteSql(sql) && permission === 'read') {
-      results.push({ sql, results: [], duration_ms: 0, error: 'You only have read access to this database.' })
+    const kind = classifySql(sql)
+    const denied = checkSqlAccess(kind, permission)
+    if (denied) {
+      results.push({ sql, results: [], duration_ms: 0, error: denied })
       continue
     }
 
@@ -284,14 +158,19 @@ query.post('/batch', async (c) => {
     let stmtResult: Record<string, unknown>[] = []
     let changes: number | undefined
     let errorMsg: string | undefined
+    let truncated = false
 
     try {
-      if (isWriteSql(sql)) {
+      if (isWriteClass(kind)) {
         const res = await d1.prepare(sql).run()
         changes = res.meta.changes ?? 0
       } else {
         const res = await d1.prepare(sql).all()
         stmtResult = res.results as Record<string, unknown>[]
+        if (stmtResult.length > MAX_RESULT_ROWS) {
+          stmtResult = stmtResult.slice(0, MAX_RESULT_ROWS)
+          truncated = true
+        }
       }
     } catch (err) {
       errorMsg = err instanceof Error ? err.message : String(err)
@@ -311,6 +190,7 @@ query.post('/batch', async (c) => {
     const entry: typeof results[number] = { sql, results: stmtResult, duration_ms: duration }
     if (changes !== undefined) entry.changes = changes
     if (errorMsg) entry.error = errorMsg
+    if (truncated) entry.truncated = true
     results.push(entry)
   }
 
