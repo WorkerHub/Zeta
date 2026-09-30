@@ -31,6 +31,8 @@ export default function AdminSettings() {
   const [emailProvider, setEmailProvider] = useState<EmailProvider>('none')
   const [smtp, setSmtp] = useState<SmtpConfig>(DEFAULT_SMTP)
   const [resend, setResend] = useState<ResendConfig>(DEFAULT_RESEND)
+  const [smtpHasSecret, setSmtpHasSecret] = useState(false)
+  const [resendHasSecret, setResendHasSecret] = useState(false)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
@@ -49,15 +51,15 @@ export default function AdminSettings() {
       if (cfg['smtp_config']) {
         try {
           const parsed = JSON.parse(cfg['smtp_config'])
-          const hasPassword = parsed.password && parsed.password !== ''
-          setSmtp({ ...DEFAULT_SMTP, ...parsed, password: '', _hasExisting: hasPassword } as any)
+          setSmtpHasSecret(Boolean(parsed.password))
+          setSmtp({ ...DEFAULT_SMTP, ...parsed, password: '' })
         } catch { /* ignore */ }
       }
       if (cfg['resend_config']) {
         try {
           const parsed = JSON.parse(cfg['resend_config'])
-          const hasKey = parsed.api_key && parsed.api_key !== ''
-          setResend({ ...DEFAULT_RESEND, ...parsed, api_key: '', _hasExisting: hasKey } as any)
+          setResendHasSecret(Boolean(parsed.api_key))
+          setResend({ ...DEFAULT_RESEND, ...parsed, api_key: '' })
         } catch { /* ignore */ }
       }
     }).finally(() => setLoading(false))
@@ -78,16 +80,14 @@ export default function AdminSettings() {
       const payload: Record<string, string> = { ...rest, email_provider: emailProvider }
 
       if (emailProvider === 'smtp') {
-        const smtpPayload: Record<string, any> = { ...smtp, port: Number(smtp.port) || 587 }
-        delete (smtpPayload as any)._hasExisting
-        if (!smtpPayload.password) delete smtpPayload.password
-        payload.smtp_config = JSON.stringify(smtpPayload)
+        const { password, ...smtpRest } = smtp
+        payload.smtp_config = JSON.stringify({
+          ...smtpRest, port: Number(smtp.port) || 587, ...(password ? { password } : {}),
+        })
       }
       if (emailProvider === 'resend') {
-        const resendPayload: Record<string, any> = { ...resend }
-        delete (resendPayload as any)._hasExisting
-        if (!resendPayload.api_key) delete resendPayload.api_key
-        payload.resend_config = JSON.stringify(resendPayload)
+        const { api_key, ...resendRest } = resend
+        payload.resend_config = JSON.stringify({ ...resendRest, ...(api_key ? { api_key } : {}) })
       }
 
       await adminApi.updateSettings(payload)
@@ -216,7 +216,7 @@ export default function AdminSettings() {
                   <label className="label">{t('admin_settings.smtp_password')}</label>
                   <input type="password" className="input" value={smtp.password}
                     onChange={(e) => setSmtpField('password', e.target.value)} autoComplete="off"
-                    placeholder={(smtp as any)._hasExisting ? 'Leave blank to keep existing' : ''} />
+                    placeholder={smtpHasSecret ? 'Leave blank to keep existing' : ''} />
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-3">
@@ -240,7 +240,7 @@ export default function AdminSettings() {
                 <label className="label">{t('admin_settings.resend_api_key')}</label>
                 <input type="password" className="input font-mono" value={resend.api_key}
                   onChange={(e) => setResendField('api_key', e.target.value)}
-                  placeholder={(resend as any)._hasExisting ? 'Leave blank to keep existing' : 're_xxxxxxxxxxxx'}
+                  placeholder={resendHasSecret ? 'Leave blank to keep existing' : 're_xxxxxxxxxxxx'}
                   autoComplete="off" />
               </div>
               <div className="grid grid-cols-2 gap-3">

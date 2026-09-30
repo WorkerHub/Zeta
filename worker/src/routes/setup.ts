@@ -115,14 +115,7 @@ const DEFAULT_SETTINGS: Array<[string, string]> = [
   ['require_email_verification', 'false'],
   ['enforce_2fa', 'false'],
   ['email_provider', 'resend'],
-  ['resend_api_key', ''],
-  ['smtp_host', ''],
-  ['smtp_port', '587'],
-  ['smtp_user', ''],
-  ['smtp_pass', ''],
-  ['smtp_from', ''],
   ['app_name', 'Zeta'],
-  ['setup_completed', 'true'],
 ]
 
 // ── GET /api/setup/:secret ────────────────────────────────────────────────────

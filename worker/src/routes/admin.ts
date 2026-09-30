@@ -420,11 +420,4 @@ admin.post('/settings/test-email', async (c) => {
   return c.json({ success: true })
 })
 
-// ── Setup (first-run) ─────────────────────────────────────────────────────────
-
-admin.post('/setup/complete', async (c) => {
-  await setSetting(c.env, 'setup_completed', 'true')
-  return c.json({ message: 'Setup completed' })
-})
-
 export default admin
