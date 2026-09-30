@@ -28,18 +28,25 @@ function clientIp(c: { req: { header: (k: string) => string | undefined } }): st
   return c.req.header('cf-connecting-ip') ?? 'unknown'
 }
 
-function setRefreshCookie(c: { header: (k: string, v: string) => void }, token: string, secure: boolean): void {
+const REFRESH_COOKIE_PATH = '/api/auth'
+
+type HeaderSetter = { header: (k: string, v: string, opt?: { append?: boolean }) => void }
+
+function setRefreshCookie(c: HeaderSetter, token: string, secure: boolean): void {
   const maxAge = 7 * 24 * 3600
-  const flags = `HttpOnly; Path=/; Max-Age=${maxAge}; SameSite=Strict${secure ? '; Secure' : ''}`
+  const flags = `HttpOnly; Path=${REFRESH_COOKIE_PATH}; Max-Age=${maxAge}; SameSite=Strict${secure ? '; Secure' : ''}`
   c.header('Set-Cookie', `refresh_token=${token}; ${flags}`)
 }
 
-function clearRefreshCookie(c: { header: (k: string, v: string) => void }, secure: boolean): void {
-  const flags = `HttpOnly; Path=/; Max-Age=0; SameSite=Strict${secure ? '; Secure' : ''}`
-  c.header('Set-Cookie', `refresh_token=; ${flags}`)
+// Also clears the legacy Path=/ cookie that earlier versions issued.
+function clearRefreshCookie(c: HeaderSetter, secure: boolean): void {
+  for (const path of [REFRESH_COOKIE_PATH, '/']) {
+    const flags = `HttpOnly; Path=${path}; Max-Age=0; SameSite=Strict${secure ? '; Secure' : ''}`
+    c.header('Set-Cookie', `refresh_token=; ${flags}`, { append: true })
+  }
 }
 
-const isSecure = (env: Env) => env.APP_URL?.startsWith('https')
+const isSecure = (env: Env) => env.APP_URL?.trim().startsWith('https')
 
 // ── POST /api/auth/register ───────────────────────────────────────────────────
 
