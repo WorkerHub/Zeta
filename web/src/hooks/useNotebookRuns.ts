@@ -41,6 +41,9 @@ export function useNotebookRuns(activeId: string | null) {
   const resultsRef = useRef(results)
   // Notebooks with a page request in flight, so scroll events cannot ask for the same page twice
   const fetching = useRef(new Set<string>())
+  // Bumped when a notebook's runs are cleared: a page requested before the clear must not
+  // repopulate the list with records the clear just deleted
+  const generations = useRef(new Map<string, number>())
 
   useEffect(() => {
     byNotebookRef.current = byNotebook
@@ -59,11 +62,15 @@ export function useNotebookRuns(activeId: string | null) {
       fetching.current.add(nbId)
       // Older pages continue below the oldest run listed
       const before = append ? byNotebookRef.current[nbId]?.list.at(-1)?.seq : undefined
+      const generation = generations.current.get(nbId) ?? 0
       patchNotebook(nbId, (s) => ({ ...s, loading: true, loadError: false }))
       try {
         const page = await notebooksApi.runs(nbId, { limit: RUN_PAGE_SIZE, before })
+        // The notebook was cleared meanwhile: its runs are gone, so this page is stale
+        if ((generations.current.get(nbId) ?? 0) !== generation) return
         patchNotebook(nbId, (s) => receivePage(s, page.results, page.has_more, append))
       } catch {
+        if ((generations.current.get(nbId) ?? 0) !== generation) return
         patchNotebook(nbId, (s) => ({ ...s, loading: false, loadError: true }))
       } finally {
         fetching.current.delete(nbId)
@@ -145,6 +152,7 @@ export function useNotebookRuns(activeId: string | null) {
     if (!activeId) return
     const nbId = activeId
     await notebooksApi.clearRuns(nbId)
+    generations.current.set(nbId, (generations.current.get(nbId) ?? 0) + 1)
     patchNotebook(nbId, clearRunsState)
     clearPending(nbId)
   }, [activeId, patchNotebook, clearPending])

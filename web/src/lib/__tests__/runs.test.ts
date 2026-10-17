@@ -74,8 +74,19 @@ describe('run list updates', () => {
   })
 
   it('clears a notebook', () => {
-    const s = clearRunsState(receivePage(emptyRunsState, [run('a', 1)], true, false))
-    expect(s).toMatchObject({ list: [], hasMore: false, selectedRunId: null, loaded: true })
+    const s = clearRunsState({
+      ...receivePage(emptyRunsState, [run('a', 1)], true, false),
+      loading: true,
+      loadError: true,
+    })
+    expect(s).toMatchObject({
+      list: [],
+      hasMore: false,
+      selectedRunId: null,
+      loaded: true,
+      loading: false,
+      loadError: false,
+    })
   })
 })
 

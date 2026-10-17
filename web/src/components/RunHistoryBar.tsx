@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef } from 'react'
 import type { KeyboardEvent } from 'react'
-import { AlertCircle, CheckCircle2, History, Loader2, Trash2, X } from 'lucide-react'
+import { AlertCircle, CheckCircle2, History, Loader2, X } from 'lucide-react'
 import { useLocale } from '../hooks/useLocale'
 import { timeAgo } from '../lib/time'
 import type { NotebookRunSummary } from '../types'
@@ -14,7 +14,7 @@ interface Props {
   onSelect: (runId: string) => void
   onLoadMore: () => void
   onDelete: (runId: string) => void
-  onClear: () => void
+  onOpenHistory: () => void
 }
 
 // How close (px) to the oldest end of the strip the next page of older runs is loaded
@@ -33,7 +33,7 @@ export default function RunHistoryBar({
   onSelect,
   onLoadMore,
   onDelete,
-  onClear,
+  onOpenHistory,
 }: Props) {
   const { t, locale } = useLocale()
   const scrollerRef = useRef<HTMLDivElement>(null)
@@ -218,15 +218,13 @@ export default function RunHistoryBar({
         </div>
         <button
           type="button"
-          onClick={() => {
-            if (window.confirm(t('runs.clear_confirm'))) onClear()
-          }}
-          className="flex items-center gap-1 shrink-0 pl-2 ml-1 border-l border-zinc-200 dark:border-zinc-800 text-zinc-400 hover:text-red-400"
-          title={t('runs.clear')}
-          aria-label={t('runs.clear')}
+          onClick={onOpenHistory}
+          className="flex items-center gap-1 shrink-0 pl-2 ml-1 border-l border-zinc-200 dark:border-zinc-800 text-zinc-400 hover:text-blue-500 dark:hover:text-blue-400"
+          title={t('runs.history')}
+          aria-label={t('runs.open_history')}
         >
-          <Trash2 size={12} />
-          <span className="hidden sm:inline">{t('runs.clear_all')}</span>
+          <History size={12} />
+          <span className="hidden sm:inline">{t('runs.history')}</span>
         </button>
       </div>
       {selected.storage_truncated > 0 && (
