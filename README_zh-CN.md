@@ -154,7 +154,7 @@ curl -X POST https://<你的域名>/api/setup \
 { "ok": true, "message": "Database initialised successfully. You can now register at /register — the first user becomes admin. On new installs registration then stays closed until an admin opens it in Admin → Settings." }
 ```
 
-> 该接口是幂等的，重复调用不会造成任何破坏，可安全地多次调用。**每次升级部署后请再调用一次**：它还会对旧版本创建的数据库执行 Schema 升级（例如让 `query_history` 在删除用户或数据库时保留记录——升级前删除用户或数据库会失败；以及创建 `rate_limits` 表，让登录 / 两步验证 / 邮件的限流计数精确生效——该表创建前会退回到近似的 KV 计数）。
+> 该接口是幂等的，重复调用不会造成任何破坏，可安全地多次调用。**每次升级部署后请再调用一次**：它还会对旧版本创建的数据库执行 Schema 升级（例如让 `query_history` 在删除用户或数据库时保留记录——升级前删除用户或数据库会失败；以及创建 `rate_limits` 表，让登录 / 两步验证 / 邮件的限流计数精确生效——该表创建前会退回到近似的 KV 计数；以及在 `user_database_permissions` 表的外键仍指向不带前缀的 `users` / `d1_databases` 表时重建该表——修复前授权、撤销数据库权限以及删除用户或数据库都会报 `no such table` 错误。用户或数据库已不存在的权限记录会被丢弃，丢弃的行数会在响应的 `permissionsRepair` 字段中给出）。
 >
 > 旧版本使用的 `GET /api/setup/<SETUP_SECRET>` 已废弃：现在会返回 `405` 且不执行任何操作。如果曾经访问过旧 URL，建议轮换 `SETUP_SECRET`。
 
