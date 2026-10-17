@@ -232,8 +232,8 @@ export const translations: Record<Locale, Record<string, string>> = {
     'admin_settings.test_email_failed': 'Failed to send test email',
     'admin_settings.loading': 'Loading…',
     'admin_settings.keep_existing': 'Leave blank to keep existing',
-    'admin_settings.clear_secret': 'Clear saved password',
-    'admin_settings.secret_will_clear': 'The saved password will be removed when you save',
+    'admin_settings.clear_secret': 'Clear saved credential',
+    'admin_settings.secret_will_clear': 'The saved credential will be removed when you save',
 
     // Errors (fallbacks when the server gives no message)
     'errors.generic': 'Something went wrong',
@@ -505,8 +505,8 @@ export const translations: Record<Locale, Record<string, string>> = {
     'admin_settings.test_email_failed': '测试邮件发送失败',
     'admin_settings.loading': '加载中…',
     'admin_settings.keep_existing': '留空则保留现有值',
-    'admin_settings.clear_secret': '清除已保存的密码',
-    'admin_settings.secret_will_clear': '保存后将删除已保存的密码',
+    'admin_settings.clear_secret': '清除已保存的凭据',
+    'admin_settings.secret_will_clear': '保存后将删除已保存的凭据',
 
     // Errors (fallbacks when the server gives no message)
     'errors.generic': '出错了',
