@@ -223,6 +223,21 @@ curl -X POST http://localhost:8787/api/setup \
 
 然后在浏览器中打开 `http://localhost:5173`。
 
+### 代码格式化
+
+在仓库根目录执行：
+
+```bash
+pnpm format        # 用 biome 格式化整个代码库
+pnpm format:check  # 只检查格式、不写入文件（CI 同样会强制检查）
+```
+
+纯格式化的提交记录在 `.git-blame-ignore-revs` 中，GitHub 的 blame 视图会自动识别。若想让本地 `git blame` 也跳过这些提交，每个 clone 执行一次：
+
+```bash
+git config blame.ignoreRevsFile .git-blame-ignore-revs
+```
+
 ---
 
 ## 配置变量参考
