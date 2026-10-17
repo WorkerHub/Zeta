@@ -35,6 +35,7 @@ export default function Register() {
   return (
     <div className="relative min-h-screen flex items-center justify-center p-4 bg-zinc-50 dark:bg-zinc-950">
       <button
+        type="button"
         onClick={() => changeLocale(locale === 'en' ? 'zh' : 'en')}
         className="absolute top-4 right-4 btn-ghost p-2"
         title={t('lang.label')}
@@ -55,23 +56,24 @@ export default function Register() {
           {success ? (
             <div className="space-y-4">
               <p className="text-sm text-emerald-400">{success}</p>
-              <button onClick={() => navigate('/login')} className="btn-primary w-full">
+              <button type="button" onClick={() => navigate('/login')} className="btn-primary w-full">
                 {t('auth.go_to_signin')}
               </button>
             </div>
           ) : (
             <form onSubmit={handleSubmit} className="space-y-4">
               <div>
-                <label className="label">{t('auth.name')}</label>
-                <input type="text" {...field('name')} className="input" placeholder={t('auth.placeholder_name')} required autoFocus />
+                <label htmlFor="register-name" className="label">{t('auth.name')}</label>
+                {/* biome-ignore lint/a11y/noAutofocus: single-purpose auth form; focusing its first field is the expected entry point */}
+                <input id="register-name" type="text" {...field('name')} className="input" placeholder={t('auth.placeholder_name')} required autoFocus />
               </div>
               <div>
-                <label className="label">{t('auth.email')}</label>
-                <input type="email" {...field('email')} className="input" placeholder={t('auth.placeholder_email')} required />
+                <label htmlFor="register-email" className="label">{t('auth.email')}</label>
+                <input id="register-email" type="email" {...field('email')} className="input" placeholder={t('auth.placeholder_email')} required />
               </div>
               <div>
-                <label className="label">{t('auth.password')}</label>
-                <input type="password" {...field('password')} className="input" placeholder={t('auth.pw_min')} required />
+                <label htmlFor="register-password" className="label">{t('auth.password')}</label>
+                <input id="register-password" type="password" {...field('password')} className="input" placeholder={t('auth.pw_min')} required />
               </div>
 
               {error && <p className="text-sm text-red-400">{error}</p>}

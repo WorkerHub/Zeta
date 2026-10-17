@@ -114,10 +114,9 @@ async function sendViaSMTP(env: Env, payload: EmailPayload): Promise<{ success: 
   const fromName = (payload.fromName || config.from_name || 'Zeta').replace(/[\r\n]/g, '')
   const isImplicitTls = config.port === 465
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const socket: any = connect(
+  const socket = connect(
     { hostname: config.host, port: config.port },
-    { secureTransport: isImplicitTls ? 'on' : 'starttls' } as any,
+    { secureTransport: isImplicitTls ? 'on' : 'starttls' } as SocketOptions,
   )
 
   try {
@@ -150,15 +149,11 @@ async function sendViaSMTP(env: Env, payload: EmailPayload): Promise<{ success: 
 class SmtpSession {
   private buf = ''
   private readonly dec = new TextDecoder()
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  private socket: any
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  private reader: ReadableStreamDefaultReader<any>
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  private writer: WritableStreamDefaultWriter<any>
+  private socket: Socket
+  private reader: ReadableStreamDefaultReader<Uint8Array>
+  private writer: WritableStreamDefaultWriter<Uint8Array>
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  constructor(socket: any) {
+  constructor(socket: Socket) {
     this.socket = socket
     this.reader = socket.readable.getReader()
     this.writer = socket.writable.getWriter()
@@ -229,7 +224,7 @@ class SmtpSession {
   }
 
   async cmd(text: string): Promise<void> {
-    await this.writer.write(new TextEncoder().encode(text + '\r\n'))
+    await this.writer.write(new TextEncoder().encode(`${text}\r\n`))
   }
 
   async expect(code: number): Promise<void> {
@@ -256,7 +251,7 @@ class SmtpSession {
       // RFC 5321: last line has space at position 3; continuation lines have '-'
       if (line.length <= 3 || line[3] === ' ') {
         const code = parseInt(line.slice(0, 3), 10)
-        if (isNaN(code)) throw new Error(`SMTP: invalid response line: ${line}`)
+        if (Number.isNaN(code)) throw new Error(`SMTP: invalid response line: ${line}`)
         return { code, message: lines.map((l) => l.slice(4)).join('\n') }
       }
     }

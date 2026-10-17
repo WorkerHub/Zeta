@@ -58,6 +58,7 @@ export default function QueryHistoryPanel({ databaseId, onSelect }: Props) {
         <div className="flex-1 overflow-auto">
           {items.map((item) => (
             <button
+              type="button"
               key={item.id}
               onClick={() => onSelect(item.sql)}
               className="w-full text-left px-4 py-3 border-b border-zinc-100 hover:bg-zinc-50 dark:border-zinc-800/50 dark:hover:bg-zinc-800/30 transition-colors group"

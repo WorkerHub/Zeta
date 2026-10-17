@@ -1,8 +1,7 @@
 import { Hono } from 'hono'
-import type { Env, Variables, DatabaseRow, PermissionRow } from '../types'
+import type { Env, Variables, DatabaseRow } from '../types'
 import { requireAuth } from '../middleware/auth'
-import { now, audit, tables } from '../lib/db'
-import { uuid } from '../lib/id'
+import { tables } from '../lib/db'
 
 const databases = new Hono<{ Bindings: Env; Variables: Variables }>()
 databases.use('*', requireAuth)

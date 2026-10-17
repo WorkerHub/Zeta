@@ -15,7 +15,7 @@ async function apiFetch<T>(path: string, init: RequestInit = {}, opts: ApiOption
     'Content-Type': 'application/json',
     ...(init.headers as Record<string, string> ?? {}),
   }
-  if (token) headers['Authorization'] = `Bearer ${token}`
+  if (token) headers.Authorization = `Bearer ${token}`
 
   const res = await fetch(`/api${path}`, { ...init, headers, credentials: 'include' })
 
@@ -25,7 +25,7 @@ async function apiFetch<T>(path: string, init: RequestInit = {}, opts: ApiOption
     if (refreshed) {
       // Retry once with new token
       const newToken = getAccessToken()
-      if (newToken) headers['Authorization'] = `Bearer ${newToken}`
+      if (newToken) headers.Authorization = `Bearer ${newToken}`
       const retry = await fetch(`/api${path}`, { ...init, headers, credentials: 'include' })
       if (!retry.ok) {
         const err = await retry.json().catch(() => ({}) as { error?: string })

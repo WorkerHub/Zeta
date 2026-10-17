@@ -138,7 +138,7 @@ export default function QueryPage() {
     } finally {
       setRunning(false)
     }
-  }, [selectedDb, sqlText])
+  }, [selectedDb, sqlText, t])
 
   // Cmd/Ctrl+Enter: override CodeMirror's default Mod-Enter (insertBlankLine)
   // so we can read the selection directly from view state before it gets cleared.
@@ -161,6 +161,7 @@ export default function QueryPage() {
   )
 
   // Clear stale results and selection when switching tabs
+  // biome-ignore lint/correctness/useExhaustiveDependencies: activeId is the trigger, not an input of the effect
   useEffect(() => {
     setStatementResults([])
     setActiveResultIdx(0)
@@ -220,6 +221,7 @@ export default function QueryPage() {
         {/* Database selector — hidden on mobile (shown in bottom bar) */}
         <div className="relative hidden sm:block" ref={dbMenuDesktopRef}>
           <button
+            type="button"
             onClick={() => setShowDbMenu(!showDbMenu)}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-zinc-100 hover:bg-zinc-200 border border-zinc-200 text-sm text-zinc-700 dark:bg-zinc-800 dark:hover:bg-zinc-700 dark:border-zinc-700 dark:text-zinc-200 transition-colors max-w-[200px]"
           >
@@ -233,6 +235,7 @@ export default function QueryPage() {
                 <p className="px-4 py-3 text-sm text-zinc-500">{t('query.no_databases')}</p>
               ) : databases.map((db) => (
                 <button
+                  type="button"
                   key={db.id}
                   onClick={() => {
                     if (activeId) updateDatabase(activeId, db.id)
@@ -251,6 +254,7 @@ export default function QueryPage() {
 
         {/* History toggle — hidden on mobile (shown in bottom bar) */}
         <button
+          type="button"
           onClick={() => setShowHistory(!showHistory)}
           className={`btn-ghost btn-sm gap-1.5 hidden sm:flex ${showHistory ? 'text-blue-500 bg-blue-500/10' : ''}`}
         >
@@ -260,6 +264,7 @@ export default function QueryPage() {
 
         {/* Language toggle */}
         <button
+          type="button"
           onClick={() => changeLocale(locale === 'en' ? 'zh' : 'en')}
           className="btn-ghost btn-sm p-2"
           title={t('lang.label')}
@@ -269,6 +274,7 @@ export default function QueryPage() {
 
         {/* Theme toggle */}
         <button
+          type="button"
           onClick={cycleTheme}
           className="btn-ghost btn-sm p-2"
           title={`${t('theme.label')}: ${t(`theme.${theme}`)}`}
@@ -279,6 +285,7 @@ export default function QueryPage() {
         {/* User menu */}
         <div className="relative" ref={userMenuRef}>
           <button
+            type="button"
             onClick={() => setShowUserMenu(!showUserMenu)}
             className="w-8 h-8 rounded-full bg-zinc-100 border border-zinc-200 flex items-center justify-center text-zinc-500 hover:text-zinc-800 hover:bg-zinc-200 dark:bg-zinc-800 dark:border-zinc-700 dark:text-zinc-400 dark:hover:text-zinc-200 dark:hover:bg-zinc-700 transition-colors text-xs font-semibold"
           >
@@ -304,7 +311,7 @@ export default function QueryPage() {
                 className="flex items-center gap-2 px-4 py-2.5 text-sm text-zinc-600 hover:bg-zinc-50 hover:text-zinc-900 dark:text-zinc-300 dark:hover:bg-zinc-800 dark:hover:text-zinc-100 transition-colors">
                 <Info size={14} /> {t('user.about')}
               </Link>
-              <button onClick={logout}
+              <button type="button" onClick={logout}
                 className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-red-400 hover:bg-zinc-50 dark:hover:bg-zinc-800 transition-colors border-t border-zinc-100 dark:border-zinc-800">
                 <LogOut size={14} /> {t('user.sign_out')}
               </button>
@@ -314,19 +321,35 @@ export default function QueryPage() {
       </header>
 
       {/* Notebook tab bar */}
-      <div className="flex items-center border-b border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 shrink-0 overflow-x-auto scrollbar-none min-h-[36px]">
+      <div role="tablist" className="flex items-center border-b border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 shrink-0 overflow-x-auto scrollbar-none min-h-[36px]">
         {notebooks.map((nb) => (
           <div
             key={nb.id}
+            role="tab"
+            tabIndex={0}
+            aria-selected={nb.id === activeId}
             className={`group flex items-center gap-1 px-3 py-1.5 text-sm border-r border-zinc-200 dark:border-zinc-800 cursor-pointer shrink-0 select-none transition-colors ${
               nb.id === activeId
                 ? 'text-blue-600 dark:text-blue-400 bg-zinc-50 dark:bg-zinc-900 border-b-2 border-b-blue-500'
                 : 'text-zinc-500 dark:text-zinc-400 hover:text-zinc-800 dark:hover:text-zinc-200 hover:bg-zinc-50 dark:hover:bg-zinc-900'
             }`}
             onClick={() => setActiveId(nb.id)}
+            onKeyDown={(e) => {
+              // Ignore keys typed into the rename input or aimed at the delete button
+              if (e.target !== e.currentTarget) return
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault()
+                setActiveId(nb.id)
+              } else if (e.key === 'F2') {
+                e.preventDefault()
+                setRenamingId(nb.id)
+                setRenameValue(nb.name)
+              }
+            }}
           >
             {renamingId === nb.id ? (
               <input
+                // biome-ignore lint/a11y/noAutofocus: the rename input appears on demand and must take focus to be usable
                 autoFocus
                 value={renameValue}
                 onChange={(e) => setRenameValue(e.target.value)}
@@ -342,6 +365,7 @@ export default function QueryPage() {
                 className="bg-transparent outline-none border-b border-blue-400 w-24 text-sm"
               />
             ) : (
+              // biome-ignore lint/a11y/noStaticElementInteractions: double-click rename is a mouse shortcut; keyboard users press F2 on the focused tab
               <span
                 className="max-w-[120px] truncate"
                 onDoubleClick={(e) => {
@@ -355,6 +379,7 @@ export default function QueryPage() {
             )}
             {notebooks.length > 1 && (
               <button
+                type="button"
                 onClick={(e) => {
                   e.stopPropagation()
                   if (window.confirm(t('notebook.delete_confirm'))) deleteNotebook(nb.id).catch(() => {})
@@ -367,6 +392,7 @@ export default function QueryPage() {
           </div>
         ))}
         <button
+          type="button"
           onClick={createNotebook}
           disabled={!canCreate}
           title={canCreate ? t('notebook.new') : t('notebook.limit_reached')}
@@ -399,6 +425,7 @@ export default function QueryPage() {
                 {/* Layout toggle buttons */}
                 <div className="hidden sm:flex items-center gap-0.5 rounded-md border border-zinc-200 dark:border-zinc-700 p-0.5">
                   <button
+                    type="button"
                     onClick={() => changeLayout('vertical')}
                     className={`p-1 rounded transition-colors ${layout === 'vertical' ? 'bg-zinc-200 dark:bg-zinc-700 text-zinc-800 dark:text-zinc-200' : 'text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300'}`}
                     title={t('query.layout_vertical')}
@@ -406,6 +433,7 @@ export default function QueryPage() {
                     <LayoutPanelTop size={13} />
                   </button>
                   <button
+                    type="button"
                     onClick={() => changeLayout('horizontal')}
                     className={`p-1 rounded transition-colors ${layout === 'horizontal' ? 'bg-zinc-200 dark:bg-zinc-700 text-zinc-800 dark:text-zinc-200' : 'text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300'}`}
                     title={t('query.layout_horizontal')}
@@ -420,6 +448,7 @@ export default function QueryPage() {
                 )}
                 <span className="text-xs text-zinc-400 dark:text-zinc-600 hidden sm:block">{t('query.shortcut')}</span>
                 <button
+                  type="button"
                   onClick={runQuery}
                   disabled={running || !selectedDb}
                   className="btn-primary btn-sm gap-1.5 hidden sm:flex"
@@ -504,6 +533,7 @@ export default function QueryPage() {
         {/* DB selector */}
         <div className="relative flex-1" ref={dbMenuRef}>
           <button
+            type="button"
             onClick={() => { setShowDbMenu(!showDbMenu); setShowHistory(false) }}
             className="w-full flex items-center gap-1.5 px-3 py-2 rounded-lg bg-zinc-100 border border-zinc-200 text-sm text-zinc-700 dark:bg-zinc-800 dark:border-zinc-700 dark:text-zinc-200 transition-colors"
           >
@@ -515,6 +545,7 @@ export default function QueryPage() {
             <div className="absolute left-0 bottom-full mb-1 w-56 bg-white border border-zinc-200 dark:bg-zinc-900 dark:border-zinc-700 rounded-xl shadow-xl z-20 overflow-hidden">
               {databases.map((db) => (
                 <button
+                  type="button"
                   key={db.id}
                   onClick={() => {
                     if (activeId) updateDatabase(activeId, db.id)
@@ -531,6 +562,7 @@ export default function QueryPage() {
 
         {/* History button */}
         <button
+          type="button"
           onClick={() => { setShowHistory(!showHistory); setShowDbMenu(false) }}
           className={`btn-ghost p-2.5 ${showHistory ? 'text-blue-500 bg-blue-500/10' : ''}`}
         >
@@ -539,6 +571,7 @@ export default function QueryPage() {
 
         {/* Run button */}
         <button
+          type="button"
           onClick={runQuery}
           disabled={running || !selectedDb}
           className="btn-primary gap-1.5 px-4 py-2"
@@ -551,11 +584,13 @@ export default function QueryPage() {
       {/* Mobile history bottom sheet */}
       {showHistory && selectedDb && (
         <div className="sm:hidden fixed inset-0 z-20 flex flex-col justify-end">
+          {/* biome-ignore lint/a11y/useKeyWithClickEvents: backdrop is a pointer-only dismiss target; the sheet has its own close button */}
+          {/* biome-ignore lint/a11y/noStaticElementInteractions: pointer-only backdrop; the sheet has its own close button */}
           <div className="absolute inset-0 bg-black/40" onClick={() => setShowHistory(false)} />
           <div className="relative bg-white dark:bg-zinc-900 rounded-t-2xl border-t border-zinc-200 dark:border-zinc-800 flex flex-col" style={{ maxHeight: '70vh' }}>
             <div className="flex items-center justify-between px-4 py-3 border-b border-zinc-200 dark:border-zinc-800 shrink-0">
               <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">{t('query.query_history')}</span>
-              <button onClick={() => setShowHistory(false)} className="btn-ghost p-1.5">
+              <button type="button" onClick={() => setShowHistory(false)} className="btn-ghost p-1.5">
                 <X size={16} />
               </button>
             </div>

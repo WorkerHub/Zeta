@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { Plus, Trash2, Power, Users } from 'lucide-react'
 import { adminApi } from '../../lib/api'
 import { useLocale } from '../../hooks/useLocale'
@@ -34,7 +34,7 @@ export default function AdminDatabases() {
   const [permUserId, setPermUserId] = useState('')
   const [permLevel, setPermLevel] = useState('read')
 
-  async function load() {
+  const load = useCallback(async () => {
     setLoading(true)
     try {
       const res = await adminApi.databases()
@@ -42,9 +42,9 @@ export default function AdminDatabases() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [])
 
-  useEffect(() => { load() }, [])
+  useEffect(() => { load() }, [load])
 
   async function addDatabase() {
     setAddError('')
@@ -101,7 +101,7 @@ export default function AdminDatabases() {
     <div className="p-4 sm:p-6 max-w-5xl">
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-lg font-semibold text-zinc-900 dark:text-zinc-100">{t('admin.databases')}</h1>
-        <button onClick={() => setShowAdd(!showAdd)} className="btn-primary btn-sm gap-1.5">
+        <button type="button" onClick={() => setShowAdd(!showAdd)} className="btn-primary btn-sm gap-1.5">
           <Plus size={13} /> {t('admin_db.add_database')}
         </button>
       </div>
@@ -113,26 +113,26 @@ export default function AdminDatabases() {
           <p className="text-xs text-zinc-500">{t('admin_db.register_desc')}</p>
           <div className="grid sm:grid-cols-2 gap-4">
             <div>
-              <label className="label">{t('admin_db.display_name')}</label>
-              <input type="text" className="input" value={newDb.name}
+              <label htmlFor="db-display-name" className="label">{t('admin_db.display_name')}</label>
+              <input id="db-display-name" type="text" className="input" value={newDb.name}
                 onChange={(e) => setNewDb({ ...newDb, name: e.target.value })} placeholder={t('admin_db.name_placeholder')} />
             </div>
             <div>
-              <label className="label">{t('admin_db.binding_name')}</label>
-              <input type="text" className="input font-mono" value={newDb.binding_name}
+              <label htmlFor="db-binding-name" className="label">{t('admin_db.binding_name')}</label>
+              <input id="db-binding-name" type="text" className="input font-mono" value={newDb.binding_name}
                 onChange={(e) => setNewDb({ ...newDb, binding_name: e.target.value.toUpperCase() })}
                 placeholder="QUERY_DB_1" />
             </div>
             <div className="sm:col-span-2">
-              <label className="label">{t('admin_db.description')}</label>
-              <input type="text" className="input" value={newDb.description}
+              <label htmlFor="db-description" className="label">{t('admin_db.description')}</label>
+              <input id="db-description" type="text" className="input" value={newDb.description}
                 onChange={(e) => setNewDb({ ...newDb, description: e.target.value })} placeholder={t('admin_db.description_placeholder')} />
             </div>
           </div>
           {addError && <p className="text-sm text-red-400">{addError}</p>}
           <div className="flex gap-3">
-            <button onClick={() => setShowAdd(false)} className="btn-secondary">{t('admin_db.cancel')}</button>
-            <button onClick={addDatabase} className="btn-primary" disabled={!newDb.name || !newDb.binding_name}>
+            <button type="button" onClick={() => setShowAdd(false)} className="btn-secondary">{t('admin_db.cancel')}</button>
+            <button type="button" onClick={addDatabase} className="btn-primary" disabled={!newDb.name || !newDb.binding_name}>
               {t('admin_db.register')}
             </button>
           </div>
@@ -174,13 +174,13 @@ export default function AdminDatabases() {
                   </td>
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-1 justify-end">
-                      <button onClick={() => loadPermissions(db)} className="btn-ghost btn-sm gap-1">
+                      <button type="button" onClick={() => loadPermissions(db)} className="btn-ghost btn-sm gap-1">
                         <Users size={13} /> {t('admin_db.permissions')}
                       </button>
-                      <button onClick={() => toggleActive(db)} className="btn-ghost btn-sm p-1.5" title={t('admin_db.toggle_active')}>
+                      <button type="button" onClick={() => toggleActive(db)} className="btn-ghost btn-sm p-1.5" title={t('admin_db.toggle_active')}>
                         <Power size={13} className={db.is_active ? 'text-emerald-400' : 'text-zinc-600'} />
                       </button>
-                      <button onClick={() => deleteDb(db.id, db.name)} className="btn-ghost btn-sm p-1.5 text-red-400">
+                      <button type="button" onClick={() => deleteDb(db.id, db.name)} className="btn-ghost btn-sm p-1.5 text-red-400">
                         <Trash2 size={13} />
                       </button>
                     </div>
@@ -215,7 +215,7 @@ export default function AdminDatabases() {
               <option value="write">{t('admin_db.perm_write')}</option>
               <option value="write_drop">{t('admin_db.perm_write_drop')}</option>
             </select>
-            <button onClick={grantPerm} disabled={!permUserId} className="btn-primary btn-sm">{t('admin_db.grant')}</button>
+            <button type="button" onClick={grantPerm} disabled={!permUserId} className="btn-primary btn-sm">{t('admin_db.grant')}</button>
           </div>
 
           {/* Current permissions */}
@@ -233,7 +233,7 @@ export default function AdminDatabases() {
                     <span className={`badge ${p.permission === 'write_drop' ? 'badge-yellow' : p.permission === 'write' ? 'badge-blue' : 'badge-zinc'}`}>
                       {p.permission === 'write_drop' ? t('admin_db.perm_write_drop') : p.permission === 'write' ? t('admin_db.perm_write') : t('admin_db.perm_read')}
                     </span>
-                    <button onClick={() => revokePerm(p.user_id)} className="btn-ghost p-1.5 text-red-400 btn-sm">
+                    <button type="button" onClick={() => revokePerm(p.user_id)} className="btn-ghost p-1.5 text-red-400 btn-sm">
                       <Trash2 size={13} />
                     </button>
                   </div>

@@ -55,13 +55,14 @@ export default function ResetPassword() {
           <h1 className="text-lg font-semibold text-zinc-900 mb-6 dark:text-zinc-100">{t('auth.reset_title')}</h1>
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
-              <label className="label">{t('auth.new_password')}</label>
-              <input type="password" value={password} onChange={(e) => setPassword(e.target.value)}
+              <label htmlFor="reset-password" className="label">{t('auth.new_password')}</label>
+              <input id="reset-password" type="password" value={password} onChange={(e) => setPassword(e.target.value)}
+                // biome-ignore lint/a11y/noAutofocus: single-purpose auth form; focusing its first field is the expected entry point
                 className="input" placeholder={t('auth.pw_min')} required autoFocus />
             </div>
             <div>
-              <label className="label">{t('auth.confirm_password')}</label>
-              <input type="password" value={confirm} onChange={(e) => setConfirm(e.target.value)}
+              <label htmlFor="reset-confirm" className="label">{t('auth.confirm_password')}</label>
+              <input id="reset-confirm" type="password" value={confirm} onChange={(e) => setConfirm(e.target.value)}
                 className="input" placeholder={t('auth.repeat_password')} required />
             </div>
             {error && <p className="text-sm text-red-400">{error}</p>}

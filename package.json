@@ -14,7 +14,7 @@
     "migrate:local": "cd worker && pnpm migrate:local",
     "migrate:remote": "cd worker && pnpm migrate:remote",
     "lint": "biome lint .",
-    "lint:fix": "biome lint --apply .",
+    "lint:fix": "biome lint --write .",
     "format": "biome format --write .",
     "check": "biome check ."
   },

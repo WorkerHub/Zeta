@@ -1,8 +1,8 @@
 import { Hono } from 'hono'
-import type { Env, Variables, UserRow, DatabaseRow, PermissionRow } from '../types'
+import type { Env, Variables, UserRow, DatabaseRow } from '../types'
 import { requireAdmin } from '../middleware/auth'
 import { uuid } from '../lib/id'
-import { now, getSetting, setSetting, getSettings, audit, tables } from '../lib/db'
+import { now, setSetting, getSettings, audit, tables } from '../lib/db'
 import { hashPassword, checkRateLimit } from '../lib/auth'
 import { KV } from '../lib/kv'
 import { sealSecret, sealLegacySecret } from '../lib/secrets'
@@ -20,7 +20,8 @@ admin.get('/users', async (c) => {
   const search = c.req.query('search')?.trim()
   const T = tables(c.env)
 
-  let rows, total
+  let rows: D1Result<Omit<UserRow, 'password_hash' | 'updated_at'>>
+  let total: { n: number } | null
   if (search) {
     const like = `%${search.replace(/[%_\\]/g, '\\$&')}%`
     rows = await c.env.DB.prepare(
@@ -342,18 +343,18 @@ admin.get('/settings', async (c) => {
     if (raw) c.executionCtx.waitUntil(sealLegacySecret(c.env, key, raw, field).catch(() => false))
   }
   // Mask secrets in JSON blobs
-  if (cfg['smtp_config']) {
+  if (cfg.smtp_config) {
     try {
-      const smtp = JSON.parse(cfg['smtp_config'])
+      const smtp = JSON.parse(cfg.smtp_config)
       if (smtp.password) smtp.password = SECRET_MASK
-      cfg['smtp_config'] = JSON.stringify(smtp)
+      cfg.smtp_config = JSON.stringify(smtp)
     } catch { /* ignore malformed */ }
   }
-  if (cfg['resend_config']) {
+  if (cfg.resend_config) {
     try {
-      const resend = JSON.parse(cfg['resend_config'])
+      const resend = JSON.parse(cfg.resend_config)
       if (resend.api_key) resend.api_key = SECRET_MASK
-      cfg['resend_config'] = JSON.stringify(resend)
+      cfg.resend_config = JSON.stringify(resend)
     } catch { /* ignore malformed */ }
   }
   return c.json(cfg)

@@ -4,12 +4,10 @@ import { Database, ArrowLeft, Shield, Key, Smartphone, Trash2, Plus, Eye, EyeOff
 import QRCode from 'qrcode'
 import { startRegistration } from '@simplewebauthn/browser'
 import { profileApi } from '../lib/api'
-import { useAuthContext } from '../hooks/useAuth'
 import { useLocale } from '../hooks/useLocale'
 import type { User } from '../types'
 
 export default function ProfilePage() {
-  const { user: sessionUser, refresh } = useAuthContext()
   const { t } = useLocale()
   const [user, setUser] = useState<User | null>(null)
   const [loading, setLoading] = useState(true)
@@ -191,18 +189,18 @@ export default function ProfilePage() {
           </h2>
           <form onSubmit={savePassword} className="space-y-4">
             <div>
-              <label className="label">{t('profile.current_password')}</label>
-              <input type="password" className="input" value={pwForm.currentPassword}
+              <label htmlFor="profile-current-password" className="label">{t('profile.current_password')}</label>
+              <input id="profile-current-password" type="password" className="input" value={pwForm.currentPassword}
                 onChange={(e) => setPwForm({ ...pwForm, currentPassword: e.target.value })} required />
             </div>
             <div>
-              <label className="label">{t('profile.new_password')}</label>
-              <input type="password" className="input" value={pwForm.newPassword}
+              <label htmlFor="profile-new-password" className="label">{t('profile.new_password')}</label>
+              <input id="profile-new-password" type="password" className="input" value={pwForm.newPassword}
                 onChange={(e) => setPwForm({ ...pwForm, newPassword: e.target.value })} required placeholder={t('auth.pw_min')} />
             </div>
             <div>
-              <label className="label">{t('profile.confirm_new_password')}</label>
-              <input type="password" className="input" value={pwForm.confirm}
+              <label htmlFor="profile-confirm-password" className="label">{t('profile.confirm_new_password')}</label>
+              <input id="profile-confirm-password" type="password" className="input" value={pwForm.confirm}
                 onChange={(e) => setPwForm({ ...pwForm, confirm: e.target.value })} required />
             </div>
             {pwError && <p className="text-sm text-red-400">{pwError}</p>}
@@ -227,7 +225,7 @@ export default function ProfilePage() {
                     <p className="text-sm text-zinc-800 dark:text-zinc-200">{cred.name}</p>
                     <p className="text-xs text-zinc-500">{t('profile.totp_added')} {new Date(cred.created_at * 1000).toLocaleDateString()}</p>
                   </div>
-                  <button onClick={() => askRemoval('totp', cred.id)} className="btn-ghost p-1.5 text-red-400">
+                  <button type="button" onClick={() => askRemoval('totp', cred.id)} className="btn-ghost p-1.5 text-red-400">
                     <Trash2 size={14} />
                   </button>
                 </li>
@@ -236,7 +234,7 @@ export default function ProfilePage() {
           )}
 
           {!totpSetup ? (
-            <button onClick={startTotpSetup} disabled={totpLoading} className="btn-secondary gap-2">
+            <button type="button" onClick={startTotpSetup} disabled={totpLoading} className="btn-secondary gap-2">
               <Plus size={14} /> {t('profile.totp_add')}
             </button>
           ) : (
@@ -257,23 +255,23 @@ export default function ProfilePage() {
                 <code className="flex-1 text-xs text-zinc-700 dark:text-zinc-300 font-mono break-all">
                   {showSecret ? totpSetup.secret : '•'.repeat(totpSetup.secret.length)}
                 </code>
-                <button onClick={() => setShowSecret(!showSecret)} className="text-zinc-500 hover:text-zinc-300 p-1">
+                <button type="button" onClick={() => setShowSecret(!showSecret)} className="text-zinc-500 hover:text-zinc-300 p-1">
                   {showSecret ? <EyeOff size={13} /> : <Eye size={13} />}
                 </button>
-                <button onClick={copySecret} className={`p-1 ${copied ? 'text-emerald-400' : 'text-zinc-500 hover:text-zinc-300'}`}>
+                <button type="button" onClick={copySecret} className={`p-1 ${copied ? 'text-emerald-400' : 'text-zinc-500 hover:text-zinc-300'}`}>
                   {copied ? <CheckCircle size={13} /> : <Copy size={13} />}
                 </button>
               </div>
               <div>
-                <label className="label">{t('profile.totp_enter_code')}</label>
-                <input type="text" inputMode="numeric" maxLength={6} value={totpCode}
+                <label htmlFor="profile-totp-code" className="label">{t('profile.totp_enter_code')}</label>
+                <input id="profile-totp-code" type="text" inputMode="numeric" maxLength={6} value={totpCode}
                   onChange={(e) => setTotpCode(e.target.value.replace(/\D/g, ''))}
                   className="input text-center text-xl tracking-[0.5em] font-mono" placeholder="000000" />
               </div>
               {totpError && <p className="text-sm text-red-400">{totpError}</p>}
               <div className="flex gap-3">
-                <button onClick={() => { setTotpSetup(null); setTotpCode('') }} className="btn-secondary flex-1">{t('2fa.cancel')}</button>
-                <button onClick={confirmTotp} disabled={totpLoading || totpCode.length < 6} className="btn-primary flex-1">
+                <button type="button" onClick={() => { setTotpSetup(null); setTotpCode('') }} className="btn-secondary flex-1">{t('2fa.cancel')}</button>
+                <button type="button" onClick={confirmTotp} disabled={totpLoading || totpCode.length < 6} className="btn-primary flex-1">
                   {totpLoading ? t('profile.totp_confirming') : t('profile.totp_confirm')}
                 </button>
               </div>
@@ -296,7 +294,7 @@ export default function ProfilePage() {
                     <p className="text-sm text-zinc-800 dark:text-zinc-200">{cred.name ?? t('profile.passkey')}</p>
                     <p className="text-xs text-zinc-500">{t('profile.totp_added')} {new Date(cred.created_at * 1000).toLocaleDateString()}</p>
                   </div>
-                  <button onClick={() => askRemoval('passkey', cred.id)} className="btn-ghost p-1.5 text-red-400">
+                  <button type="button" onClick={() => askRemoval('passkey', cred.id)} className="btn-ghost p-1.5 text-red-400">
                     <Trash2 size={14} />
                   </button>
                 </li>
@@ -304,7 +302,7 @@ export default function ProfilePage() {
             </ul>
           )}
 
-          <button onClick={registerPasskey} disabled={passkeyLoading} className="btn-secondary gap-2">
+          <button type="button" onClick={registerPasskey} disabled={passkeyLoading} className="btn-secondary gap-2">
             <Plus size={14} /> {passkeyLoading ? t('profile.passkey_waiting') : t('profile.passkey_add')}
           </button>
           {passkeyError && <p className="text-sm text-red-400 mt-2">{passkeyError}</p>}
@@ -319,8 +317,9 @@ export default function ProfilePage() {
             </h2>
             <p className="text-sm text-zinc-500">{t('profile.confirm_remove_desc')}</p>
             <div>
-              <label className="label">{t('profile.current_password')}</label>
-              <input type="password" className="input" value={removalPassword} autoFocus required
+              <label htmlFor="removal-password" className="label">{t('profile.current_password')}</label>
+              {/* biome-ignore lint/a11y/noAutofocus: focus moves into the dialog that just opened */}
+              <input id="removal-password" type="password" className="input" value={removalPassword} autoFocus required
                 autoComplete="current-password" onChange={(e) => setRemovalPassword(e.target.value)} />
             </div>
             {removalError && <p className="text-sm text-red-400">{removalError}</p>}

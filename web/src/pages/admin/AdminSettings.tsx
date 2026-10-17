@@ -47,17 +47,17 @@ export default function AdminSettings() {
   useEffect(() => {
     adminApi.getSettings().then((cfg) => {
       setSettings(cfg)
-      setEmailProvider((cfg['email_provider'] as EmailProvider) || 'none')
-      if (cfg['smtp_config']) {
+      setEmailProvider((cfg.email_provider as EmailProvider) || 'none')
+      if (cfg.smtp_config) {
         try {
-          const parsed = JSON.parse(cfg['smtp_config'])
+          const parsed = JSON.parse(cfg.smtp_config)
           setSmtpHasSecret(Boolean(parsed.password))
           setSmtp({ ...DEFAULT_SMTP, ...parsed, password: '' })
         } catch { /* ignore */ }
       }
-      if (cfg['resend_config']) {
+      if (cfg.resend_config) {
         try {
-          const parsed = JSON.parse(cfg['resend_config'])
+          const parsed = JSON.parse(cfg.resend_config)
           setResendHasSecret(Boolean(parsed.api_key))
           setResend({ ...DEFAULT_RESEND, ...parsed, api_key: '' })
         } catch { /* ignore */ }
@@ -108,8 +108,8 @@ export default function AdminSettings() {
       await adminApi.testEmail(testEmailTo)
       setTestEmailMsg(t('admin_settings.test_email_sent'))
       setTimeout(() => setTestEmailMsg(''), 4000)
-    } catch (e: any) {
-      setTestEmailError(e.message || t('admin_settings.test_email_failed'))
+    } catch (e) {
+      setTestEmailError((e instanceof Error && e.message) || t('admin_settings.test_email_failed'))
     } finally {
       setTestEmailLoading(false)
     }
@@ -121,7 +121,7 @@ export default function AdminSettings() {
     <div className="p-4 sm:p-6 max-w-5xl">
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-lg font-semibold text-zinc-900 dark:text-zinc-100">{t('admin.settings')}</h1>
-        <button onClick={save} disabled={saving} className="btn-primary gap-2">
+        <button type="button" onClick={save} disabled={saving} className="btn-primary gap-2">
           {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
           {saved ? t('admin_settings.saved') : t('admin_settings.save_changes')}
         </button>
@@ -134,8 +134,8 @@ export default function AdminSettings() {
         <div className="card p-5 space-y-4">
           <h2 className="text-sm font-semibold text-zinc-400 uppercase tracking-wider">{t('admin_settings.general')}</h2>
           <div>
-            <label className="label">{t('admin_settings.app_name')}</label>
-            <input type="text" className="input" value={settings['app_name'] ?? 'Zeta'}
+            <label htmlFor="settings-app-name" className="label">{t('admin_settings.app_name')}</label>
+            <input id="settings-app-name" type="text" className="input" value={settings.app_name ?? 'Zeta'}
               onChange={(e) => set('app_name', e.target.value)} />
           </div>
           <div className="flex items-center justify-between">
@@ -143,7 +143,7 @@ export default function AdminSettings() {
               <p className="text-sm font-medium text-zinc-700 dark:text-zinc-200">{t('admin_settings.registration_open')}</p>
               <p className="text-xs text-zinc-500">{t('admin_settings.registration_desc')}</p>
             </div>
-            <button role="switch" aria-checked={settings['registration_enabled'] === 'true'} onClick={() => toggle('registration_enabled')}
+            <button type="button" role="switch" aria-checked={settings.registration_enabled === 'true'} onClick={() => toggle('registration_enabled')}
               className="toggle-track">
               <span className="toggle-thumb" />
             </button>
@@ -153,7 +153,7 @@ export default function AdminSettings() {
               <p className="text-sm font-medium text-zinc-700 dark:text-zinc-200">{t('admin_settings.require_verification')}</p>
               <p className="text-xs text-zinc-500">{t('admin_settings.require_verification_desc')}</p>
             </div>
-            <button role="switch" aria-checked={settings['require_email_verification'] !== 'false'} onClick={() => toggle('require_email_verification')}
+            <button type="button" role="switch" aria-checked={settings.require_email_verification !== 'false'} onClick={() => toggle('require_email_verification')}
               className="toggle-track">
               <span className="toggle-thumb" />
             </button>
@@ -163,7 +163,7 @@ export default function AdminSettings() {
               <p className="text-sm font-medium text-zinc-700 dark:text-zinc-200">{t('admin_settings.enforce_2fa')}</p>
               <p className="text-xs text-zinc-500">{t('admin_settings.enforce_2fa_desc')}</p>
             </div>
-            <button role="switch" aria-checked={settings['enforce_2fa'] === 'true'} onClick={() => toggle('enforce_2fa')}
+            <button type="button" role="switch" aria-checked={settings.enforce_2fa === 'true'} onClick={() => toggle('enforce_2fa')}
               className="toggle-track">
               <span className="toggle-thumb" />
             </button>
@@ -196,38 +196,38 @@ export default function AdminSettings() {
             <div className="space-y-3 pt-2 border-t border-zinc-200 dark:border-zinc-700">
               <div className="grid grid-cols-3 gap-3">
                 <div className="col-span-2">
-                  <label className="label">{t('admin_settings.smtp_host')}</label>
-                  <input type="text" className="input" value={smtp.host}
+                  <label htmlFor="smtp-host" className="label">{t('admin_settings.smtp_host')}</label>
+                  <input id="smtp-host" type="text" className="input" value={smtp.host}
                     onChange={(e) => setSmtpField('host', e.target.value)} placeholder="smtp.example.com" />
                 </div>
                 <div>
-                  <label className="label">{t('admin_settings.smtp_port')}</label>
-                  <input type="number" className="input" value={smtp.port}
+                  <label htmlFor="smtp-port" className="label">{t('admin_settings.smtp_port')}</label>
+                  <input id="smtp-port" type="number" className="input" value={smtp.port}
                     onChange={(e) => setSmtpField('port', e.target.value)} />
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="label">{t('admin_settings.smtp_username')}</label>
-                  <input type="text" className="input" value={smtp.username}
+                  <label htmlFor="smtp-username" className="label">{t('admin_settings.smtp_username')}</label>
+                  <input id="smtp-username" type="text" className="input" value={smtp.username}
                     onChange={(e) => setSmtpField('username', e.target.value)} autoComplete="off" />
                 </div>
                 <div>
-                  <label className="label">{t('admin_settings.smtp_password')}</label>
-                  <input type="password" className="input" value={smtp.password}
+                  <label htmlFor="smtp-password" className="label">{t('admin_settings.smtp_password')}</label>
+                  <input id="smtp-password" type="password" className="input" value={smtp.password}
                     onChange={(e) => setSmtpField('password', e.target.value)} autoComplete="off"
                     placeholder={smtpHasSecret ? t('admin_settings.keep_existing') : ''} />
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="label">{t('admin_settings.from_address')}</label>
-                  <input type="email" className="input" value={smtp.from}
+                  <label htmlFor="smtp-from" className="label">{t('admin_settings.from_address')}</label>
+                  <input id="smtp-from" type="email" className="input" value={smtp.from}
                     onChange={(e) => setSmtpField('from', e.target.value)} />
                 </div>
                 <div>
-                  <label className="label">{t('admin_settings.from_name')}</label>
-                  <input type="text" className="input" value={smtp.from_name}
+                  <label htmlFor="smtp-from-name" className="label">{t('admin_settings.from_name')}</label>
+                  <input id="smtp-from-name" type="text" className="input" value={smtp.from_name}
                     onChange={(e) => setSmtpField('from_name', e.target.value)} />
                 </div>
               </div>
@@ -237,21 +237,21 @@ export default function AdminSettings() {
           {emailProvider === 'resend' && (
             <div className="space-y-3 pt-2 border-t border-zinc-200 dark:border-zinc-700">
               <div>
-                <label className="label">{t('admin_settings.resend_api_key')}</label>
-                <input type="password" className="input font-mono" value={resend.api_key}
+                <label htmlFor="resend-api-key" className="label">{t('admin_settings.resend_api_key')}</label>
+                <input id="resend-api-key" type="password" className="input font-mono" value={resend.api_key}
                   onChange={(e) => setResendField('api_key', e.target.value)}
                   placeholder={resendHasSecret ? t('admin_settings.keep_existing') : 're_xxxxxxxxxxxx'}
                   autoComplete="off" />
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="label">{t('admin_settings.from_address')}</label>
-                  <input type="email" className="input" value={resend.from}
+                  <label htmlFor="resend-from" className="label">{t('admin_settings.from_address')}</label>
+                  <input id="resend-from" type="email" className="input" value={resend.from}
                     onChange={(e) => setResendField('from', e.target.value)} />
                 </div>
                 <div>
-                  <label className="label">{t('admin_settings.from_name')}</label>
-                  <input type="text" className="input" value={resend.from_name}
+                  <label htmlFor="resend-from-name" className="label">{t('admin_settings.from_name')}</label>
+                  <input id="resend-from-name" type="text" className="input" value={resend.from_name}
                     onChange={(e) => setResendField('from_name', e.target.value)} />
                 </div>
               </div>
@@ -264,8 +264,8 @@ export default function AdminSettings() {
           <div className="card p-5 space-y-4">
             <h2 className="text-sm font-semibold text-zinc-400 uppercase tracking-wider">{t('admin_settings.test_email')}</h2>
             <div>
-              <label className="label">{t('admin_settings.test_email_address')}</label>
-              <input type="email" className="input" value={testEmailTo}
+              <label htmlFor="test-email-to" className="label">{t('admin_settings.test_email_address')}</label>
+              <input id="test-email-to" type="email" className="input" value={testEmailTo}
                 onChange={(e) => setTestEmailTo(e.target.value)}
                 placeholder="user@example.com" />
             </div>

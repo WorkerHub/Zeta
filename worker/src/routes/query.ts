@@ -204,7 +204,7 @@ query.get('/history', async (c) => {
   const dbId = c.req.query('databaseId')
   const T = tables(c.env)
 
-  let rows
+  let rows: D1Result<Record<string, unknown>>
   if (dbId) {
     if (role === 'admin') {
       rows = await c.env.DB.prepare(
