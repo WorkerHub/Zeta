@@ -5,6 +5,8 @@ import { uuid } from '../lib/id'
 import { now, getSetting, setSetting, getSettings, audit, tables } from '../lib/db'
 import { hashPassword } from '../lib/auth'
 import { KV } from '../lib/kv'
+import { sealSecret, sealLegacySecret } from '../lib/secrets'
+import { resolveQueryBinding } from '../lib/bindings'
 import { sendEmail } from '../lib/email'
 
 const admin = new Hono<{ Bindings: Env; Variables: Variables }>()
@@ -175,13 +177,14 @@ admin.delete('/users/:id', async (c) => {
     c.env.DB.prepare(`DELETE FROM ${T.totp_credentials} WHERE user_id = ?1`).bind(id),
     c.env.DB.prepare(`DELETE FROM ${T.passkey_credentials} WHERE user_id = ?1`).bind(id),
     c.env.DB.prepare(`DELETE FROM ${T.notebooks} WHERE user_id = ?1`).bind(id),
-    c.env.DB.prepare(`DELETE FROM ${T.query_history} WHERE user_id = ?1`).bind(id),
+    c.env.DB.prepare(`UPDATE ${T.query_history} SET user_id = NULL WHERE user_id = ?1`).bind(id),
     c.env.DB.prepare(`DELETE FROM ${T.user_database_permissions} WHERE user_id = ?1`).bind(id),
     c.env.DB.prepare(`UPDATE ${T.user_database_permissions} SET granted_by = NULL WHERE granted_by = ?1`).bind(id),
     c.env.DB.prepare(`UPDATE ${T.audit_logs} SET user_id = NULL WHERE user_id = ?1`).bind(id),
     c.env.DB.prepare(`UPDATE ${T.d1_databases} SET created_by = NULL WHERE created_by = ?1`).bind(id),
     c.env.DB.prepare(`DELETE FROM ${T.users} WHERE id = ?1`).bind(id),
   ])
+  await c.env.KV.put(KV.sessionInvalidatedAt(id), String(now()), { expirationTtl: 7 * 24 * 3600 })
   c.executionCtx.waitUntil(audit(c.env, {
     userId: c.get('userId'), action: 'delete_user', resource: id,
     ip: c.req.header('cf-connecting-ip')
@@ -205,13 +208,15 @@ admin.post('/databases', async (c) => {
     return c.json({ error: 'name and binding_name are required' }, 400)
   }
 
-  // Validate the binding actually exists on this Worker
-  const binding = c.env[body.binding_name]
-  if (!binding || typeof (binding as Record<string, unknown>).prepare !== 'function') {
-    return c.json({ error: `Binding "${body.binding_name}" not found on this Worker. Add it to wrangler.toml first.` }, 400)
-  }
+  // Reject reserved/malformed names and make sure the binding is a D1 database on this Worker
+  const binding = resolveQueryBinding(c.env, body.binding_name)
+  if (!binding.ok) return c.json({ error: binding.error }, 400)
 
   const T = tables(c.env)
+  const dup = await c.env.DB.prepare(`SELECT id FROM ${T.d1_databases} WHERE binding_name = ?1`)
+    .bind(body.binding_name).first()
+  if (dup) return c.json({ error: 'This binding is already registered' }, 409)
+
   const id = uuid()
   await c.env.DB.prepare(
     `INSERT INTO ${T.d1_databases} (id, name, description, binding_name, is_active, created_at, created_by)
@@ -263,7 +268,7 @@ admin.delete('/databases/:id', async (c) => {
   await c.env.DB.batch([
     c.env.DB.prepare(`UPDATE ${T.notebooks} SET database_id = NULL WHERE database_id = ?1`).bind(dbId),
     c.env.DB.prepare(`DELETE FROM ${T.user_database_permissions} WHERE database_id = ?1`).bind(dbId),
-    c.env.DB.prepare(`DELETE FROM ${T.query_history} WHERE database_id = ?1`).bind(dbId),
+    c.env.DB.prepare(`UPDATE ${T.query_history} SET database_id = NULL WHERE database_id = ?1`).bind(dbId),
     c.env.DB.prepare(`DELETE FROM ${T.d1_databases} WHERE id = ?1`).bind(dbId),
   ])
   c.executionCtx.waitUntil(audit(c.env, {
@@ -298,6 +303,11 @@ admin.put('/databases/:id/permissions/:userId', async (c) => {
      ON CONFLICT(user_id, database_id) DO UPDATE SET permission = ?4, granted_by = ?5, granted_at = ?6`
   ).bind(uuid(), c.req.param('userId'), c.req.param('id'), body.permission, c.get('userId'), now()).run()
 
+  c.executionCtx.waitUntil(audit(c.env, {
+    userId: c.get('userId'), action: 'set_permission', resource: c.req.param('id'),
+    metadata: { targetUser: c.req.param('userId'), permission: body.permission },
+    ip: c.req.header('cf-connecting-ip')
+  }))
   return c.json({ message: 'Permission set' })
 })
 
@@ -306,10 +316,17 @@ admin.delete('/databases/:id/permissions/:userId', async (c) => {
   await c.env.DB.prepare(
     `DELETE FROM ${T.user_database_permissions} WHERE user_id = ?1 AND database_id = ?2`
   ).bind(c.req.param('userId'), c.req.param('id')).run()
+  c.executionCtx.waitUntil(audit(c.env, {
+    userId: c.get('userId'), action: 'revoke_permission', resource: c.req.param('id'),
+    metadata: { targetUser: c.req.param('userId') },
+    ip: c.req.header('cf-connecting-ip')
+  }))
   return c.json({ message: 'Permission revoked' })
 })
 
 // ── Settings ──────────────────────────────────────────────────────────────────
+
+const SECRET_MASK = '••••••'
 
 const EXPOSED_SETTINGS = [
   'registration_enabled', 'require_email_verification', 'enforce_2fa',
@@ -318,18 +335,23 @@ const EXPOSED_SETTINGS = [
 
 admin.get('/settings', async (c) => {
   const cfg = await getSettings(c.env, EXPOSED_SETTINGS)
+  // Opportunistically encrypt secrets still stored as plaintext by older versions
+  for (const [key, field] of [['smtp_config', 'password'], ['resend_config', 'api_key']] as const) {
+    const raw = cfg[key]
+    if (raw) c.executionCtx.waitUntil(sealLegacySecret(c.env, key, raw, field).catch(() => false))
+  }
   // Mask secrets in JSON blobs
   if (cfg['smtp_config']) {
     try {
       const smtp = JSON.parse(cfg['smtp_config'])
-      if (smtp.password) smtp.password = '••••••'
+      if (smtp.password) smtp.password = SECRET_MASK
       cfg['smtp_config'] = JSON.stringify(smtp)
     } catch { /* ignore malformed */ }
   }
   if (cfg['resend_config']) {
     try {
       const resend = JSON.parse(cfg['resend_config'])
-      if (resend.api_key) resend.api_key = '••••••'
+      if (resend.api_key) resend.api_key = SECRET_MASK
       cfg['resend_config'] = JSON.stringify(resend)
     } catch { /* ignore malformed */ }
   }
@@ -353,24 +375,20 @@ admin.patch('/settings', async (c) => {
     if (BOOLEAN_SETTINGS.has(key) && v !== 'true' && v !== 'false') continue
     if (key === 'email_provider' && !VALID_EMAIL_PROVIDERS.includes(v)) continue
 
-    if (key === 'smtp_config') {
+    if (key === 'smtp_config' || key === 'resend_config') {
+      const secretField = key === 'smtp_config' ? 'password' : 'api_key'
       let newConfig: Record<string, unknown>
       try { newConfig = JSON.parse(v) } catch { continue }
-      // Don't overwrite password with redacted placeholder
-      if (!newConfig.password) {
+      if (typeof newConfig !== 'object' || newConfig === null || Array.isArray(newConfig)) continue
+      // Empty or masked secret means "keep the stored one"; never persist the placeholder.
+      if (!newConfig[secretField] || newConfig[secretField] === SECRET_MASK) {
         let existing: Record<string, unknown> = {}
-        try { existing = existingSettings['smtp_config'] ? JSON.parse(existingSettings['smtp_config']) : {} } catch { /* */ }
-        newConfig.password = (existing as Record<string, string>).password || ''
+        try { existing = existingSettings[key] ? JSON.parse(existingSettings[key]) : {} } catch { /* */ }
+        newConfig[secretField] = existing[secretField] || ''
       }
-      await setSetting(c.env, key, JSON.stringify(newConfig))
-    } else if (key === 'resend_config') {
-      let newConfig: Record<string, unknown>
-      try { newConfig = JSON.parse(v) } catch { continue }
-      // Don't overwrite api_key with redacted placeholder
-      if (!newConfig.api_key) {
-        let existing: Record<string, unknown> = {}
-        try { existing = existingSettings['resend_config'] ? JSON.parse(existingSettings['resend_config']) : {} } catch { /* */ }
-        newConfig.api_key = (existing as Record<string, string>).api_key || ''
+      // Encrypt at rest; also upgrades legacy plaintext values the next time settings are saved.
+      if (typeof newConfig[secretField] === 'string') {
+        newConfig[secretField] = await sealSecret(c.env, newConfig[secretField] as string)
       }
       await setSetting(c.env, key, JSON.stringify(newConfig))
     } else {
@@ -405,13 +423,6 @@ admin.post('/settings/test-email', async (c) => {
   }
 
   return c.json({ success: true })
-})
-
-// ── Setup (first-run) ─────────────────────────────────────────────────────────
-
-admin.post('/setup/complete', async (c) => {
-  await setSetting(c.env, 'setup_completed', 'true')
-  return c.json({ message: 'Setup completed' })
 })
 
 export default admin

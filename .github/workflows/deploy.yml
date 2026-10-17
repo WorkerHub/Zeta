@@ -19,6 +19,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v6
@@ -62,26 +64,7 @@ jobs:
           QUERY_DB_9_ID: ${{ vars.QUERY_DB_9_ID }}
           QUERY_DB_10_NAME: ${{ vars.QUERY_DB_10_NAME }}
           QUERY_DB_10_ID: ${{ vars.QUERY_DB_10_ID }}
-        run: |
-          sed -i "s/CLOUDFLARE_ACCOUNT_ID_PLACEHOLDER/${CLOUDFLARE_ACCOUNT_ID}/" wrangler.toml
-          sed -i "s/D1_DATABASE_NAME_PLACEHOLDER/${D1_DATABASE_NAME}/" wrangler.toml
-          sed -i "s/D1_DATABASE_ID_PLACEHOLDER/${D1_DATABASE_ID}/" wrangler.toml
-          sed -i "s/KV_NAMESPACE_ID_PLACEHOLDER/${KV_NAMESPACE_ID}/" wrangler.toml
-
-          for i in $(seq 1 10); do
-            name_var="QUERY_DB_${i}_NAME"
-            id_var="QUERY_DB_${i}_ID"
-            db_name="${!name_var}"
-            db_id="${!id_var}"
-
-            if [[ -n "$db_name" && -n "$db_id" ]]; then
-              printf '\n[[d1_databases]]\nbinding = "QUERY_DB_%d"\ndatabase_name = "%s"\ndatabase_id   = "%s"\n' \
-                "$i" "$db_name" "$db_id" >> wrangler.toml
-              echo "Appended QUERY_DB_${i}: name=${db_name}"
-            elif [[ -n "$db_name" || -n "$db_id" ]]; then
-              echo "WARNING: QUERY_DB_${i} incomplete — both ${name_var} and ${id_var} must be set. Skipping."
-            fi
-          done
+        run: node scripts/patch-wrangler.mjs wrangler.toml
 
       - name: Deploy Worker
         working-directory: worker

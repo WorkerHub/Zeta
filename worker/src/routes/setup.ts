@@ -65,8 +65,8 @@ function buildDDL(T: ReturnType<typeof tables>): string[] {
 
     `CREATE TABLE IF NOT EXISTS ${T.query_history} (
       id TEXT PRIMARY KEY,
-      user_id TEXT NOT NULL REFERENCES ${T.users}(id),
-      database_id TEXT NOT NULL REFERENCES ${T.d1_databases}(id),
+      user_id TEXT REFERENCES ${T.users}(id),
+      database_id TEXT REFERENCES ${T.d1_databases}(id),
       sql TEXT NOT NULL,
       duration_ms INTEGER,
       row_count INTEGER,
@@ -75,6 +75,7 @@ function buildDDL(T: ReturnType<typeof tables>): string[] {
     )`,
     `CREATE INDEX IF NOT EXISTS idx_${T.query_history}_user ON ${T.query_history}(user_id)`,
     `CREATE INDEX IF NOT EXISTS idx_${T.query_history}_db   ON ${T.query_history}(database_id)`,
+    `CREATE INDEX IF NOT EXISTS idx_${T.query_history}_executed ON ${T.query_history}(executed_at)`,
 
     `CREATE TABLE IF NOT EXISTS ${T.settings} (
       key TEXT PRIMARY KEY,
@@ -115,31 +116,45 @@ const DEFAULT_SETTINGS: Array<[string, string]> = [
   ['require_email_verification', 'false'],
   ['enforce_2fa', 'false'],
   ['email_provider', 'resend'],
-  ['resend_api_key', ''],
-  ['smtp_host', ''],
-  ['smtp_port', '587'],
-  ['smtp_user', ''],
-  ['smtp_pass', ''],
-  ['smtp_from', ''],
   ['app_name', 'Zeta'],
-  ['setup_completed', 'true'],
 ]
 
-// ── GET /api/setup/:secret ────────────────────────────────────────────────────
+// Compares SHA-256 digests so neither the content nor the length of the secret leaks via timing.
+async function secretsMatch(a: string, b: string): Promise<boolean> {
+  const enc = new TextEncoder()
+  const [da, db] = await Promise.all([
+    crypto.subtle.digest('SHA-256', enc.encode(a)),
+    crypto.subtle.digest('SHA-256', enc.encode(b)),
+  ])
+  const va = new Uint8Array(da)
+  const vb = new Uint8Array(db)
+  let diff = 0
+  for (let i = 0; i < va.length; i++) diff |= va[i]! ^ vb[i]!
+  return diff === 0
+}
 
-setup.get('/:secret', async (c) => {
-  const secret = c.req.param('secret')
+// ── GET /api/setup/* (legacy) ─────────────────────────────────────────────────
+
+// The old GET /api/setup/:secret form put the secret in the URL (history, logs, Referer).
+// It never initialises anything now; it only points callers at the POST form.
+setup.get('/*', (c) =>
+  c.json({ error: 'Use POST /api/setup with a JSON body {"secret": "<SETUP_SECRET>"}.' }, 405, { Allow: 'POST' })
+)
+
+// ── POST /api/setup ───────────────────────────────────────────────────────────
+
+setup.post('/', async (c) => {
   const expected = c.env.SETUP_SECRET
 
   // SETUP_SECRET must be set; reject if missing or mismatched
   if (!expected || expected.trim() === '') {
     return c.json({ error: 'SETUP_SECRET is not configured on this Worker.' }, 500)
   }
-  let diff = secret.length ^ expected.length
-  for (let i = 0; i < expected.length; i++) {
-    diff |= (secret.charCodeAt(i) || 0) ^ expected.charCodeAt(i)
+  const body = await c.req.json<{ secret?: unknown }>().catch(() => null)
+  if (typeof body?.secret !== 'string' || !body.secret) {
+    return c.json({ error: 'A JSON body {"secret": "<SETUP_SECRET>"} is required.' }, 400)
   }
-  if (diff !== 0) {
+  if (!(await secretsMatch(body.secret, expected))) {
     return c.json({ error: 'Invalid setup secret.' }, 403)
   }
 

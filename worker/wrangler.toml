@@ -24,4 +24,4 @@ id = "KV_NAMESPACE_ID_PLACEHOLDER"
 # Secrets – set via dashboard or `wrangler secret put`:
 #   JWT_SECRET       – random 64-char string
 #   ENCRYPTION_KEY   – 64-char hex (32 bytes) for AES-GCM TOTP encryption
-#   SETUP_SECRET     – random string used to protect GET /api/setup/:secret
+#   SETUP_SECRET     – random string used to protect POST /api/setup
