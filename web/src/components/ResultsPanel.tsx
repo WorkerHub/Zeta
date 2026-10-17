@@ -2,6 +2,7 @@ import { AlertCircle, CheckCircle2 } from 'lucide-react'
 import type { StatementResult } from '../types'
 import ResultTable from './ResultTable'
 import { useLocale } from '../hooks/useLocale'
+import { MAX_RESULT_ROWS } from '../lib/sql'
 
 interface Props {
   results: StatementResult[]
@@ -90,7 +91,12 @@ export default function ResultsPanel({ results, activeIndex, onSelectIndex }: Pr
                     ? t(active.changes === 1 ? 'results.change' : 'results.changes', { n: active.changes })
                     : t('results.rows', { n: 0 })}
               </span>
-              {active.truncated && <span className="text-xs text-amber-500">{t('results.truncated')}</span>}
+              {active.truncated && (
+                <span className="text-xs text-amber-500">{t('results.truncated', { n: MAX_RESULT_ROWS })}</span>
+              )}
+              {active.stored_rows !== undefined && (
+                <span className="text-xs text-amber-500">{t('results.stored_rows', { n: active.stored_rows })}</span>
+              )}
               <span className="text-zinc-300 dark:text-zinc-600 text-xs">·</span>
               <span className="text-xs text-zinc-500">{active.duration_ms}ms</span>
             </>

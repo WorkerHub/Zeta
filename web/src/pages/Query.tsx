@@ -30,10 +30,12 @@ import { useAuthContext } from '../hooks/useAuth'
 import { useTheme } from '../hooks/useTheme'
 import { useLocale } from '../hooks/useLocale'
 import { useNotebooks } from '../hooks/useNotebooks'
+import { useNotebookRuns } from '../hooks/useNotebookRuns'
 import ResultsPanel from '../components/ResultsPanel'
 import QueryHistoryPanel from '../components/QueryHistoryPanel'
+import RunHistoryBar from '../components/RunHistoryBar'
 import { splitSqlStatements } from '../lib/sql'
-import type { Database as DbType, StatementResult } from '../types'
+import type { Database as DbType, NotebookRunSummary, StatementResult } from '../types'
 
 const THEME_ICONS = { auto: Monitor, light: Sun, dark: Moon }
 
@@ -60,12 +62,14 @@ export default function QueryPage() {
   const activeNotebook = notebooks.find((n) => n.id === activeId) ?? null
   const sqlText = activeNotebook?.sql_content ?? ''
   const selectedDb = databases.find((d) => d.id === activeNotebook?.database_id) ?? null
-  const [statementResults, setStatementResults] = useState<StatementResult[]>([])
+  // Saved runs per notebook; what the results panel shows comes from here
+  const runs = useNotebookRuns(activeId)
+  const { running, runError, transient, selectedRun, selectedResults, startRun, finishRun } = runs
+  const statementResults: StatementResult[] =
+    transient ?? (selectedResults?.status === 'ready' ? selectedResults.results : [])
   const [activeResultIdx, setActiveResultIdx] = useState(0)
-  const [runError, setRunError] = useState('')
-  // Failures outside a query run (loading databases, deleting a notebook)
+  // Failures outside a query run (loading databases, deleting a notebook, managing saved runs)
   const [pageError, setPageError] = useState('')
-  const [running, setRunning] = useState(false)
   const [showHistory, setShowHistory] = useState(false)
   const [showDbMenu, setShowDbMenu] = useState(false)
   const [showUserMenu, setShowUserMenu] = useState(false)
@@ -123,22 +127,43 @@ export default function QueryPage() {
 
   const runQuery = useCallback(async () => {
     const sqlToRun = selectedSqlRef.current.trim() || sqlText.trim()
-    if (!selectedDb || !sqlToRun) return
+    const nbId = activeId
+    const db = selectedDb
+    if (!db || !nbId || !sqlToRun) return
 
     const statements = splitSqlStatements(sqlToRun)
     if (statements.length === 0) return
 
-    setRunning(true)
-    setRunError('')
-    setStatementResults([])
+    // The run belongs to the notebook it started in, even if the user switches tabs meanwhile
+    startRun(nbId)
     setActiveResultIdx(0)
+
+    // A saved run (one the server names) goes into the notebook's run list
+    const summary = (runId: string | undefined, executedAt: number | undefined, results: StatementResult[]) =>
+      runId
+        ? ({
+            id: runId,
+            notebook_id: nbId,
+            database_id: db.id,
+            database_name: db.name,
+            sql: sqlToRun,
+            statement_count: results.length,
+            row_count: results.reduce((n, r) => n + r.results.length, 0),
+            error_count: results.filter((r) => r.error).length,
+            duration_ms: results.reduce((n, r) => n + r.duration_ms, 0),
+            storage_truncated: 0,
+            results_bytes: 0,
+            executed_at: executedAt ?? Date.now(),
+            accessible: true,
+          } satisfies NotebookRunSummary)
+        : null
 
     try {
       if (statements.length === 1) {
         // Single statement — use existing endpoint
         const stmt = statements[0]!
         try {
-          const res = await queryApi.execute({ databaseId: selectedDb.id, sql: stmt })
+          const res = await queryApi.execute({ databaseId: db.id, sql: stmt, notebookId: nbId })
           const entry: StatementResult = {
             sql: stmt,
             results: res.results ?? [],
@@ -146,32 +171,25 @@ export default function QueryPage() {
             changes: res.meta?.changes,
             truncated: res.truncated,
           }
-          setStatementResults([entry])
+          finishRun(nbId, { run: summary(res.run_id, res.executed_at, [entry]), results: [entry] })
         } catch (err) {
-          if (err instanceof ApiError) {
-            setStatementResults([{ sql: stmt, results: [], duration_ms: 0, error: err.message }])
-          } else {
-            setStatementResults([
-              {
-                sql: stmt,
-                results: [],
-                duration_ms: 0,
-                error: err instanceof Error ? err.message : t('errors.query_failed'),
-              },
-            ])
-          }
+          const message = err instanceof Error ? err.message : t('errors.query_failed')
+          const entry: StatementResult = { sql: stmt, results: [], duration_ms: 0, error: message }
+          // A statement that ran and failed is saved too; the error response names the run
+          const body = err instanceof ApiError ? err.body : {}
+          const runId = typeof body.run_id === 'string' ? body.run_id : undefined
+          const executedAt = typeof body.executed_at === 'number' ? body.executed_at : undefined
+          finishRun(nbId, { run: summary(runId, executedAt, [entry]), results: [entry] })
         }
       } else {
         // Multiple statements — use batch endpoint
-        const res = await queryApi.executeBatch({ databaseId: selectedDb.id, statements })
-        setStatementResults(res.results)
+        const res = await queryApi.executeBatch({ databaseId: db.id, statements, notebookId: nbId })
+        finishRun(nbId, { run: summary(res.run_id, res.executed_at, res.results), results: res.results })
       }
     } catch (err) {
-      setRunError(err instanceof Error ? err.message : t('errors.query_failed'))
-    } finally {
-      setRunning(false)
+      finishRun(nbId, { error: err instanceof Error ? err.message : t('errors.query_failed') })
     }
-  }, [selectedDb, sqlText, t])
+  }, [activeId, selectedDb, sqlText, t, startRun, finishRun])
 
   // Cmd/Ctrl+Enter: override CodeMirror's default Mod-Enter (insertBlankLine)
   // so we can read the selection directly from view state before it gets cleared.
@@ -200,15 +218,25 @@ export default function QueryPage() {
     []
   )
 
-  // Clear stale results and selection when switching tabs
+  // Clear the editor selection when switching tabs (each notebook keeps its own results)
   // biome-ignore lint/correctness/useExhaustiveDependencies: activeId is the trigger, not an input of the effect
   useEffect(() => {
-    setStatementResults([])
-    setActiveResultIdx(0)
-    setRunError('')
     setSelectedSql('')
     selectedSqlRef.current = ''
   }, [activeId])
+
+  // Show the first statement of whichever run comes into view
+  const shownRunId = transient ? null : (selectedRun?.id ?? null)
+  // biome-ignore lint/correctness/useExhaustiveDependencies: the shown run is the trigger, not an input of the effect
+  useEffect(() => {
+    setActiveResultIdx(0)
+  }, [activeId, shownRunId])
+
+  // Saved-run actions report failures in the page error banner
+  const reportRunAction = (action: Promise<void>) => {
+    setPageError('')
+    action.catch((err) => setPageError(err instanceof Error ? err.message : t('errors.runs_failed')))
+  }
 
   // Draggable divider handlers
   function onDividerPointerDown(e: React.PointerEvent) {
@@ -440,9 +468,11 @@ export default function QueryPage() {
                   e.stopPropagation()
                   if (!window.confirm(t('notebook.delete_confirm'))) return
                   setPageError('')
-                  deleteNotebook(nb.id).catch((err) =>
-                    setPageError(err instanceof Error ? err.message : t('errors.delete_notebook_failed'))
-                  )
+                  deleteNotebook(nb.id)
+                    .then(() => runs.forgetNotebook(nb.id))
+                    .catch((err) =>
+                      setPageError(err instanceof Error ? err.message : t('errors.delete_notebook_failed'))
+                    )
                 }}
                 className="opacity-0 group-hover:opacity-100 p-0.5 rounded hover:bg-zinc-200 dark:hover:bg-zinc-700 text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 transition-opacity"
               >
@@ -582,6 +612,18 @@ export default function QueryPage() {
                 </div>
               </div>
             )}
+            {!running && !runError && !transient && selectedRun && (
+              <RunHistoryBar
+                runs={runs.list}
+                selected={selectedRun}
+                hasMore={runs.hasMore}
+                loading={runs.loading}
+                onSelect={runs.selectRun}
+                onLoadMore={runs.loadMore}
+                onDelete={(runId) => reportRunAction(runs.deleteRun(runId))}
+                onClear={() => reportRunAction(runs.clearRuns())}
+              />
+            )}
             {!running && !runError && statementResults.length > 0 && (
               <div className="flex-1 overflow-hidden">
                 <ResultsPanel
@@ -591,9 +633,19 @@ export default function QueryPage() {
                 />
               </div>
             )}
-            {!running && !runError && statementResults.length === 0 && (
+            {!running && !runError && !transient && selectedResults && selectedResults.status !== 'ready' && (
+              <div className="flex items-center justify-center flex-1 gap-2 px-4 text-center text-sm text-zinc-400 dark:text-zinc-600">
+                {selectedResults.status === 'loading' && <Loader2 size={16} className="animate-spin" />}
+                {selectedResults.status === 'loading'
+                  ? t('runs.loading')
+                  : selectedResults.status === 'denied'
+                    ? t('runs.access_denied')
+                    : t('runs.load_failed')}
+              </div>
+            )}
+            {!running && !runError && !transient && !selectedRun && (
               <div className="flex items-center justify-center h-full text-zinc-400 dark:text-zinc-600 text-sm">
-                {t('query.no_results')}
+                {runs.loading ? t('common.loading') : runs.loadError ? t('runs.list_failed') : t('query.no_results')}
               </div>
             )}
           </div>

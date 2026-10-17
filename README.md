@@ -13,7 +13,8 @@ A self-hosted SQL query interface for [Cloudflare D1](https://developers.cloudfl
 ## Features
 
 - **SQL Notebooks** — Multiple named SQL editor tabs per user, auto-saved, each independently bound to a database; supports rename, reorder, and up to 20 notebooks per user
-- **SQL Editor** — Full SQL input with syntax highlighting (CodeMirror 6), Ctrl/Cmd+Enter to run, partial selection execution, execution time and row count display
+- **SQL Editor** — Full SQL input with syntax highlighting (CodeMirror 6), Ctrl/Cmd+Enter to run, partial selection execution, execution time and row count display; read queries return at most 5,000 rows, capped in the SQL itself
+- **Saved Results** — Every notebook run is saved with its results, so they survive switching tabs, leaving the page, reloading and changing devices; browse, delete or clear a notebook's earlier runs (see [Saved Query Results](#saved-query-results))
 - **Query History** — Last 50 queries per database, click to re-run
 - **Multi-database** — Connect multiple D1 databases; grant per-user `read` or `write` access per database
 - **Auth** — Email + password login, email verification, password reset, optional TOTP / Email OTP / Passkey (WebAuthn) two-factor authentication
@@ -154,7 +155,7 @@ Expected response:
 { "ok": true, "message": "Database initialised successfully. You can now register at /register — the first user becomes admin. On new installs registration then stays closed until an admin opens it in Admin → Settings." }
 ```
 
-> The endpoint is idempotent — safe to call multiple times. **Re-run it after every upgrade**: it also applies schema upgrades to databases created by earlier versions (e.g. making `query_history` keep rows when a user or database is deleted — until then, deleting users or databases fails — and creating the `rate_limits` table that makes login / 2FA / email rate limits exact; until it exists they fall back to approximate KV counters; and rebuilding a `user_database_permissions` table whose foreign keys still point at unprefixed `users` / `d1_databases` tables — until then, granting or revoking database access and deleting users or databases fail with `no such table`. Permission rows whose user or database no longer exists are dropped; the response reports how many under `permissionsRepair`).
+> The endpoint is idempotent — safe to call multiple times. **Re-run it after every upgrade**: it also applies schema upgrades to databases created by earlier versions (e.g. making `query_history` keep rows when a user or database is deleted — until then, deleting users or databases fails — and creating the `rate_limits` table that makes login / 2FA / email rate limits exact; until it exists they fall back to approximate KV counters; and rebuilding a `user_database_permissions` table whose foreign keys still point at unprefixed `users` / `d1_databases` tables — until then, granting or revoking database access and deleting users or databases fail with `no such table`. Permission rows whose user or database no longer exists are dropped; the response reports how many under `permissionsRepair`; and creating the `notebook_runs` table plus the `users.notebook_run_limit` column for [saved query results](#saved-query-results) — until then, runs are not saved and the list of saved runs fails to load). Databases created from the migrations get the same through `pnpm migrate:remote` (`0004_notebook_runs.sql`).
 >
 > Earlier versions used `GET /api/setup/<SETUP_SECRET>`. That form is gone: it now returns `405` and does nothing. If you ever opened the old URL, consider rotating `SETUP_SECRET`.
 
@@ -189,6 +190,23 @@ D1 databases are injected into the Worker at deploy time via GitHub Actions Vari
 3. In **Admin → Databases**, click **Add database** and enter the binding name (e.g. `QUERY_DB_1`).
 
 4. In **Databases → Permissions**, grant users `read` or `write` access.
+
+---
+
+## Saved Query Results
+
+Every run of a notebook (one statement or several) is stored in the app database (`notebook_runs`) together with its results. Two limits keep it bounded, both set in **Admin → Settings → Saved query runs**:
+
+| Limit | Default | Range | Effect |
+|-------|---------|-------|--------|
+| Runs kept per notebook | 100 | 1–1000 | Older runs of the notebook are deleted. Users can keep fewer under **Profile → Saved query runs**; the lower of the two applies. |
+| Saved results per user | 50 MB | 1–1024 MB | Beyond it, the user's oldest runs (in any notebook) are deleted. |
+
+Lowering either limit applies to the runs already stored right away. A single run stores at most 512 KB of results (D1 rows are capped at 2 MB); larger results keep their first rows, and the result panel says so. Separately, read queries return at most 5,000 rows: `SELECT`, `VALUES` and `WITH` statements run as `SELECT * FROM (<statement>) LIMIT 5001`, so the database itself stops early (`PRAGMA` / `EXPLAIN` are cut off afterwards).
+
+**Sizing:** the app database holds up to *users × saved results per user* of runs — 10 users at the default 50 MB is about 500 MB, the size limit of a D1 database on the Workers Free plan (10 GB on Workers Paid). Adjust the limits to the number of users.
+
+**Security:** saved results are stored unencrypted in the app database, like the queried data itself in its own database. Only their owner can list or read them, and reading re-checks access to the queried database every time: results stay hidden while a database is deactivated, and are deleted when the user's access to the database is revoked, or when the database, notebook or user is deleted.
 
 ---
 
@@ -275,9 +293,11 @@ All endpoints live under `/api/`. Authentication uses short-lived JWT access tok
 | `POST /api/auth/*` | Register, login, logout, token refresh, email verification, password reset, 2FA (TOTP / Email OTP / Passkey) |
 | `GET/PATCH /api/profile/*` | Profile, password change, TOTP setup/confirm/delete, passkey registration/delete. Deleting a TOTP or passkey requires a JSON body `{"currentPassword": "..."}` |
 | `GET /api/databases` | List accessible databases for the current user |
-| `POST /api/query` | Execute SQL against a bound D1 database |
+| `POST /api/query` | Execute SQL against a bound D1 database (`/batch` for several statements). Reads return at most 5,000 rows (`truncated: true` beyond). With `notebookId`, the run is saved under that notebook and the response carries `run_id` / `executed_at` |
 | `GET /api/query/history` | Query execution history (filterable by database) |
 | `GET/POST/PATCH/DELETE /api/notebooks` | CRUD for SQL notebooks (per-user, max 20) |
+| `GET/DELETE /api/notebooks/:id/runs[/:runId]` | A notebook's saved runs: list (newest first, `limit`/`offset`), read one with its results, delete one, or clear all |
+| `GET/PUT /api/profile/run-settings` | The user's own run limit (`run_limit`, `null` follows the admin limit) and storage usage |
 | `GET/POST/PATCH/DELETE /api/admin/*` | Admin-only: users, databases, permissions, settings |
 | `POST /api/setup` | Idempotent schema initialisation (JSON body `{"secret": "<SETUP_SECRET>"}`) |
 | `GET /api/health` | Health check |

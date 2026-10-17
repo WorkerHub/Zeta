@@ -1,10 +1,19 @@
 import { Hono, type Context } from 'hono'
+import type { D1Database } from '@cloudflare/workers-types'
 import type { Env, Variables, DatabaseRow } from '../types'
 import { requireAuth } from '../middleware/auth'
 import { uuid } from '../lib/id'
 import { now, tables } from '../lib/db'
 import { resolveQueryBinding } from '../lib/bindings'
-import { classifySql, checkSqlAccess, isWriteClass, type Permission } from '../lib/sql-guard'
+import {
+  classifySql,
+  checkSqlAccess,
+  isWriteClass,
+  limitReadSql,
+  type Permission,
+  type SqlClass,
+} from '../lib/sql-guard'
+import { saveRun, type RunStatement } from '../lib/runs'
 
 const MAX_RESULT_ROWS = 5000
 const MAX_SQL_LENGTH = 100_000
@@ -20,10 +29,53 @@ function bindingError(c: Context<{ Bindings: Env; Variables: Variables }>, detai
   return c.json({ error: 'Database configuration error. Contact the admin.' }, 500)
 }
 
+type Ctx = Context<{ Bindings: Env; Variables: Variables }>
+
+// The optional notebookId a run is saved under: undefined/null = not saved, otherwise it must be
+// one of the caller's notebooks. Returns an error response, or the id (null when absent).
+async function resolveNotebook(c: Ctx, notebookId: unknown): Promise<Response | string | null> {
+  if (notebookId === undefined || notebookId === null) return null
+  if (typeof notebookId !== 'string' || !notebookId) return c.json({ error: 'Invalid notebookId' }, 400)
+  const T = tables(c.env)
+  const row = await c.env.DB.prepare(`SELECT 1 FROM ${T.notebooks} WHERE id = ?1 AND user_id = ?2`)
+    .bind(notebookId, c.get('userId'))
+    .first()
+  return row ? notebookId : c.json({ error: 'Notebook not found' }, 404)
+}
+
+interface Executed {
+  results: Record<string, unknown>[]
+  meta: Record<string, unknown>
+  changes?: number
+  truncated: boolean
+}
+
+// Runs one statement that already passed classification and the permission check. Reads are
+// capped by the database itself: wrapped in `LIMIT MAX_RESULT_ROWS + 1` (see limitReadSql), the
+// extra row only telling that the result was cut off. EXPLAIN and PRAGMA cannot be wrapped and are
+// cut off here instead.
+async function executeStatement(d1: D1Database, sql: string, kind: SqlClass): Promise<Executed> {
+  if (isWriteClass(kind)) {
+    const res = await d1.prepare(sql).run()
+    return { results: [], meta: res.meta as Record<string, unknown>, changes: res.meta.changes ?? 0, truncated: false }
+  }
+  const limited = limitReadSql(sql, MAX_RESULT_ROWS)
+  // Defence in depth: the wrapper must still be one read statement
+  if (limited !== null && classifySql(limited) !== 'read') throw new Error('This SQL statement is not allowed.')
+  const res = await d1.prepare(limited ?? sql).all()
+  const rows = res.results as Record<string, unknown>[]
+  const truncated = rows.length > MAX_RESULT_ROWS
+  return {
+    results: truncated ? rows.slice(0, MAX_RESULT_ROWS) : rows,
+    meta: res.meta as Record<string, unknown>,
+    truncated,
+  }
+}
+
 // ── POST /api/query ────────────────────────────────────────────────────────────
 
 query.post('/', async (c) => {
-  const body = await c.req.json<{ databaseId?: string; sql?: string }>().catch(() => null)
+  const body = await c.req.json<{ databaseId?: string; sql?: string; notebookId?: unknown }>().catch(() => null)
   if (typeof body?.databaseId !== 'string' || typeof body.sql !== 'string' || !body.sql.trim()) {
     return c.json({ error: 'databaseId and sql are required' }, 400)
   }
@@ -63,28 +115,22 @@ query.post('/', async (c) => {
   const binding = resolveQueryBinding(c.env, db.binding_name)
   if (!binding.ok) return bindingError(c, binding.error)
 
+  const notebookId = await resolveNotebook(c, body.notebookId)
+  if (notebookId instanceof Response) return notebookId
+
   const d1 = binding.db
-  const start = Date.now()
-  let result: unknown = null
+  const executedAt = Date.now()
+  let result: Executed | null = null
   let errorMsg: string | null = null
-  let rowCount = 0
 
   try {
-    if (isWriteClass(kind)) {
-      const res = await d1.prepare(sql).run()
-      rowCount = res.meta.changes ?? 0
-      result = { meta: res.meta, results: [] }
-    } else {
-      const res = await d1.prepare(sql).all()
-      rowCount = res.results.length
-      const truncated = rowCount > MAX_RESULT_ROWS
-      result = { results: truncated ? res.results.slice(0, MAX_RESULT_ROWS) : res.results, meta: res.meta, truncated }
-    }
+    result = await executeStatement(d1, sql, kind)
   } catch (err) {
     errorMsg = err instanceof Error ? err.message : String(err)
   }
 
-  const duration = Date.now() - start
+  const duration = Date.now() - executedAt
+  const rowCount = result ? (result.changes ?? result.results.length) : 0
 
   // Save history (non-blocking)
   c.executionCtx.waitUntil(
@@ -96,14 +142,41 @@ query.post('/', async (c) => {
       .run()
   )
 
-  if (errorMsg) return c.json({ error: errorMsg }, 400)
-  return c.json({ ...(result as Record<string, unknown>), duration_ms: duration })
+  // Save the run under its notebook (non-blocking)
+  let run: { run_id: string; executed_at: number } | null = null
+  if (notebookId) {
+    const statement: RunStatement = { sql, results: result?.results ?? [], duration_ms: duration }
+    if (result?.changes !== undefined) statement.changes = result.changes
+    if (result?.truncated) statement.truncated = true
+    if (errorMsg) statement.error = errorMsg
+    run = { run_id: uuid(), executed_at: executedAt }
+    c.executionCtx.waitUntil(
+      saveRun(c.env, {
+        id: run.run_id,
+        notebookId,
+        userId,
+        databaseId: db.id,
+        sql,
+        statements: [statement],
+        durationMs: duration,
+        executedAt,
+      })
+    )
+  }
+
+  if (errorMsg || !result) return c.json({ error: errorMsg, ...run }, 400)
+  const payload = isWriteClass(kind)
+    ? { meta: result.meta, results: [] }
+    : { results: result.results, meta: result.meta, truncated: result.truncated }
+  return c.json({ ...payload, duration_ms: duration, ...run })
 })
 
 // ── POST /api/query/batch ─────────────────────────────────────────────────────
 
 query.post('/batch', async (c) => {
-  const body = await c.req.json<{ databaseId?: string; statements?: string[] }>().catch(() => null)
+  const body = await c.req
+    .json<{ databaseId?: string; statements?: string[]; notebookId?: unknown }>()
+    .catch(() => null)
   if (
     typeof body?.databaseId !== 'string' ||
     !Array.isArray(body.statements) ||
@@ -146,15 +219,12 @@ query.post('/batch', async (c) => {
   if (!binding.ok) return bindingError(c, binding.error)
   const d1 = binding.db
 
+  const notebookId = await resolveNotebook(c, body.notebookId)
+  if (notebookId instanceof Response) return notebookId
+  const executedAt = Date.now()
+
   // Run each statement sequentially, continue on error
-  const results: Array<{
-    sql: string
-    results: Record<string, unknown>[]
-    duration_ms: number
-    changes?: number
-    error?: string
-    truncated?: boolean
-  }> = []
+  const results: RunStatement[] = []
 
   for (const rawSql of body.statements) {
     const sql = rawSql.trim()
@@ -174,17 +244,10 @@ query.post('/batch', async (c) => {
     let truncated = false
 
     try {
-      if (isWriteClass(kind)) {
-        const res = await d1.prepare(sql).run()
-        changes = res.meta.changes ?? 0
-      } else {
-        const res = await d1.prepare(sql).all()
-        stmtResult = res.results as Record<string, unknown>[]
-        if (stmtResult.length > MAX_RESULT_ROWS) {
-          stmtResult = stmtResult.slice(0, MAX_RESULT_ROWS)
-          truncated = true
-        }
-      }
+      const executed = await executeStatement(d1, sql, kind)
+      stmtResult = executed.results
+      changes = executed.changes
+      truncated = executed.truncated
     } catch (err) {
       errorMsg = err instanceof Error ? err.message : String(err)
     }
@@ -207,6 +270,24 @@ query.post('/batch', async (c) => {
     if (errorMsg) entry.error = errorMsg
     if (truncated) entry.truncated = true
     results.push(entry)
+  }
+
+  // Save the run under its notebook (non-blocking)
+  if (notebookId && results.length > 0) {
+    const runId = uuid()
+    c.executionCtx.waitUntil(
+      saveRun(c.env, {
+        id: runId,
+        notebookId,
+        userId,
+        databaseId: db.id,
+        sql: results.map((r) => r.sql).join(';\n'),
+        statements: results,
+        durationMs: Date.now() - executedAt,
+        executedAt,
+      })
+    )
+    return c.json({ results, run_id: runId, executed_at: executedAt })
   }
 
   return c.json({ results })

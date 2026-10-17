@@ -33,7 +33,9 @@ GitHub's blame view reads the file automatically.
 ## Key Files
 
 - `worker/wrangler.toml` — CF bindings (DB, KV, extra D1s, domain)
-- `worker/migrations/0001_init.sql` — base schema (later changes in `0002_*`, `0003_*`; `routes/setup.ts` mirrors all of them for setup-initialised, prefix-aware databases)
+- `worker/migrations/0001_init.sql` — base schema (later changes in `0002_*`, `0003_*`, `0004_*`; `routes/setup.ts` mirrors all of them for setup-initialised, prefix-aware databases)
+- `worker/src/lib/runs.ts` — saved notebook runs: 512 KB per run, per-notebook run limit and per-user storage quota pruning
+- `worker/src/lib/sql-guard.ts` — SQL classification / permission checks; `limitReadSql` caps reads at 5000 rows in the SQL itself
 - `worker/src/index.ts` — Hono app entry, SPA fallback
 - `worker/src/routes/` — auth, profile, databases, query, admin
 - `web/src/pages/Query.tsx` — main SQL editor page
@@ -51,7 +53,7 @@ GitHub's blame view reads the file automatically.
    - `APP_URL` — your custom domain (e.g. `https://zeta.example.com`); must be the `https://` URL users open (sole CORS origin, passkey RP ID, JWT `iss`/`aud` — changing it signs everybody out)
    - `TABLE_PREFIX` — (optional) prefix for all internal tables, e.g. `kp` → tables become `kp_users`, `kp_settings`, etc. Must be set **before** running setup. Cannot be changed after initialisation.
 5. `pnpm run deploy` to build & deploy
-6. Initialise the database: `curl -X POST https://<your-domain>/api/setup -H 'Content-Type: application/json' -d '{"secret":"<SETUP_SECRET>"}'` (the old `GET /api/setup/<secret>` form returns 405). Re-run after upgrades — it also applies schema upgrades (e.g. nullable `query_history` refs with `ON DELETE SET NULL`, the `rate_limits` table, rebuilding a `user_database_permissions` table whose foreign keys point at unprefixed tables) to setup-initialised databases; until `rate_limits` exists, rate limits fall back to approximate KV counters
+6. Initialise the database: `curl -X POST https://<your-domain>/api/setup -H 'Content-Type: application/json' -d '{"secret":"<SETUP_SECRET>"}'` (the old `GET /api/setup/<secret>` form returns 405). Re-run after upgrades — it also applies schema upgrades (e.g. nullable `query_history` refs with `ON DELETE SET NULL`, the `rate_limits` table, rebuilding a `user_database_permissions` table whose foreign keys point at unprefixed tables, the `notebook_runs` table and `users.notebook_run_limit` column for saved query results) to setup-initialised databases; until `rate_limits` exists, rate limits fall back to approximate KV counters
 7. Register at `/register` — first user automatically becomes admin. On new installs registration then stays closed (`registration_enabled = false`); open it or create users in the Admin Panel
 
 ## Adding a Queryable D1 Database

@@ -101,3 +101,19 @@ export interface NotebookRow {
   created_at: number
   updated_at: number
 }
+
+export interface NotebookRunRow {
+  id: string
+  notebook_id: string
+  user_id: string
+  database_id: string
+  sql: string
+  statement_count: number
+  row_count: number
+  error_count: number
+  duration_ms: number
+  storage_truncated: number
+  results_bytes: number
+  executed_at: number // milliseconds
+  results: string // JSON: the run's statement results
+}

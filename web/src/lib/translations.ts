@@ -142,6 +142,14 @@ export const translations: Record<Locale, Record<string, string>> = {
     'profile.remove': 'Remove',
     'profile.removing': 'Removing…',
     'profile.totp_qr_alt': 'TOTP QR code',
+    'profile.run_title': 'Saved query runs',
+    'profile.run_limit': 'Runs kept per notebook',
+    'profile.run_limit_placeholder': 'Admin limit ({n})',
+    'profile.run_limit_effective': 'In effect: {n} (admin limit {max}). Leave empty to follow the admin limit.',
+    'profile.run_limit_capped': 'Your value is above the admin limit, so {n} applies.',
+    'profile.run_limit_invalid': 'Enter a whole number from 1 to {max}, or leave it empty',
+    'profile.run_storage': 'Saved results use {used} of {quota}',
+    'profile.run_save': 'Save',
 
     // Admin
     'admin.title': 'Admin Panel',
@@ -234,6 +242,12 @@ export const translations: Record<Locale, Record<string, string>> = {
     'admin_settings.keep_existing': 'Leave blank to keep existing',
     'admin_settings.clear_secret': 'Clear saved credential',
     'admin_settings.secret_will_clear': 'The saved credential will be removed when you save',
+    'admin_settings.saved_runs': 'Saved query runs',
+    'admin_settings.run_limit': 'Runs kept per notebook',
+    'admin_settings.run_limit_desc': '1–1000. Users can choose to keep fewer; older runs are deleted.',
+    'admin_settings.run_quota': 'Saved results per user (MB)',
+    'admin_settings.run_quota_desc':
+      "1–1024. Beyond it a user's oldest runs are deleted. A single run stores at most 512 KB of results.",
 
     // Errors (fallbacks when the server gives no message)
     'errors.generic': 'Something went wrong',
@@ -254,6 +268,8 @@ export const translations: Record<Locale, Record<string, string>> = {
     'errors.load_notebooks_failed': 'Failed to load notebooks',
     'errors.delete_notebook_failed': 'Failed to delete notebook',
     'errors.load_history_failed': 'Failed to load query history',
+    'errors.runs_failed': 'Failed to update saved runs',
+    'errors.load_run_settings_failed': 'Failed to load the saved-run settings',
 
     // Query results
     'results.count': '{n} results',
@@ -263,8 +279,24 @@ export const translations: Record<Locale, Record<string, string>> = {
     'results.rows': '{n} rows',
     'results.change': '{n} change',
     'results.changes': '{n} changes',
-    'results.truncated': '(truncated — add a LIMIT or narrow the query)',
+    'results.truncated': '(showing the first {n} rows — add a LIMIT or narrow the query)',
     'results.no_rows': 'No rows returned',
+    'results.stored_rows': '(only the first {n} rows were saved — run again to see all)',
+
+    // Saved runs
+    'runs.ran_at': 'Ran {time}',
+    'runs.history': 'Runs ({n})',
+    'runs.errors': '{n} error(s)',
+    'runs.load_more': 'Load more',
+    'runs.clear': 'Clear all runs',
+    'runs.clear_confirm': 'Delete all saved runs of this notebook?',
+    'runs.delete': 'Delete this run',
+    'runs.storage_truncated':
+      'These results were too large to save in full; only the first rows were kept. Run the query again to see all of them.',
+    'runs.loading': 'Loading results…',
+    'runs.access_denied': 'You no longer have access to this database, so these results cannot be shown.',
+    'runs.load_failed': 'Failed to load the results',
+    'runs.list_failed': 'Failed to load saved runs',
 
     // Language
     'lang.en': 'English',
@@ -415,6 +447,14 @@ export const translations: Record<Locale, Record<string, string>> = {
     'profile.remove': '移除',
     'profile.removing': '移除中…',
     'profile.totp_qr_alt': 'TOTP 二维码',
+    'profile.run_title': '查询结果保留',
+    'profile.run_limit': '每个 Notebook 保留的运行记录数',
+    'profile.run_limit_placeholder': '管理员上限（{n}）',
+    'profile.run_limit_effective': '当前生效：{n} 次（管理员上限 {max}）。留空则跟随管理员上限。',
+    'profile.run_limit_capped': '你的设置高于管理员上限，已按 {n} 生效。',
+    'profile.run_limit_invalid': '请输入 1 到 {max} 之间的整数，或留空',
+    'profile.run_storage': '已保存的结果占用 {used} / {quota}',
+    'profile.run_save': '保存',
 
     // Admin
     'admin.title': '管理面板',
@@ -507,6 +547,11 @@ export const translations: Record<Locale, Record<string, string>> = {
     'admin_settings.keep_existing': '留空则保留现有值',
     'admin_settings.clear_secret': '清除已保存的凭据',
     'admin_settings.secret_will_clear': '保存后将删除已保存的凭据',
+    'admin_settings.saved_runs': '查询结果保留',
+    'admin_settings.run_limit': '每个 Notebook 最多保留的运行记录数',
+    'admin_settings.run_limit_desc': '1–1000。用户可以设置得更少；超出的旧记录会被删除。',
+    'admin_settings.run_quota': '每个用户运行结果存储上限（MB）',
+    'admin_settings.run_quota_desc': '1–1024。超出时删除该用户最旧的运行记录。单次运行最多保存 512 KB 结果。',
 
     // Errors (fallbacks when the server gives no message)
     'errors.generic': '出错了',
@@ -527,6 +572,8 @@ export const translations: Record<Locale, Record<string, string>> = {
     'errors.load_notebooks_failed': '笔记本加载失败',
     'errors.delete_notebook_failed': '删除笔记本失败',
     'errors.load_history_failed': '查询历史加载失败',
+    'errors.runs_failed': '运行记录操作失败',
+    'errors.load_run_settings_failed': '查询结果保留设置加载失败',
 
     // Query results
     'results.count': '{n} 个结果',
@@ -536,8 +583,23 @@ export const translations: Record<Locale, Record<string, string>> = {
     'results.rows': '{n} 行',
     'results.change': '{n} 处变更',
     'results.changes': '{n} 处变更',
-    'results.truncated': '（结果已截断 — 请添加 LIMIT 或缩小查询范围）',
+    'results.truncated': '（仅显示前 {n} 行 — 请添加 LIMIT 或缩小查询范围）',
     'results.no_rows': '没有返回任何行',
+    'results.stored_rows': '（仅保存了前 {n} 行 — 重新运行可查看全部）',
+
+    // Saved runs
+    'runs.ran_at': '运行于 {time}',
+    'runs.history': '运行记录（{n}）',
+    'runs.errors': '{n} 个错误',
+    'runs.load_more': '加载更多',
+    'runs.clear': '清空全部运行记录',
+    'runs.clear_confirm': '确定删除此 Notebook 的全部运行记录吗？',
+    'runs.delete': '删除此记录',
+    'runs.storage_truncated': '结果过大，仅保存了前面的部分行。重新运行查询可查看完整结果。',
+    'runs.loading': '正在加载结果…',
+    'runs.access_denied': '你已没有该数据库的访问权限，无法查看此结果。',
+    'runs.load_failed': '结果加载失败',
+    'runs.list_failed': '运行记录加载失败',
 
     // Language
     'lang.en': 'English',

@@ -224,6 +224,45 @@ export default function AdminSettings() {
           </div>
         </div>
 
+        {/* Saved query runs */}
+        <div className="card p-5 space-y-4">
+          <h2 className="text-sm font-semibold text-zinc-400 uppercase tracking-wider">
+            {t('admin_settings.saved_runs')}
+          </h2>
+          <div>
+            <label htmlFor="settings-run-limit" className="label">
+              {t('admin_settings.run_limit')}
+            </label>
+            <input
+              id="settings-run-limit"
+              type="number"
+              min={1}
+              max={1000}
+              step={1}
+              className="input"
+              value={settings.notebook_run_limit ?? '100'}
+              onChange={(e) => set('notebook_run_limit', e.target.value)}
+            />
+            <p className="text-xs text-zinc-500 mt-1">{t('admin_settings.run_limit_desc')}</p>
+          </div>
+          <div>
+            <label htmlFor="settings-run-quota" className="label">
+              {t('admin_settings.run_quota')}
+            </label>
+            <input
+              id="settings-run-quota"
+              type="number"
+              min={1}
+              max={1024}
+              step={1}
+              className="input"
+              value={settings.run_storage_quota_mb ?? '50'}
+              onChange={(e) => set('run_storage_quota_mb', e.target.value)}
+            />
+            <p className="text-xs text-zinc-500 mt-1">{t('admin_settings.run_quota_desc')}</p>
+          </div>
+        </div>
+
         {/* Email */}
         <div className="card p-5 space-y-4">
           <h2 className="text-sm font-semibold text-zinc-400 uppercase tracking-wider">

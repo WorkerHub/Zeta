@@ -4,7 +4,10 @@ import type {
   Database,
   DatabaseGrant,
   Notebook,
+  NotebookRun,
+  NotebookRunSummary,
   QueryHistoryItem,
+  RunSettings,
   StatementResult,
   User,
 } from '../types'
@@ -37,7 +40,7 @@ async function apiFetch<T>(path: string, init: RequestInit = {}, opts: ApiOption
       const retry = await fetch(`/api${path}`, { ...init, headers, credentials: 'include' })
       if (!retry.ok) {
         const err = await retry.json().catch(() => ({}) as { error?: string })
-        throw new ApiError((err as { error?: string }).error ?? retry.statusText, retry.status)
+        throw new ApiError((err as { error?: string }).error ?? retry.statusText, retry.status, err)
       }
       return retry.json() as Promise<T>
     }
@@ -48,7 +51,7 @@ async function apiFetch<T>(path: string, init: RequestInit = {}, opts: ApiOption
 
   if (!res.ok) {
     const err = await res.json().catch(() => ({}) as { error?: string })
-    throw new ApiError((err as { error?: string }).error ?? res.statusText, res.status)
+    throw new ApiError((err as { error?: string }).error ?? res.statusText, res.status, err)
   }
 
   return res.json() as Promise<T>
@@ -57,7 +60,9 @@ async function apiFetch<T>(path: string, init: RequestInit = {}, opts: ApiOption
 export class ApiError extends Error {
   constructor(
     message: string,
-    public readonly status: number
+    public readonly status: number,
+    // The parsed error response, for endpoints that send more than `error` (e.g. a saved run's id)
+    public readonly body: Record<string, unknown> = {}
   ) {
     super(message)
   }
@@ -191,6 +196,10 @@ export const profileApi = {
       body: JSON.stringify({ currentPassword }),
     }),
 
+  runSettings: () => apiFetch<RunSettings>('/profile/run-settings'),
+  updateRunSettings: (body: { run_limit: number | null }) =>
+    apiFetch<RunSettings>('/profile/run-settings', { method: 'PUT', body: JSON.stringify(body) }),
+
   passkeyRegisterOptions: () =>
     apiFetch<Record<string, unknown>>('/profile/passkey/register/options', { method: 'POST' }),
   passkeyRegisterVerify: (body: unknown) =>
@@ -210,17 +219,24 @@ export const databasesApi = {
 
 // ── Query endpoints ───────────────────────────────────────────────────────────
 
+// Passing notebookId saves the run under that notebook; the response then names it
+// (run_id, executed_at in milliseconds). A failed single statement carries them in ApiError.body.
 export const queryApi = {
-  execute: (body: { databaseId: string; sql: string }) =>
+  execute: (body: { databaseId: string; sql: string; notebookId?: string }) =>
     apiFetch<{
       results?: Record<string, unknown>[]
       meta?: { changes?: number }
       duration_ms?: number
       truncated?: boolean
       error?: string
+      run_id?: string
+      executed_at?: number
     }>('/query', { method: 'POST', body: JSON.stringify(body) }),
-  executeBatch: (body: { databaseId: string; statements: string[] }) =>
-    apiFetch<{ results: StatementResult[] }>('/query/batch', { method: 'POST', body: JSON.stringify(body) }),
+  executeBatch: (body: { databaseId: string; statements: string[]; notebookId?: string }) =>
+    apiFetch<{ results: StatementResult[]; run_id?: string; executed_at?: number }>('/query/batch', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
   history: (params?: { databaseId?: string; limit?: number; offset?: number }) => {
     const q = new URLSearchParams()
     if (params?.databaseId) q.set('databaseId', params.databaseId)
@@ -281,4 +297,15 @@ export const notebooksApi = {
   update: (id: string, body: Partial<Pick<Notebook, 'name' | 'sql_content' | 'database_id' | 'position'>>) =>
     apiFetch<{ message: string }>(`/notebooks/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
   delete: (id: string) => apiFetch<{ message: string }>(`/notebooks/${id}`, { method: 'DELETE' }),
+
+  runs: (id: string, params: { limit?: number; offset?: number } = {}) => {
+    const q = new URLSearchParams()
+    if (params.limit) q.set('limit', String(params.limit))
+    if (params.offset) q.set('offset', String(params.offset))
+    return apiFetch<{ results: NotebookRunSummary[]; has_more: boolean }>(`/notebooks/${id}/runs?${q}`)
+  },
+  run: (id: string, runId: string) => apiFetch<NotebookRun>(`/notebooks/${id}/runs/${runId}`),
+  deleteRun: (id: string, runId: string) =>
+    apiFetch<{ message: string }>(`/notebooks/${id}/runs/${runId}`, { method: 'DELETE' }),
+  clearRuns: (id: string) => apiFetch<{ message: string }>(`/notebooks/${id}/runs`, { method: 'DELETE' }),
 }

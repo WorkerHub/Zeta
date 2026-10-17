@@ -1,6 +1,6 @@
 import { Hono } from 'hono'
 import type { Context } from 'hono'
-import type { Env, Variables, NotebookRow } from '../types'
+import type { Env, Variables, NotebookRow, NotebookRunRow } from '../types'
 import { requireAuth } from '../middleware/auth'
 import { uuid } from '../lib/id'
 import { now, tables } from '../lib/db'
@@ -180,11 +180,106 @@ notebooks.delete('/:id', async (c) => {
       : c.json({ error: 'Notebook not found' }, 404)
   }
 
-  await c.env.DB.prepare(`UPDATE ${T.notebooks} SET position = position - 1 WHERE user_id = ?1 AND position > ?2`)
-    .bind(userId, existing.position)
-    .run()
+  await c.env.DB.batch([
+    c.env.DB.prepare(`UPDATE ${T.notebooks} SET position = position - 1 WHERE user_id = ?1 AND position > ?2`).bind(
+      userId,
+      existing.position
+    ),
+    // Also removed by ON DELETE CASCADE; explicit in case foreign keys are not enforced
+    c.env.DB.prepare(`DELETE FROM ${T.notebook_runs} WHERE notebook_id = ?1`).bind(notebookId),
+  ])
 
   return c.json({ message: 'Deleted' })
+})
+
+// ── Saved runs ────────────────────────────────────────────────────────────────
+// Runs are saved by POST /api/query(/batch) (see lib/runs.ts). Only the notebook's owner sees
+// them, and a run's results only while they can still query its database.
+
+async function ownsNotebook(c: Context<{ Bindings: Env; Variables: Variables }>, notebookId: string) {
+  const T = tables(c.env)
+  const row = await c.env.DB.prepare(`SELECT 1 FROM ${T.notebooks} WHERE id = ?1 AND user_id = ?2`)
+    .bind(notebookId, c.get('userId'))
+    .first()
+  return row !== null
+}
+
+const RUN_SUMMARY_COLUMNS = `r.id, r.notebook_id, r.database_id, r.sql, r.statement_count, r.row_count, r.error_count,
+  r.duration_ms, r.storage_truncated, r.results_bytes, r.executed_at`
+
+type RunSummaryRow = Omit<NotebookRunRow, 'user_id' | 'results'> & { database_name: string | null }
+
+// GET /api/notebooks/:id/runs — newest first, without the results
+notebooks.get('/:id/runs', async (c) => {
+  const notebookId = c.req.param('id')
+  if (!(await ownsNotebook(c, notebookId))) return c.json({ error: 'Notebook not found' }, 404)
+  const limit = Math.min(Math.max(parseInt(c.req.query('limit') ?? '50', 10) || 50, 1), 200)
+  const offset = Math.max(parseInt(c.req.query('offset') ?? '0', 10) || 0, 0)
+  const T = tables(c.env)
+
+  // One row more than asked tells whether there are more
+  const rows = await c.env.DB.prepare(
+    `SELECT ${RUN_SUMMARY_COLUMNS}, d.name AS database_name
+     FROM ${T.notebook_runs} r LEFT JOIN ${T.d1_databases} d ON d.id = r.database_id
+     WHERE r.notebook_id = ?1 AND r.user_id = ?2
+     ORDER BY r.executed_at DESC, r.id DESC LIMIT ?3 OFFSET ?4`
+  )
+    .bind(notebookId, c.get('userId'), limit + 1, offset)
+    .all<RunSummaryRow>()
+
+  const access = new Map<string, boolean>()
+  for (const id of new Set(rows.results.map((r) => r.database_id))) access.set(id, await canUseDatabase(c, id))
+
+  return c.json({
+    results: rows.results.slice(0, limit).map((r) => ({ ...r, accessible: access.get(r.database_id) ?? false })),
+    has_more: rows.results.length > limit,
+  })
+})
+
+// GET /api/notebooks/:id/runs/:runId — one run with its results
+notebooks.get('/:id/runs/:runId', async (c) => {
+  const notebookId = c.req.param('id')
+  if (!(await ownsNotebook(c, notebookId))) return c.json({ error: 'Notebook not found' }, 404)
+  const T = tables(c.env)
+  const run = await c.env.DB.prepare(
+    `SELECT ${RUN_SUMMARY_COLUMNS}, r.results, d.name AS database_name
+     FROM ${T.notebook_runs} r LEFT JOIN ${T.d1_databases} d ON d.id = r.database_id
+     WHERE r.id = ?1 AND r.notebook_id = ?2 AND r.user_id = ?3`
+  )
+    .bind(c.req.param('runId'), notebookId, c.get('userId'))
+    .first<RunSummaryRow & { results: string }>()
+  if (!run) return c.json({ error: 'Run not found' }, 404)
+  // Re-checked on every read: results stay hidden once the user loses access to the database
+  if (!(await canUseDatabase(c, run.database_id))) return c.json({ error: 'Database access denied' }, 403)
+
+  let results: unknown = []
+  try {
+    results = JSON.parse(run.results)
+  } catch {
+    /* corrupt row: show the run without results */
+  }
+  return c.json({ ...run, accessible: true, results })
+})
+
+// DELETE /api/notebooks/:id/runs/:runId
+notebooks.delete('/:id/runs/:runId', async (c) => {
+  const notebookId = c.req.param('id')
+  if (!(await ownsNotebook(c, notebookId))) return c.json({ error: 'Notebook not found' }, 404)
+  const T = tables(c.env)
+  const res = await c.env.DB.prepare(`DELETE FROM ${T.notebook_runs} WHERE id = ?1 AND notebook_id = ?2`)
+    .bind(c.req.param('runId'), notebookId)
+    .run()
+  if (!res.meta.changes) return c.json({ error: 'Run not found' }, 404)
+  return c.json({ message: 'Deleted' })
+})
+
+// DELETE /api/notebooks/:id/runs — clear all of the notebook's runs
+notebooks.delete('/:id/runs', async (c) => {
+  const notebookId = c.req.param('id')
+  if (!(await ownsNotebook(c, notebookId))) return c.json({ error: 'Notebook not found' }, 404)
+  const T = tables(c.env)
+  await c.env.DB.prepare(`DELETE FROM ${T.notebook_runs} WHERE notebook_id = ?1`).bind(notebookId).run()
+  return c.json({ message: 'Cleared' })
 })
 
 export default notebooks

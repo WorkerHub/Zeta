@@ -135,6 +135,15 @@ async function repairPermissionRefs(
   return { dropped: results[0]?.results[0]?.n ?? 0, clearedGrantedBy: results[1]?.results[0]?.n ?? 0 }
 }
 
+// users.notebook_run_limit (a user's own, lower run limit) was added after the first release;
+// CREATE TABLE IF NOT EXISTS leaves older users tables without it.
+async function addUserRunLimitColumn(db: D1Database, T: ReturnType<typeof tables>): Promise<boolean> {
+  const cols = await db.prepare(`PRAGMA table_info(${T.users})`).all<{ name: string }>()
+  if (cols.results.some((col) => col.name === 'notebook_run_limit')) return false
+  await db.prepare(`ALTER TABLE ${T.users} ADD COLUMN notebook_run_limit INTEGER`).run()
+  return true
+}
+
 function buildDDL(T: ReturnType<typeof tables>): string[] {
   return [
     `CREATE TABLE IF NOT EXISTS ${T.users} (
@@ -146,7 +155,8 @@ function buildDDL(T: ReturnType<typeof tables>): string[] {
       email_verified INTEGER NOT NULL DEFAULT 0,
       two_factor_required INTEGER NOT NULL DEFAULT 0,
       created_at INTEGER NOT NULL,
-      updated_at INTEGER NOT NULL
+      updated_at INTEGER NOT NULL,
+      notebook_run_limit INTEGER
     )`,
     `CREATE INDEX IF NOT EXISTS idx_${T.users}_email ON ${T.users}(email)`,
 
@@ -217,6 +227,26 @@ function buildDDL(T: ReturnType<typeof tables>): string[] {
     )`,
     `CREATE INDEX IF NOT EXISTS idx_${T.notebooks}_user ON ${T.notebooks}(user_id)`,
 
+    // Saved notebook run results (see lib/runs.ts). `results` comes last so scans of the metadata
+    // columns never touch its overflow pages; the user index covers the storage-quota pruning.
+    `CREATE TABLE IF NOT EXISTS ${T.notebook_runs} (
+      id TEXT PRIMARY KEY,
+      notebook_id TEXT NOT NULL REFERENCES ${T.notebooks}(id) ON DELETE CASCADE,
+      user_id TEXT NOT NULL REFERENCES ${T.users}(id) ON DELETE CASCADE,
+      database_id TEXT NOT NULL REFERENCES ${T.d1_databases}(id) ON DELETE CASCADE,
+      sql TEXT NOT NULL,
+      statement_count INTEGER NOT NULL,
+      row_count INTEGER NOT NULL,
+      error_count INTEGER NOT NULL,
+      duration_ms INTEGER NOT NULL,
+      storage_truncated INTEGER NOT NULL DEFAULT 0,
+      results_bytes INTEGER NOT NULL,
+      executed_at INTEGER NOT NULL,
+      results TEXT NOT NULL
+    )`,
+    `CREATE INDEX IF NOT EXISTS idx_${T.notebook_runs}_notebook ON ${T.notebook_runs}(notebook_id, executed_at)`,
+    `CREATE INDEX IF NOT EXISTS idx_${T.notebook_runs}_user ON ${T.notebook_runs}(user_id, executed_at, id, results_bytes)`,
+
     // Atomic rate-limit counters (see lib/auth.ts)
     `CREATE TABLE IF NOT EXISTS ${T.rate_limits} (
       key TEXT PRIMARY KEY,
@@ -237,6 +267,8 @@ const DEFAULT_SETTINGS: Array<[string, string]> = [
   ['enforce_2fa', 'false'],
   ['email_provider', 'resend'],
   ['app_name', 'Zeta'],
+  ['notebook_run_limit', '100'],
+  ['run_storage_quota_mb', '50'],
 ]
 
 // Compares SHA-256 digests so neither the content nor the length of the secret leaks via timing.
@@ -296,6 +328,9 @@ setup.post('/', async (c) => {
     try {
       if (await upgradeHistoryTable(c.env.DB, T)) {
         upgraded.push(`${T.query_history}: nullable user_id/database_id with ON DELETE SET NULL`)
+      }
+      if (await addUserRunLimitColumn(c.env.DB, T)) {
+        upgraded.push(`${T.users}: added notebook_run_limit`)
       }
       permissionsRepair = await repairPermissionRefs(c.env.DB, T)
       if (permissionsRepair) {
