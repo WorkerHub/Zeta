@@ -34,6 +34,7 @@ import { useNotebookRuns } from '../hooks/useNotebookRuns'
 import ResultsPanel from '../components/ResultsPanel'
 import QueryHistoryPanel from '../components/QueryHistoryPanel'
 import RunHistoryBar from '../components/RunHistoryBar'
+import RunHistoryDrawer from '../components/RunHistoryDrawer'
 import { splitSqlStatements } from '../lib/sql'
 import type { Database as DbType, NotebookRunSummary, StatementResult } from '../types'
 
@@ -71,6 +72,7 @@ export default function QueryPage() {
   // Failures outside a query run (loading databases, deleting a notebook, managing saved runs)
   const [pageError, setPageError] = useState('')
   const [showHistory, setShowHistory] = useState(false)
+  const [showRunHistory, setShowRunHistory] = useState(false)
   const [showDbMenu, setShowDbMenu] = useState(false)
   const [showUserMenu, setShowUserMenu] = useState(false)
   const [renamingId, setRenamingId] = useState<string | null>(null)
@@ -224,6 +226,8 @@ export default function QueryPage() {
   useEffect(() => {
     setSelectedSql('')
     selectedSqlRef.current = ''
+    // The run history drawer lists one notebook's runs, so it closes when another one opens
+    setShowRunHistory(false)
   }, [activeId])
 
   // Show the first statement of whichever run comes into view
@@ -623,7 +627,7 @@ export default function QueryPage() {
                 onSelect={runs.selectRun}
                 onLoadMore={runs.loadMore}
                 onDelete={(runId) => reportRunAction(runs.deleteRun(runId))}
-                onClear={() => reportRunAction(runs.clearRuns())}
+                onOpenHistory={() => setShowRunHistory(true)}
               />
             )}
             {!running && !runError && statementResults.length > 0 && (
@@ -752,6 +756,22 @@ export default function QueryPage() {
             </div>
           </div>
         </div>
+      )}
+      {/* Run history drawer — every saved run of the current notebook */}
+      {showRunHistory && activeId && (
+        <RunHistoryDrawer
+          runs={runs.list}
+          selectedRun={selectedRun}
+          selectedResults={selectedResults}
+          hasMore={runs.hasMore}
+          loading={runs.loading}
+          loadError={runs.loadError}
+          onSelect={runs.selectRun}
+          onLoadMore={runs.loadMore}
+          onDelete={runs.deleteRun}
+          onClear={runs.clearRuns}
+          onClose={() => setShowRunHistory(false)}
+        />
       )}
     </div>
   )
