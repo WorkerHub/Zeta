@@ -1,7 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import type { KeyboardEvent } from 'react'
+import type { CSSProperties, KeyboardEvent, PointerEvent } from 'react'
 import { AlertCircle, CheckCircle2, History, Loader2, Trash2, X } from 'lucide-react'
 import { useLocale } from '../hooks/useLocale'
+import {
+  HISTORY_DRAWER_KEY_STEP,
+  clampHistoryDrawerWidth,
+  defaultHistoryDrawerWidth,
+  historyDrawerBounds,
+} from '../lib/drawerWidth'
 import { timeAgo } from '../lib/time'
 import type { RunResults } from '../hooks/useNotebookRuns'
 import type { NotebookRunSummary } from '../types'
@@ -51,6 +57,13 @@ export default function RunHistoryDrawer({
   const [actionError, setActionError] = useState('')
   const [resultIdx, setResultIdx] = useState(0)
   const selectedRunId = selectedRun?.id ?? null
+  // The drawer opens at half the window; dragging its inner edge (or the arrow keys) resizes it
+  const [viewportWidth, setViewportWidth] = useState(() => window.innerWidth)
+  const [width, setWidth] = useState(() => defaultHistoryDrawerWidth(window.innerWidth))
+  const [resizing, setResizing] = useState(false)
+  const dragging = useRef(false)
+  const dragStart = useRef({ x: 0, width: 0 })
+  const bounds = historyDrawerBounds(viewportWidth)
 
   // Focus moves into the drawer while it is open, and back to whatever opened it on close; the
   // History button is gone once the list is empty, so fall back to the notebook's active tab
@@ -97,6 +110,65 @@ export default function RunHistoryDrawer({
       first.focus()
     }
   }, [])
+
+  // A window resize keeps the current width inside the allowed range for the new viewport
+  useEffect(() => {
+    const onResize = () => {
+      setViewportWidth(window.innerWidth)
+      setWidth((w) => clampHistoryDrawerWidth(w, window.innerWidth))
+    }
+    window.addEventListener('resize', onResize)
+    return () => window.removeEventListener('resize', onResize)
+  }, [])
+
+  // While dragging, keep the resize cursor and stop text selection outside the handle
+  useEffect(() => {
+    if (!resizing) return
+    const { body } = document
+    const userSelect = body.style.userSelect
+    const cursor = body.style.cursor
+    body.style.userSelect = 'none'
+    body.style.cursor = 'col-resize'
+    return () => {
+      body.style.userSelect = userSelect
+      body.style.cursor = cursor
+    }
+  }, [resizing])
+
+  // The drawer sits on the right, so a leftward pointer move makes it wider
+  function startResize(e: PointerEvent<HTMLDivElement>) {
+    if (e.button !== 0) return
+    e.preventDefault()
+    dragging.current = true
+    dragStart.current = { x: e.clientX, width }
+    setResizing(true)
+    e.currentTarget.setPointerCapture(e.pointerId)
+  }
+
+  function resizeTo(e: PointerEvent<HTMLDivElement>) {
+    if (!dragging.current) return
+    setWidth(clampHistoryDrawerWidth(dragStart.current.width + dragStart.current.x - e.clientX, viewportWidth))
+  }
+
+  function stopResize(e: PointerEvent<HTMLDivElement>) {
+    if (!dragging.current) return
+    dragging.current = false
+    setResizing(false)
+    if (e.currentTarget.hasPointerCapture(e.pointerId)) e.currentTarget.releasePointerCapture(e.pointerId)
+  }
+
+  // Arrow keys move the edge by a step (four with Shift); Home and End jump to the limits
+  function resizeByKey(e: KeyboardEvent<HTMLDivElement>) {
+    const step = e.shiftKey ? HISTORY_DRAWER_KEY_STEP * 4 : HISTORY_DRAWER_KEY_STEP
+    let next: number
+    if (e.key === 'ArrowLeft') next = width + step
+    else if (e.key === 'ArrowRight') next = width - step
+    else if (e.key === 'Home') next = bounds.min
+    else if (e.key === 'End') next = bounds.max
+    else return
+    e.preventDefault()
+    setWidth(clampHistoryDrawerWidth(next, viewportWidth))
+  }
 
   // The detail starts at the first statement of whichever run is opened
   // biome-ignore lint/correctness/useExhaustiveDependencies: the selected run is the trigger, not an input of the effect
@@ -158,13 +230,39 @@ export default function RunHistoryDrawer({
       <div className="absolute inset-0 bg-black/40" onClick={onClose} />
       <div
         ref={panelRef}
+        id="run-history-panel"
         role="dialog"
         aria-modal="true"
         aria-labelledby="run-history-title"
         tabIndex={-1}
         onKeyDown={trapFocus}
-        className="relative flex h-full w-full max-w-3xl flex-col border-l border-zinc-200 bg-white shadow-2xl outline-none dark:border-zinc-800 dark:bg-zinc-950"
+        style={{ '--history-drawer-width': `${width}px` } as CSSProperties}
+        className="relative flex h-full w-full flex-col border-l border-zinc-200 bg-white shadow-2xl outline-none @container sm:w-[var(--history-drawer-width)] dark:border-zinc-800 dark:bg-zinc-950"
       >
+        {/* Resize handle on the drawer's inner edge; phones keep the full-width stacked layout */}
+        {/* biome-ignore lint/a11y/useSemanticElements: a draggable splitter must be focusable and expose aria-value* attributes; <hr> cannot */}
+        <div
+          role="separator"
+          aria-orientation="vertical"
+          aria-label={t('runs.resize_width')}
+          aria-controls="run-history-panel"
+          aria-valuenow={width}
+          aria-valuemin={bounds.min}
+          aria-valuemax={bounds.max}
+          aria-valuetext={`${width} px`}
+          tabIndex={0}
+          title={t('runs.resize_width')}
+          onPointerDown={startResize}
+          onPointerMove={resizeTo}
+          onPointerUp={stopResize}
+          onPointerCancel={stopResize}
+          onLostPointerCapture={stopResize}
+          onKeyDown={resizeByKey}
+          className="group absolute inset-y-0 -left-2 z-10 hidden w-2 cursor-col-resize touch-none outline-none sm:block"
+        >
+          <div className="mx-auto h-full w-px bg-transparent transition-all group-hover:w-0.5 group-hover:bg-blue-500 group-focus-visible:w-0.5 group-focus-visible:bg-blue-500 group-active:w-0.5 group-active:bg-blue-500" />
+        </div>
+
         <div className="flex shrink-0 items-center gap-2 border-b border-zinc-200 px-4 py-3 dark:border-zinc-800">
           <History size={16} className="shrink-0 text-zinc-400" aria-hidden="true" />
           <h2 id="run-history-title" className="text-sm font-semibold text-zinc-900 dark:text-zinc-100">
@@ -237,9 +335,9 @@ export default function RunHistoryDrawer({
             )}
           </div>
         ) : (
-          <div className="flex min-h-0 flex-1 flex-col sm:flex-row">
+          <div className="flex min-h-0 flex-1 flex-col @min-[600px]:flex-row">
             {/* Run list */}
-            <div className="flex max-h-[40%] min-h-0 shrink-0 flex-col border-b border-zinc-200 sm:max-h-none sm:w-72 sm:border-r sm:border-b-0 dark:border-zinc-800">
+            <div className="flex max-h-[40%] min-h-0 shrink-0 flex-col border-b border-zinc-200 @min-[600px]:max-h-none @min-[600px]:w-72 @min-[600px]:border-r @min-[600px]:border-b-0 dark:border-zinc-800">
               <div ref={listRef} onScroll={loadMoreAtEnd} className="min-h-0 flex-1 overflow-y-auto">
                 <ul>
                   {runs.map((run) => {

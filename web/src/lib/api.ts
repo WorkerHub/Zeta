@@ -6,7 +6,6 @@ import type {
   Notebook,
   NotebookRun,
   NotebookRunSummary,
-  QueryHistoryItem,
   RunSettings,
   StatementResult,
   User,
@@ -239,13 +238,6 @@ export const queryApi = {
       method: 'POST',
       body: JSON.stringify(body),
     }),
-  history: (params?: { databaseId?: string; limit?: number; offset?: number }) => {
-    const q = new URLSearchParams()
-    if (params?.databaseId) q.set('databaseId', params.databaseId)
-    if (params?.limit) q.set('limit', String(params.limit))
-    if (params?.offset) q.set('offset', String(params.offset))
-    return apiFetch<{ results: QueryHistoryItem[] }>(`/query/history?${q}`)
-  },
 }
 
 // ── Admin endpoints ───────────────────────────────────────────────────────────
