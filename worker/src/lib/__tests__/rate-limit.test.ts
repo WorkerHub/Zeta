@@ -39,6 +39,24 @@ describe('rate limiting', () => {
     expect(await env.KV.get('k')).toBe('4')
   })
 
+  it('falls back for a prefixed missing table too', async () => {
+    const { db } = fakeD1((sql) => {
+      if (sql.includes('rate_limits')) throw new Error('D1_ERROR: no such table: kp_rate_limits: SQLITE_ERROR')
+      return null
+    }, { rateLimits: false })
+    expect(await checkRateLimit(fakeEnv({ DB: db, TABLE_PREFIX: 'kp' }), 'k', 3, 60)).toBe(true)
+  })
+
+  it('surfaces other D1 errors instead of silently switching to KV', async () => {
+    const { db } = fakeD1((sql) => {
+      if (sql.includes('rate_limits')) throw new Error('D1_ERROR: Network connection lost.')
+      return null
+    }, { rateLimits: false })
+    const env = fakeEnv({ DB: db })
+    await expect(checkRateLimit(env, 'k', 3, 60)).rejects.toThrow('Network connection lost')
+    expect(await env.KV.get('k')).toBeNull()
+  })
+
   describe('login attempts', () => {
     const ip = '203.0.113.9'
     const email = 'a@example.com'

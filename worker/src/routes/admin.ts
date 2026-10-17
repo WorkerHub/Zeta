@@ -172,7 +172,8 @@ admin.delete('/users/:id', async (c) => {
     const adminCount = await c.env.DB.prepare(`SELECT COUNT(*) as n FROM ${T.users} WHERE role = 'admin'`).first<{ n: number }>()
     if ((adminCount?.n ?? 0) <= 1) return c.json({ error: 'Cannot delete the last admin' }, 400)
   }
-  // D1 does not enforce FK CASCADE by default — delete/nullify all references manually
+  // D1 enforces foreign keys, but older schemas lack ON DELETE actions on some refs (and
+  // TABLE_PREFIX deployments may predate them) — delete/nullify all references explicitly
   await c.env.DB.batch([
     c.env.DB.prepare(`DELETE FROM ${T.totp_credentials} WHERE user_id = ?1`).bind(id),
     c.env.DB.prepare(`DELETE FROM ${T.passkey_credentials} WHERE user_id = ?1`).bind(id),

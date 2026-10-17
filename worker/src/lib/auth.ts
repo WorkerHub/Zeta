@@ -193,13 +193,17 @@ export async function isRefreshTokenRevoked(env: Env, jti: string): Promise<bool
 //
 // Deployments that have not re-run POST /api/setup (or applied migration 0003) yet lack the
 // table; they fall back to the old, approximate KV counters instead of failing every login.
+// Any other D1 error is rethrown: falling back on outages would hide them and split one key's
+// count across two stores.
 
 let warnedKvFallback = false
 
+// Returns normally only for a missing rate_limits table (D1: "no such table: <prefix>rate_limits").
 function kvFallback(err: unknown): void {
+  if (!/no such table: \w*rate_limits\b/.test(err instanceof Error ? err.message : String(err))) throw err
   if (warnedKvFallback) return
   warnedKvFallback = true
-  console.warn('rate_limits table unavailable, using approximate KV counters. Re-run POST /api/setup.', err)
+  console.warn('rate_limits table missing, using approximate KV counters. Re-run POST /api/setup.')
 }
 
 // Records one hit against `key` and returns the count in the current window, this hit included.
@@ -214,7 +218,7 @@ async function hitCounter(env: Env, key: string, ttl: number): Promise<number> {
          expires_at = CASE WHEN expires_at <= ?3 THEN ?2 ELSE expires_at END
        RETURNING count`
     ).bind(key, ts + ttl, ts).first<{ count: number }>()
-    if (!row) throw new Error('upsert returned no row')
+    if (!row) throw new Error('rate_limits upsert returned no row')
     // Expired rows are otherwise only reset on their next hit; sweep them now and then.
     if (Math.random() < 0.01) {
       await env.DB.prepare(`DELETE FROM ${T.rate_limits} WHERE expires_at <= ?1`).bind(ts).run()
