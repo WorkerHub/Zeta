@@ -100,10 +100,12 @@ export interface NotebookRow {
   position: number
   created_at: number
   updated_at: number
+  last_run_seq: number // number of the notebook's latest run (see lib/runs.ts reserveRunSeq)
 }
 
 export interface NotebookRunRow {
   id: string
+  seq: number // the run's number within its notebook; never changes, never reused
   notebook_id: string
   user_id: string
   database_id: string

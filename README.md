@@ -14,7 +14,7 @@ A self-hosted SQL query interface for [Cloudflare D1](https://developers.cloudfl
 
 - **SQL Notebooks** — Multiple named SQL editor tabs per user, auto-saved, each independently bound to a database; supports rename, reorder, and up to 20 notebooks per user
 - **SQL Editor** — Full SQL input with syntax highlighting (CodeMirror 6), Ctrl/Cmd+Enter to run, partial selection execution, execution time and row count display; read queries return at most 5,000 rows, capped in the SQL itself
-- **Saved Results** — Every notebook run is saved with its results, so they survive switching tabs, leaving the page, reloading and changing devices; browse, delete or clear a notebook's earlier runs (see [Saved Query Results](#saved-query-results))
+- **Saved Results** — Every notebook run is saved with its results, so they survive switching tabs, leaving the page, reloading and changing devices; a notebook's runs sit in a row of numbered tabs (… #3 #2 #1, newest on the left) to switch between, delete or clear (see [Saved Query Results](#saved-query-results))
 - **Query History** — Last 50 queries per database, click to re-run
 - **Multi-database** — Connect multiple D1 databases; grant per-user `read` or `write` access per database
 - **Auth** — Email + password login, email verification, password reset, optional TOTP / Email OTP / Passkey (WebAuthn) two-factor authentication
@@ -155,7 +155,7 @@ Expected response:
 { "ok": true, "message": "Database initialised successfully. You can now register at /register — the first user becomes admin. On new installs registration then stays closed until an admin opens it in Admin → Settings." }
 ```
 
-> The endpoint is idempotent — safe to call multiple times. **Re-run it after every upgrade**: it also applies schema upgrades to databases created by earlier versions (e.g. making `query_history` keep rows when a user or database is deleted — until then, deleting users or databases fails — and creating the `rate_limits` table that makes login / 2FA / email rate limits exact; until it exists they fall back to approximate KV counters; and rebuilding a `user_database_permissions` table whose foreign keys still point at unprefixed `users` / `d1_databases` tables — until then, granting or revoking database access and deleting users or databases fail with `no such table`. Permission rows whose user or database no longer exists are dropped; the response reports how many under `permissionsRepair`; and creating the `notebook_runs` table plus the `users.notebook_run_limit` column for [saved query results](#saved-query-results) — until then, runs are not saved and the list of saved runs fails to load). Databases created from the migrations get the same through `pnpm migrate:remote` (`0004_notebook_runs.sql`).
+> The endpoint is idempotent — safe to call multiple times. **Re-run it after every upgrade**: it also applies schema upgrades to databases created by earlier versions (e.g. making `query_history` keep rows when a user or database is deleted — until then, deleting users or databases fails — and creating the `rate_limits` table that makes login / 2FA / email rate limits exact; until it exists they fall back to approximate KV counters; and rebuilding a `user_database_permissions` table whose foreign keys still point at unprefixed `users` / `d1_databases` tables — until then, granting or revoking database access and deleting users or databases fail with `no such table`. Permission rows whose user or database no longer exists are dropped; the response reports how many under `permissionsRepair`; and creating the `notebook_runs` table plus the `users.notebook_run_limit` column for [saved query results](#saved-query-results) — until then, runs are not saved and the list of saved runs fails to load; and numbering saved runs: adding `notebook_runs.seq` and `notebooks.last_run_seq`, numbering the existing runs of each notebook from 1 (oldest first) and adding a unique `(notebook_id, seq)` index — **after deploying the version with numbered run tabs, call it once more**: until then, queries still run but are not saved, and the run tabs fail to load). Databases created from the migrations get the same through `pnpm migrate:remote` (`0004_notebook_runs.sql`, `0005_notebook_run_seq.sql`).
 >
 > Earlier versions used `GET /api/setup/<SETUP_SECRET>`. That form is gone: it now returns `405` and does nothing. If you ever opened the old URL, consider rotating `SETUP_SECRET`.
 
@@ -195,7 +195,9 @@ D1 databases are injected into the Worker at deploy time via GitHub Actions Vari
 
 ## Saved Query Results
 
-Every run of a notebook (one statement or several) is stored in the app database (`notebook_runs`) together with its results. Two limits keep it bounded, both set in **Admin → Settings → Saved query runs**:
+Every run of a notebook (one statement or several) is stored in the app database (`notebook_runs`) together with its results. Above the results, a notebook's runs are shown as tabs numbered from right to left — `… #5 #4 #3 #2 #1`, the newest on the left and selected when the notebook opens. The strip scrolls sideways (trackpad, touch, mouse wheel) and loads older runs on reaching its right end; hovering a tab shows when the run ran, its database, row count and SQL. A tab's × deletes that run right away (Delete / Backspace on a focused tab does the same, ←/→ switch tabs), and **Clear all** deletes them all after a confirmation. A run's number never changes and is never reused: deleting or pruning runs leaves gaps (the oldest run left may be #37), and each notebook counts on its own.
+
+Two limits keep it bounded, both set in **Admin → Settings → Saved query runs**:
 
 | Limit | Default | Range | Effect |
 |-------|---------|-------|--------|
@@ -293,10 +295,10 @@ All endpoints live under `/api/`. Authentication uses short-lived JWT access tok
 | `POST /api/auth/*` | Register, login, logout, token refresh, email verification, password reset, 2FA (TOTP / Email OTP / Passkey) |
 | `GET/PATCH /api/profile/*` | Profile, password change, TOTP setup/confirm/delete, passkey registration/delete. Deleting a TOTP or passkey requires a JSON body `{"currentPassword": "..."}` |
 | `GET /api/databases` | List accessible databases for the current user |
-| `POST /api/query` | Execute SQL against a bound D1 database (`/batch` for several statements). Reads return at most 5,000 rows (`truncated: true` beyond). With `notebookId`, the run is saved under that notebook and the response carries `run_id` / `executed_at` |
+| `POST /api/query` | Execute SQL against a bound D1 database (`/batch` for several statements). Reads return at most 5,000 rows (`truncated: true` beyond). With `notebookId`, the run is saved under that notebook and the response carries `run_id` / `seq` (its number) / `executed_at` |
 | `GET /api/query/history` | Query execution history (filterable by database) |
 | `GET/POST/PATCH/DELETE /api/notebooks` | CRUD for SQL notebooks (per-user, max 20) |
-| `GET/DELETE /api/notebooks/:id/runs[/:runId]` | A notebook's saved runs: list (newest first, `limit`/`offset`), read one with its results, delete one, or clear all |
+| `GET/DELETE /api/notebooks/:id/runs[/:runId]` | A notebook's saved runs: list (highest number `seq` first, `limit` plus `before=<seq>` or `offset`), read one with its results, delete one, or clear all |
 | `GET/PUT /api/profile/run-settings` | The user's own run limit (`run_limit`, `null` follows the admin limit) and storage usage |
 | `GET/POST/PATCH/DELETE /api/admin/*` | Admin-only: users, databases, permissions, settings |
 | `POST /api/setup` | Idempotent schema initialisation (JSON body `{"secret": "<SETUP_SECRET>"}`) |

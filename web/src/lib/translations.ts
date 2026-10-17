@@ -285,12 +285,16 @@ export const translations: Record<Locale, Record<string, string>> = {
 
     // Saved runs
     'runs.ran_at': 'Ran {time}',
-    'runs.history': 'Runs ({n})',
+    'runs.tablist': 'Saved runs',
+    'runs.succeeded': 'Succeeded',
+    'runs.failed': 'Failed',
+    'runs.database': 'Database: {name}',
     'runs.errors': '{n} error(s)',
     'runs.load_more': 'Load more',
     'runs.clear': 'Clear all runs',
+    'runs.clear_all': 'Clear all',
     'runs.clear_confirm': 'Delete all saved runs of this notebook?',
-    'runs.delete': 'Delete this run',
+    'runs.delete_run': 'Delete run #{n}',
     'runs.storage_truncated':
       'These results were too large to save in full; only the first rows were kept. Run the query again to see all of them.',
     'runs.loading': 'Loading results…',
@@ -589,12 +593,16 @@ export const translations: Record<Locale, Record<string, string>> = {
 
     // Saved runs
     'runs.ran_at': '运行于 {time}',
-    'runs.history': '运行记录（{n}）',
+    'runs.tablist': '运行记录',
+    'runs.succeeded': '成功',
+    'runs.failed': '失败',
+    'runs.database': '数据库：{name}',
     'runs.errors': '{n} 个错误',
     'runs.load_more': '加载更多',
     'runs.clear': '清空全部运行记录',
+    'runs.clear_all': '清空全部',
     'runs.clear_confirm': '确定删除此 Notebook 的全部运行记录吗？',
-    'runs.delete': '删除此记录',
+    'runs.delete_run': '删除运行记录 #{n}',
     'runs.storage_truncated': '结果过大，仅保存了前面的部分行。重新运行查询可查看完整结果。',
     'runs.loading': '正在加载结果…',
     'runs.access_denied': '你已没有该数据库的访问权限，无法查看此结果。',

@@ -220,7 +220,8 @@ export const databasesApi = {
 // ── Query endpoints ───────────────────────────────────────────────────────────
 
 // Passing notebookId saves the run under that notebook; the response then names it
-// (run_id, executed_at in milliseconds). A failed single statement carries them in ApiError.body.
+// (run_id, its number seq, executed_at in milliseconds). A failed single statement carries them in
+// ApiError.body.
 export const queryApi = {
   execute: (body: { databaseId: string; sql: string; notebookId?: string }) =>
     apiFetch<{
@@ -230,10 +231,11 @@ export const queryApi = {
       truncated?: boolean
       error?: string
       run_id?: string
+      seq?: number
       executed_at?: number
     }>('/query', { method: 'POST', body: JSON.stringify(body) }),
   executeBatch: (body: { databaseId: string; statements: string[]; notebookId?: string }) =>
-    apiFetch<{ results: StatementResult[]; run_id?: string; executed_at?: number }>('/query/batch', {
+    apiFetch<{ results: StatementResult[]; run_id?: string; seq?: number; executed_at?: number }>('/query/batch', {
       method: 'POST',
       body: JSON.stringify(body),
     }),
@@ -298,10 +300,11 @@ export const notebooksApi = {
     apiFetch<{ message: string }>(`/notebooks/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
   delete: (id: string) => apiFetch<{ message: string }>(`/notebooks/${id}`, { method: 'DELETE' }),
 
-  runs: (id: string, params: { limit?: number; offset?: number } = {}) => {
+  // Newest first; `before` continues below that run number
+  runs: (id: string, params: { limit?: number; before?: number } = {}) => {
     const q = new URLSearchParams()
     if (params.limit) q.set('limit', String(params.limit))
-    if (params.offset) q.set('offset', String(params.offset))
+    if (params.before) q.set('before', String(params.before))
     return apiFetch<{ results: NotebookRunSummary[]; has_more: boolean }>(`/notebooks/${id}/runs?${q}`)
   },
   run: (id: string, runId: string) => apiFetch<NotebookRun>(`/notebooks/${id}/runs/${runId}`),

@@ -7,7 +7,7 @@ export const RUN_PAGE_SIZE = 50
 export const RESULT_CACHE_SIZE = 20
 
 export interface NotebookRunsState {
-  list: NotebookRunSummary[] // newest first
+  list: NotebookRunSummary[] // newest (highest number) first
   hasMore: boolean
   loaded: boolean
   loading: boolean
@@ -41,15 +41,17 @@ export function receivePage(
   if (append) {
     list = [...s.list, ...page.filter((r) => !s.list.some((x) => x.id === r.id))]
   } else {
-    const newest = page[0]?.executed_at ?? 0
-    list = [...s.list.filter((r) => !known.has(r.id) && r.executed_at >= newest), ...page]
+    const newest = page[0]?.seq ?? 0
+    list = [...s.list.filter((r) => !known.has(r.id) && r.seq > newest), ...page]
   }
   return withSelection({ ...s, list, hasMore, loaded: true, loading: false, loadError: false })
 }
 
-// A run just made in this tab goes first and becomes the selected one
+// A run just made in this tab joins the list by its number (normally first) and becomes the
+// selected one
 export function addRun(s: NotebookRunsState, run: NotebookRunSummary): NotebookRunsState {
-  return { ...s, list: [run, ...s.list.filter((r) => r.id !== run.id)], selectedRunId: run.id }
+  const list = [run, ...s.list.filter((r) => r.id !== run.id)].sort((a, b) => b.seq - a.seq)
+  return { ...s, list, selectedRunId: run.id }
 }
 
 // Removing the selected run selects the one that took its place (the next older, else the newest)

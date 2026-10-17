@@ -14,7 +14,7 @@
 
 - **SQL Notebook** — 每位用户可创建多个命名 SQL 编辑器标签页，自动保存，每个标签页独立绑定数据库；支持重命名、每用户最多 20 个
 - **SQL 编辑器** — 完整 SQL 输入，语法高亮（CodeMirror 6），Ctrl/Cmd+Enter 执行，支持选中片段单独运行，显示耗时和行数；读查询最多返回 5000 行，在 SQL 层面强制限制
-- **运行结果保留** — 每次运行 Notebook 都会连同结果一起保存，切换标签页、离开页面、刷新或换设备后仍可查看；可翻看、删除或清空之前的运行记录（见[查询结果保留](#查询结果保留)）
+- **运行结果保留** — 每次运行 Notebook 都会连同结果一起保存，切换标签页、离开页面、刷新或换设备后仍可查看；运行记录以带编号的横向标签页排列（… #3 #2 #1，最新的在最左边），可切换、删除或清空（见[查询结果保留](#查询结果保留)）
 - **查询历史** — 每个数据库最近 50 条记录，点击即可重新执行
 - **多数据库** — 连接多个 D1 数据库，按用户分配每个数据库的 `read`（只读）或 `write`（读写）权限
 - **身份验证** — 邮箱 + 密码登录、邮件验证、找回密码、可选 TOTP / 邮件 OTP / Passkey（WebAuthn）二步验证
@@ -155,7 +155,7 @@ curl -X POST https://<你的域名>/api/setup \
 { "ok": true, "message": "Database initialised successfully. You can now register at /register — the first user becomes admin. On new installs registration then stays closed until an admin opens it in Admin → Settings." }
 ```
 
-> 该接口是幂等的，重复调用不会造成任何破坏，可安全地多次调用。**每次升级部署后请再调用一次**：它还会对旧版本创建的数据库执行 Schema 升级（例如让 `query_history` 在删除用户或数据库时保留记录——升级前删除用户或数据库会失败；以及创建 `rate_limits` 表，让登录 / 两步验证 / 邮件的限流计数精确生效——该表创建前会退回到近似的 KV 计数；以及在 `user_database_permissions` 表的外键仍指向不带前缀的 `users` / `d1_databases` 表时重建该表——修复前授权、撤销数据库权限以及删除用户或数据库都会报 `no such table` 错误。用户或数据库已不存在的权限记录会被丢弃，丢弃的行数会在响应的 `permissionsRepair` 字段中给出；以及为[查询结果保留](#查询结果保留)创建 `notebook_runs` 表并给 `users` 表添加 `notebook_run_limit` 列——升级前运行结果不会被保存，运行记录列表也无法加载）。通过迁移文件创建的数据库可执行 `pnpm migrate:remote`（`0004_notebook_runs.sql`）完成同样的升级。
+> 该接口是幂等的，重复调用不会造成任何破坏，可安全地多次调用。**每次升级部署后请再调用一次**：它还会对旧版本创建的数据库执行 Schema 升级（例如让 `query_history` 在删除用户或数据库时保留记录——升级前删除用户或数据库会失败；以及创建 `rate_limits` 表，让登录 / 两步验证 / 邮件的限流计数精确生效——该表创建前会退回到近似的 KV 计数；以及在 `user_database_permissions` 表的外键仍指向不带前缀的 `users` / `d1_databases` 表时重建该表——修复前授权、撤销数据库权限以及删除用户或数据库都会报 `no such table` 错误。用户或数据库已不存在的权限记录会被丢弃，丢弃的行数会在响应的 `permissionsRepair` 字段中给出；以及为[查询结果保留](#查询结果保留)创建 `notebook_runs` 表并给 `users` 表添加 `notebook_run_limit` 列——升级前运行结果不会被保存，运行记录列表也无法加载；以及为运行记录编号：添加 `notebook_runs.seq` 和 `notebooks.last_run_seq` 列，把每个 Notebook 已有的运行记录按时间从早到晚从 1 开始编号，并建立唯一索引 `(notebook_id, seq)`——**部署带编号运行标签页的版本后，请再调用一次**：调用前查询仍可正常执行，但不会被保存，运行记录标签页也无法加载）。通过迁移文件创建的数据库可执行 `pnpm migrate:remote`（`0004_notebook_runs.sql`、`0005_notebook_run_seq.sql`）完成同样的升级。
 >
 > 旧版本使用的 `GET /api/setup/<SETUP_SECRET>` 已废弃：现在会返回 `405` 且不执行任何操作。如果曾经访问过旧 URL，建议轮换 `SETUP_SECRET`。
 
@@ -195,7 +195,9 @@ D1 数据库通过 GitHub Actions Variables 在部署时自动注入 Worker，**
 
 ## 查询结果保留
 
-每次运行 Notebook（单条或多条语句）都会连同结果保存到应用数据库的 `notebook_runs` 表中。有两项限制控制其大小，均在 **管理后台 → 设置 → 查询结果保留** 中配置：
+每次运行 Notebook（单条或多条语句）都会连同结果保存到应用数据库的 `notebook_runs` 表中。结果上方以标签页显示该 Notebook 的运行记录，编号从右到左排列：`… #5 #4 #3 #2 #1`，最新一次在最左边，打开 Notebook 时默认选中它。标签栏可以左右滑动（触控板、触屏、鼠标滚轮均可），滑到最右端会继续加载更早的记录；鼠标悬停在标签上可查看运行时间、数据库、行数和 SQL 摘要。点标签上的 × 立即删除该条记录（键盘聚焦标签时按 Delete / Backspace 效果相同，←/→ 切换标签），点「清空全部」并确认后删除全部记录。每次运行的编号固定不变且不会重复使用：删除或自动清理后编号会出现空缺（例如最早的一条是 #37），各 Notebook 分别编号。
+
+有两项限制控制其大小，均在 **管理后台 → 设置 → 查询结果保留** 中配置：
 
 | 限制 | 默认值 | 范围 | 作用 |
 |------|--------|------|------|
@@ -293,10 +295,10 @@ git config blame.ignoreRevsFile .git-blame-ignore-revs
 | `POST /api/auth/*` | 注册、登录、注销、令牌刷新、邮件验证、密码重置、2FA（TOTP / 邮件 OTP / Passkey） |
 | `GET/PATCH /api/profile/*` | 个人信息、修改密码、TOTP 设置/确认/删除、Passkey 注册/删除。删除 TOTP 或 Passkey 需在 JSON 请求体中提供 `{"currentPassword": "..."}` |
 | `GET /api/databases` | 列出当前用户可访问的数据库 |
-| `POST /api/query` | 对绑定的 D1 数据库执行 SQL（多条语句用 `/batch`）。读查询最多返回 5000 行，超出时返回 `truncated: true`。带上 `notebookId` 时，这次运行会保存到该 Notebook 下，响应中附带 `run_id` / `executed_at` |
+| `POST /api/query` | 对绑定的 D1 数据库执行 SQL（多条语句用 `/batch`）。读查询最多返回 5000 行，超出时返回 `truncated: true`。带上 `notebookId` 时，这次运行会保存到该 Notebook 下，响应中附带 `run_id` / `seq`（运行编号）/ `executed_at` |
 | `GET /api/query/history` | 查询执行历史（可按数据库过滤） |
 | `GET/POST/PATCH/DELETE /api/notebooks` | SQL Notebook 的增删改查（每用户，最多 20 个） |
-| `GET/DELETE /api/notebooks/:id/runs[/:runId]` | Notebook 的运行记录：列表（按时间倒序，支持 `limit`/`offset`）、读取单条及其结果、删除单条、清空全部 |
+| `GET/DELETE /api/notebooks/:id/runs[/:runId]` | Notebook 的运行记录：列表（按编号 `seq` 从大到小，支持 `limit`，以及 `before=<seq>` 或 `offset` 翻页）、读取单条及其结果、删除单条、清空全部 |
 | `GET/PUT /api/profile/run-settings` | 用户自己的保留次数（`run_limit`，`null` 表示跟随管理员上限）及存储用量 |
 | `GET/POST/PATCH/DELETE /api/admin/*` | 仅管理员：用户、数据库、权限、设置 |
 | `POST /api/setup` | 幂等的数据库 Schema 初始化（JSON 请求体 `{"secret": "<SETUP_SECRET>"}`） |

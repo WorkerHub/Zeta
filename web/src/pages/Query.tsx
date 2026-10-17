@@ -138,11 +138,15 @@ export default function QueryPage() {
     startRun(nbId)
     setActiveResultIdx(0)
 
-    // A saved run (one the server names) goes into the notebook's run list
-    const summary = (runId: string | undefined, executedAt: number | undefined, results: StatementResult[]) =>
-      runId
-        ? ({
-            id: runId,
+    // A saved run (one the server names and numbers) goes into the notebook's run list
+    const summary = (
+      saved: { run_id?: unknown; seq?: unknown; executed_at?: unknown },
+      results: StatementResult[]
+    ): NotebookRunSummary | null =>
+      typeof saved.run_id === 'string' && typeof saved.seq === 'number'
+        ? {
+            id: saved.run_id,
+            seq: saved.seq,
             notebook_id: nbId,
             database_id: db.id,
             database_name: db.name,
@@ -153,9 +157,9 @@ export default function QueryPage() {
             duration_ms: results.reduce((n, r) => n + r.duration_ms, 0),
             storage_truncated: 0,
             results_bytes: 0,
-            executed_at: executedAt ?? Date.now(),
+            executed_at: typeof saved.executed_at === 'number' ? saved.executed_at : Date.now(),
             accessible: true,
-          } satisfies NotebookRunSummary)
+          }
         : null
 
     try {
@@ -171,20 +175,17 @@ export default function QueryPage() {
             changes: res.meta?.changes,
             truncated: res.truncated,
           }
-          finishRun(nbId, { run: summary(res.run_id, res.executed_at, [entry]), results: [entry] })
+          finishRun(nbId, { run: summary(res, [entry]), results: [entry] })
         } catch (err) {
           const message = err instanceof Error ? err.message : t('errors.query_failed')
           const entry: StatementResult = { sql: stmt, results: [], duration_ms: 0, error: message }
           // A statement that ran and failed is saved too; the error response names the run
-          const body = err instanceof ApiError ? err.body : {}
-          const runId = typeof body.run_id === 'string' ? body.run_id : undefined
-          const executedAt = typeof body.executed_at === 'number' ? body.executed_at : undefined
-          finishRun(nbId, { run: summary(runId, executedAt, [entry]), results: [entry] })
+          finishRun(nbId, { run: summary(err instanceof ApiError ? err.body : {}, [entry]), results: [entry] })
         }
       } else {
         // Multiple statements — use batch endpoint
         const res = await queryApi.executeBatch({ databaseId: db.id, statements, notebookId: nbId })
-        finishRun(nbId, { run: summary(res.run_id, res.executed_at, res.results), results: res.results })
+        finishRun(nbId, { run: summary(res, res.results), results: res.results })
       }
     } catch (err) {
       finishRun(nbId, { error: err instanceof Error ? err.message : t('errors.query_failed') })
@@ -618,6 +619,7 @@ export default function QueryPage() {
                 selected={selectedRun}
                 hasMore={runs.hasMore}
                 loading={runs.loading}
+                loadError={runs.loadError}
                 onSelect={runs.selectRun}
                 onLoadMore={runs.loadMore}
                 onDelete={(runId) => reportRunAction(runs.deleteRun(runId))}

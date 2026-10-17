@@ -144,6 +144,59 @@ async function addUserRunLimitColumn(db: D1Database, T: ReturnType<typeof tables
   return true
 }
 
+// Run numbers (notebook_runs.seq, the counter notebooks.last_run_seq) were added after saved runs
+// first shipped; same change as migrations/0005. Adds the missing columns, numbers the runs that
+// have no number yet (oldest first, after the notebook's highest number, so re-runs only touch
+// stragglers) and makes sure the unique (notebook_id, seq) index exists, all in one batch.
+// Returns a description of what changed, or null when nothing needed numbering.
+async function numberRuns(db: D1Database, T: ReturnType<typeof tables>): Promise<string | null> {
+  const R = T.notebook_runs
+  const N = T.notebooks
+  const [runCols, notebookCols] = await Promise.all([
+    db.prepare(`PRAGMA table_info(${R})`).all<{ name: string }>(),
+    db.prepare(`PRAGMA table_info(${N})`).all<{ name: string }>(),
+  ])
+  const addSeq = !runCols.results.some((col) => col.name === 'seq')
+  const addCounter = !notebookCols.results.some((col) => col.name === 'last_run_seq')
+  const unnumbered = addSeq
+    ? 0
+    : ((await db.prepare(`SELECT COUNT(*) AS n FROM ${R} WHERE seq IS NULL`).first<{ n: number }>())?.n ?? 0)
+
+  const stmts: string[] = []
+  if (addSeq) stmts.push(`ALTER TABLE ${R} ADD COLUMN seq INTEGER`)
+  if (addCounter) stmts.push(`ALTER TABLE ${N} ADD COLUMN last_run_seq INTEGER NOT NULL DEFAULT 0`)
+  let backfill = -1
+  if (addSeq || addCounter || unnumbered > 0) {
+    // The counter is brought up to the highest number first, so unnumbered runs continue after it
+    const syncCounter = `UPDATE ${N} SET last_run_seq = MAX(last_run_seq,
+      (SELECT COALESCE(MAX(seq), 0) FROM ${R} WHERE ${R}.notebook_id = ${N}.id))`
+    stmts.push(syncCounter)
+    backfill = stmts.length
+    stmts.push(
+      `UPDATE ${R} SET seq = numbered.seq
+       FROM (
+         SELECT r.id, n.last_run_seq + ROW_NUMBER() OVER (PARTITION BY r.notebook_id ORDER BY r.executed_at, r.id) AS seq
+         FROM ${R} r JOIN ${N} n ON n.id = r.notebook_id
+         WHERE r.seq IS NULL
+       ) AS numbered
+       WHERE ${R}.id = numbered.id`,
+      syncCounter
+    )
+  }
+  stmts.push(
+    `CREATE UNIQUE INDEX IF NOT EXISTS idx_${R}_seq ON ${R}(notebook_id, seq)`,
+    // Replaced by the index above: the run list and per-notebook pruning order by seq now
+    `DROP INDEX IF EXISTS idx_${R}_notebook`
+  )
+  const results = await db.batch(stmts.map((stmt) => db.prepare(stmt)))
+
+  if (backfill === -1) return null
+  const numbered = results[backfill]?.meta.changes ?? 0
+  const added = [addSeq && `seq`, addCounter && `${N}.last_run_seq`].filter(Boolean)
+  if (added.length === 0 && numbered === 0) return null
+  return `${R}: ${added.length > 0 ? `added ${added.join(', ')}; ` : ''}numbered ${numbered} saved run(s)`
+}
+
 function buildDDL(T: ReturnType<typeof tables>): string[] {
   return [
     `CREATE TABLE IF NOT EXISTS ${T.users} (
@@ -223,12 +276,14 @@ function buildDDL(T: ReturnType<typeof tables>): string[] {
       database_id TEXT REFERENCES ${T.d1_databases}(id) ON DELETE SET NULL,
       position INTEGER NOT NULL DEFAULT 0,
       created_at INTEGER NOT NULL,
-      updated_at INTEGER NOT NULL
+      updated_at INTEGER NOT NULL,
+      last_run_seq INTEGER NOT NULL DEFAULT 0
     )`,
     `CREATE INDEX IF NOT EXISTS idx_${T.notebooks}_user ON ${T.notebooks}(user_id)`,
 
     // Saved notebook run results (see lib/runs.ts). `results` comes last so scans of the metadata
-    // columns never touch its overflow pages; the user index covers the storage-quota pruning.
+    // columns never touch its overflow pages; the user index covers the storage-quota pruning. The
+    // (notebook_id, seq) index is created by numberRuns, after older tables have gained `seq`.
     `CREATE TABLE IF NOT EXISTS ${T.notebook_runs} (
       id TEXT PRIMARY KEY,
       notebook_id TEXT NOT NULL REFERENCES ${T.notebooks}(id) ON DELETE CASCADE,
@@ -242,9 +297,9 @@ function buildDDL(T: ReturnType<typeof tables>): string[] {
       storage_truncated INTEGER NOT NULL DEFAULT 0,
       results_bytes INTEGER NOT NULL,
       executed_at INTEGER NOT NULL,
+      seq INTEGER,
       results TEXT NOT NULL
     )`,
-    `CREATE INDEX IF NOT EXISTS idx_${T.notebook_runs}_notebook ON ${T.notebook_runs}(notebook_id, executed_at)`,
     `CREATE INDEX IF NOT EXISTS idx_${T.notebook_runs}_user ON ${T.notebook_runs}(user_id, executed_at, id, results_bytes)`,
 
     // Atomic rate-limit counters (see lib/auth.ts)
@@ -332,6 +387,8 @@ setup.post('/', async (c) => {
       if (await addUserRunLimitColumn(c.env.DB, T)) {
         upgraded.push(`${T.users}: added notebook_run_limit`)
       }
+      const runNumbers = await numberRuns(c.env.DB, T)
+      if (runNumbers) upgraded.push(runNumbers)
       permissionsRepair = await repairPermissionRefs(c.env.DB, T)
       if (permissionsRepair) {
         upgraded.push(
