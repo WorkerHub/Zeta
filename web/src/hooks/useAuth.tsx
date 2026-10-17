@@ -32,13 +32,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const refresh = useCallback(async () => {
     try {
       const data = await fetch('/api/auth/refresh', {
-        method: 'POST', credentials: 'include',
+        method: 'POST',
+        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
-      }).then((r) => (r.ok ? r.json() as Promise<{ accessToken: string }> : null))
+      }).then((r) => (r.ok ? (r.json() as Promise<{ accessToken: string }>) : null))
 
-      if (!data) { clearSession(); setUser(null); return }
+      if (!data) {
+        clearSession()
+        setUser(null)
+        return
+      }
 
-      setSession(data.accessToken, getCurrentUser() ?? { id: '', email: '', name: '', role: 'member' } as User)
+      setSession(data.accessToken, getCurrentUser() ?? ({ id: '', email: '', name: '', role: 'member' } as User))
       const me = await profileApi.me()
       setSession(data.accessToken, me)
       setUser(me)
@@ -50,7 +55,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   // On mount: try to restore session via refresh cookie
   useEffect(() => {
-    if (getCurrentUser()) { setLoading(false); return }
+    if (getCurrentUser()) {
+      setLoading(false)
+      return
+    }
     refresh().finally(() => setLoading(false))
   }, [refresh])
 

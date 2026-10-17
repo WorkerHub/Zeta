@@ -3,7 +3,8 @@ import { openSecret, sealLegacySecret } from './secrets'
 import { getSetting } from './db'
 import { connect } from 'cloudflare:sockets'
 
-const EMAIL_RE = /^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$/
+const EMAIL_RE =
+  /^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$/
 
 export function isValidEmail(email: string): boolean {
   return EMAIL_RE.test(email) && !email.includes('\r') && !email.includes('\n')
@@ -61,10 +62,16 @@ async function sendViaResend(env: Env, payload: EmailPayload): Promise<{ success
   if (!configStr) return { success: false, error: 'Resend not configured' }
 
   let config: ResendConfig
-  try { config = JSON.parse(configStr) } catch { return { success: false, error: 'Resend config is invalid' } }
+  try {
+    config = JSON.parse(configStr)
+  } catch {
+    return { success: false, error: 'Resend config is invalid' }
+  }
   if (!config.api_key) return { success: false, error: 'Resend API key not configured' }
   await sealLegacySecret(env, 'resend_config', configStr, 'api_key').catch(() => {})
-  try { config.api_key = await openSecret(env, config.api_key) } catch {
+  try {
+    config.api_key = await openSecret(env, config.api_key)
+  } catch {
     return { success: false, error: 'Resend API key could not be decrypted' }
   }
 
@@ -75,7 +82,7 @@ async function sendViaResend(env: Env, payload: EmailPayload): Promise<{ success
   const response = await fetch('https://api.resend.com/emails', {
     method: 'POST',
     headers: {
-      'Authorization': `Bearer ${config.api_key}`,
+      Authorization: `Bearer ${config.api_key}`,
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
@@ -99,11 +106,17 @@ async function sendViaSMTP(env: Env, payload: EmailPayload): Promise<{ success: 
   if (!configStr) return { success: false, error: 'SMTP not configured' }
 
   let config: SMTPConfig
-  try { config = JSON.parse(configStr) } catch { return { success: false, error: 'SMTP config is invalid' } }
+  try {
+    config = JSON.parse(configStr)
+  } catch {
+    return { success: false, error: 'SMTP config is invalid' }
+  }
   if (!config.host) return { success: false, error: 'SMTP host not configured' }
   if (config.password) {
     await sealLegacySecret(env, 'smtp_config', configStr, 'password').catch(() => {})
-    try { config.password = await openSecret(env, config.password) } catch {
+    try {
+      config.password = await openSecret(env, config.password)
+    } catch {
       return { success: false, error: 'SMTP password could not be decrypted' }
     }
   }
@@ -114,10 +127,9 @@ async function sendViaSMTP(env: Env, payload: EmailPayload): Promise<{ success: 
   const fromName = (payload.fromName || config.from_name || 'Zeta').replace(/[\r\n]/g, '')
   const isImplicitTls = config.port === 465
 
-  const socket = connect(
-    { hostname: config.host, port: config.port },
-    { secureTransport: isImplicitTls ? 'on' : 'starttls' } as SocketOptions,
-  )
+  const socket = connect({ hostname: config.host, port: config.port }, {
+    secureTransport: isImplicitTls ? 'on' : 'starttls',
+  } as SocketOptions)
 
   try {
     const session = new SmtpSession(socket)
@@ -309,11 +321,7 @@ export function buildPasswordResetEmail(opts: {
   }
 }
 
-export function buildOtpEmail(opts: {
-  appName: string
-  toEmail: string
-  otp: string
-}): EmailPayload {
+export function buildOtpEmail(opts: { appName: string; toEmail: string; otp: string }): EmailPayload {
   const safeName = escapeHtml(opts.appName)
   return {
     to: opts.toEmail,

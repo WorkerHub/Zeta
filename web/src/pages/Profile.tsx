@@ -1,6 +1,19 @@
 import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
-import { Database, ArrowLeft, Shield, Key, Smartphone, Trash2, Plus, Eye, EyeOff, Copy, CheckCircle, Fingerprint } from 'lucide-react'
+import {
+  Database,
+  ArrowLeft,
+  Shield,
+  Key,
+  Smartphone,
+  Trash2,
+  Plus,
+  Eye,
+  EyeOff,
+  Copy,
+  CheckCircle,
+  Fingerprint,
+} from 'lucide-react'
 import QRCode from 'qrcode'
 import { startRegistration } from '@simplewebauthn/browser'
 import { profileApi } from '../lib/api'
@@ -38,12 +51,18 @@ export default function ProfilePage() {
   const [removalLoading, setRemovalLoading] = useState(false)
 
   useEffect(() => {
-    profileApi.me().then(setUser).finally(() => setLoading(false))
+    profileApi
+      .me()
+      .then(setUser)
+      .finally(() => setLoading(false))
   }, [])
 
   // Generate QR code data URL when TOTP URI is available
   useEffect(() => {
-    if (!totpSetup?.uri) { setTotpQr(null); return }
+    if (!totpSetup?.uri) {
+      setTotpQr(null)
+      return
+    }
     QRCode.toDataURL(totpSetup.uri, { width: 176, margin: 1, color: { dark: '#000000', light: '#ffffff' } })
       .then(setTotpQr)
       .catch(() => setTotpQr(null))
@@ -51,9 +70,17 @@ export default function ProfilePage() {
 
   async function savePassword(e: React.FormEvent) {
     e.preventDefault()
-    if (pwForm.newPassword !== pwForm.confirm) { setPwError(t('auth.pw_mismatch')); return }
-    if (pwForm.newPassword.length < 8) { setPwError(t('auth.pw_min_error')); return }
-    setPwError(''); setPwSuccess(''); setPwLoading(true)
+    if (pwForm.newPassword !== pwForm.confirm) {
+      setPwError(t('auth.pw_mismatch'))
+      return
+    }
+    if (pwForm.newPassword.length < 8) {
+      setPwError(t('auth.pw_min_error'))
+      return
+    }
+    setPwError('')
+    setPwSuccess('')
+    setPwLoading(true)
     try {
       await profileApi.changePassword({ currentPassword: pwForm.currentPassword, newPassword: pwForm.newPassword })
       setPwSuccess(t('profile.password_changed'))
@@ -66,7 +93,8 @@ export default function ProfilePage() {
   }
 
   async function startTotpSetup() {
-    setTotpLoading(true); setTotpError('')
+    setTotpLoading(true)
+    setTotpError('')
     try {
       const res = await profileApi.setupTotp()
       setTotpSetup(res)
@@ -78,10 +106,12 @@ export default function ProfilePage() {
   }
 
   async function confirmTotp() {
-    setTotpError(''); setTotpLoading(true)
+    setTotpError('')
+    setTotpLoading(true)
     try {
       await profileApi.confirmTotp({ code: totpCode })
-      setTotpSetup(null); setTotpCode('')
+      setTotpSetup(null)
+      setTotpCode('')
       const updated = await profileApi.me()
       setUser(updated)
     } catch (err) {
@@ -92,17 +122,21 @@ export default function ProfilePage() {
   }
 
   function askRemoval(kind: 'totp' | 'passkey', id: string) {
-    setRemoval({ kind, id }); setRemovalPassword(''); setRemovalError('')
+    setRemoval({ kind, id })
+    setRemovalPassword('')
+    setRemovalError('')
   }
 
   async function confirmRemoval(e: React.FormEvent) {
     e.preventDefault()
     if (!removal) return
-    setRemovalError(''); setRemovalLoading(true)
+    setRemovalError('')
+    setRemovalLoading(true)
     try {
       if (removal.kind === 'totp') await profileApi.deleteTotp(removal.id, removalPassword)
       else await profileApi.deletePasskey(removal.id, removalPassword)
-      setRemoval(null); setRemovalPassword('')
+      setRemoval(null)
+      setRemovalPassword('')
       setUser(await profileApi.me())
     } catch (err) {
       setRemovalError(err instanceof Error ? err.message : t('errors.generic'))
@@ -120,10 +154,13 @@ export default function ProfilePage() {
   }
 
   async function registerPasskey() {
-    setPasskeyLoading(true); setPasskeyError('')
+    setPasskeyLoading(true)
+    setPasskeyError('')
     try {
       const options = await profileApi.passkeyRegisterOptions()
-      const result = await startRegistration({ optionsJSON: options as unknown as Parameters<typeof startRegistration>[0]['optionsJSON'] })
+      const result = await startRegistration({
+        optionsJSON: options as unknown as Parameters<typeof startRegistration>[0]['optionsJSON'],
+      })
       await profileApi.passkeyRegisterVerify(result)
       const updated = await profileApi.me()
       setUser(updated)
@@ -140,7 +177,9 @@ export default function ProfilePage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-zinc-50 dark:bg-zinc-950 flex items-center justify-center text-zinc-500 text-sm">{t('common.loading')}</div>
+      <div className="min-h-screen bg-zinc-50 dark:bg-zinc-950 flex items-center justify-center text-zinc-500 text-sm">
+        {t('common.loading')}
+      </div>
     )
   }
 
@@ -189,19 +228,44 @@ export default function ProfilePage() {
           </h2>
           <form onSubmit={savePassword} className="space-y-4">
             <div>
-              <label htmlFor="profile-current-password" className="label">{t('profile.current_password')}</label>
-              <input id="profile-current-password" type="password" className="input" value={pwForm.currentPassword}
-                onChange={(e) => setPwForm({ ...pwForm, currentPassword: e.target.value })} required />
+              <label htmlFor="profile-current-password" className="label">
+                {t('profile.current_password')}
+              </label>
+              <input
+                id="profile-current-password"
+                type="password"
+                className="input"
+                value={pwForm.currentPassword}
+                onChange={(e) => setPwForm({ ...pwForm, currentPassword: e.target.value })}
+                required
+              />
             </div>
             <div>
-              <label htmlFor="profile-new-password" className="label">{t('profile.new_password')}</label>
-              <input id="profile-new-password" type="password" className="input" value={pwForm.newPassword}
-                onChange={(e) => setPwForm({ ...pwForm, newPassword: e.target.value })} required placeholder={t('auth.pw_min')} />
+              <label htmlFor="profile-new-password" className="label">
+                {t('profile.new_password')}
+              </label>
+              <input
+                id="profile-new-password"
+                type="password"
+                className="input"
+                value={pwForm.newPassword}
+                onChange={(e) => setPwForm({ ...pwForm, newPassword: e.target.value })}
+                required
+                placeholder={t('auth.pw_min')}
+              />
             </div>
             <div>
-              <label htmlFor="profile-confirm-password" className="label">{t('profile.confirm_new_password')}</label>
-              <input id="profile-confirm-password" type="password" className="input" value={pwForm.confirm}
-                onChange={(e) => setPwForm({ ...pwForm, confirm: e.target.value })} required />
+              <label htmlFor="profile-confirm-password" className="label">
+                {t('profile.confirm_new_password')}
+              </label>
+              <input
+                id="profile-confirm-password"
+                type="password"
+                className="input"
+                value={pwForm.confirm}
+                onChange={(e) => setPwForm({ ...pwForm, confirm: e.target.value })}
+                required
+              />
             </div>
             {pwError && <p className="text-sm text-red-400">{pwError}</p>}
             {pwSuccess && <p className="text-sm text-emerald-400">{pwSuccess}</p>}
@@ -220,12 +284,21 @@ export default function ProfilePage() {
           {user?.totpCredentials && user.totpCredentials.length > 0 && (
             <ul className="space-y-2 mb-4">
               {user.totpCredentials.map((cred) => (
-                <li key={cred.id} className="flex items-center justify-between bg-zinc-100 dark:bg-zinc-800 rounded-lg px-4 py-2.5">
+                <li
+                  key={cred.id}
+                  className="flex items-center justify-between bg-zinc-100 dark:bg-zinc-800 rounded-lg px-4 py-2.5"
+                >
                   <div>
                     <p className="text-sm text-zinc-800 dark:text-zinc-200">{cred.name}</p>
-                    <p className="text-xs text-zinc-500">{t('profile.totp_added')} {new Date(cred.created_at * 1000).toLocaleDateString()}</p>
+                    <p className="text-xs text-zinc-500">
+                      {t('profile.totp_added')} {new Date(cred.created_at * 1000).toLocaleDateString()}
+                    </p>
                   </div>
-                  <button type="button" onClick={() => askRemoval('totp', cred.id)} className="btn-ghost p-1.5 text-red-400">
+                  <button
+                    type="button"
+                    onClick={() => askRemoval('totp', cred.id)}
+                    className="btn-ghost p-1.5 text-red-400"
+                  >
                     <Trash2 size={14} />
                   </button>
                 </li>
@@ -239,9 +312,7 @@ export default function ProfilePage() {
             </button>
           ) : (
             <div className="space-y-4">
-              <p className="text-sm text-zinc-400">
-                {t('profile.totp_scan')}
-              </p>
+              <p className="text-sm text-zinc-400">{t('profile.totp_scan')}</p>
               <div className="flex justify-center">
                 {totpQr ? (
                   <img src={totpQr} alt={t('profile.totp_qr_alt')} className="rounded-lg w-44 h-44" />
@@ -255,23 +326,54 @@ export default function ProfilePage() {
                 <code className="flex-1 text-xs text-zinc-700 dark:text-zinc-300 font-mono break-all">
                   {showSecret ? totpSetup.secret : '•'.repeat(totpSetup.secret.length)}
                 </code>
-                <button type="button" onClick={() => setShowSecret(!showSecret)} className="text-zinc-500 hover:text-zinc-300 p-1">
+                <button
+                  type="button"
+                  onClick={() => setShowSecret(!showSecret)}
+                  className="text-zinc-500 hover:text-zinc-300 p-1"
+                >
                   {showSecret ? <EyeOff size={13} /> : <Eye size={13} />}
                 </button>
-                <button type="button" onClick={copySecret} className={`p-1 ${copied ? 'text-emerald-400' : 'text-zinc-500 hover:text-zinc-300'}`}>
+                <button
+                  type="button"
+                  onClick={copySecret}
+                  className={`p-1 ${copied ? 'text-emerald-400' : 'text-zinc-500 hover:text-zinc-300'}`}
+                >
                   {copied ? <CheckCircle size={13} /> : <Copy size={13} />}
                 </button>
               </div>
               <div>
-                <label htmlFor="profile-totp-code" className="label">{t('profile.totp_enter_code')}</label>
-                <input id="profile-totp-code" type="text" inputMode="numeric" maxLength={6} value={totpCode}
+                <label htmlFor="profile-totp-code" className="label">
+                  {t('profile.totp_enter_code')}
+                </label>
+                <input
+                  id="profile-totp-code"
+                  type="text"
+                  inputMode="numeric"
+                  maxLength={6}
+                  value={totpCode}
                   onChange={(e) => setTotpCode(e.target.value.replace(/\D/g, ''))}
-                  className="input text-center text-xl tracking-[0.5em] font-mono" placeholder="000000" />
+                  className="input text-center text-xl tracking-[0.5em] font-mono"
+                  placeholder="000000"
+                />
               </div>
               {totpError && <p className="text-sm text-red-400">{totpError}</p>}
               <div className="flex gap-3">
-                <button type="button" onClick={() => { setTotpSetup(null); setTotpCode('') }} className="btn-secondary flex-1">{t('2fa.cancel')}</button>
-                <button type="button" onClick={confirmTotp} disabled={totpLoading || totpCode.length < 6} className="btn-primary flex-1">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setTotpSetup(null)
+                    setTotpCode('')
+                  }}
+                  className="btn-secondary flex-1"
+                >
+                  {t('2fa.cancel')}
+                </button>
+                <button
+                  type="button"
+                  onClick={confirmTotp}
+                  disabled={totpLoading || totpCode.length < 6}
+                  className="btn-primary flex-1"
+                >
                   {totpLoading ? t('profile.totp_confirming') : t('profile.totp_confirm')}
                 </button>
               </div>
@@ -289,12 +391,21 @@ export default function ProfilePage() {
           {user?.passkeyCredentials && user.passkeyCredentials.length > 0 && (
             <ul className="space-y-2 mb-4">
               {user.passkeyCredentials.map((cred) => (
-                <li key={cred.id} className="flex items-center justify-between bg-zinc-100 dark:bg-zinc-800 rounded-lg px-4 py-2.5">
+                <li
+                  key={cred.id}
+                  className="flex items-center justify-between bg-zinc-100 dark:bg-zinc-800 rounded-lg px-4 py-2.5"
+                >
                   <div>
                     <p className="text-sm text-zinc-800 dark:text-zinc-200">{cred.name ?? t('profile.passkey')}</p>
-                    <p className="text-xs text-zinc-500">{t('profile.totp_added')} {new Date(cred.created_at * 1000).toLocaleDateString()}</p>
+                    <p className="text-xs text-zinc-500">
+                      {t('profile.totp_added')} {new Date(cred.created_at * 1000).toLocaleDateString()}
+                    </p>
                   </div>
-                  <button type="button" onClick={() => askRemoval('passkey', cred.id)} className="btn-ghost p-1.5 text-red-400">
+                  <button
+                    type="button"
+                    onClick={() => askRemoval('passkey', cred.id)}
+                    className="btn-ghost p-1.5 text-red-400"
+                  >
                     <Trash2 size={14} />
                   </button>
                 </li>
@@ -317,14 +428,26 @@ export default function ProfilePage() {
             </h2>
             <p className="text-sm text-zinc-500">{t('profile.confirm_remove_desc')}</p>
             <div>
-              <label htmlFor="removal-password" className="label">{t('profile.current_password')}</label>
-              {/* biome-ignore lint/a11y/noAutofocus: focus moves into the dialog that just opened */}
-              <input id="removal-password" type="password" className="input" value={removalPassword} autoFocus required
-                autoComplete="current-password" onChange={(e) => setRemovalPassword(e.target.value)} />
+              <label htmlFor="removal-password" className="label">
+                {t('profile.current_password')}
+              </label>
+              <input
+                id="removal-password"
+                type="password"
+                className="input"
+                value={removalPassword}
+                // biome-ignore lint/a11y/noAutofocus: focus moves into the dialog that just opened
+                autoFocus
+                required
+                autoComplete="current-password"
+                onChange={(e) => setRemovalPassword(e.target.value)}
+              />
             </div>
             {removalError && <p className="text-sm text-red-400">{removalError}</p>}
             <div className="flex gap-3">
-              <button type="button" onClick={() => setRemoval(null)} className="btn-secondary flex-1">{t('2fa.cancel')}</button>
+              <button type="button" onClick={() => setRemoval(null)} className="btn-secondary flex-1">
+                {t('2fa.cancel')}
+              </button>
               <button type="submit" disabled={removalLoading || !removalPassword} className="btn-danger flex-1">
                 {removalLoading ? t('profile.removing') : t('profile.remove')}
               </button>

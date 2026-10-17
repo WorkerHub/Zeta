@@ -12,37 +12,25 @@
       "groupName": "Cloudflare packages",
       "matchUpdateTypes": ["patch", "minor"],
       "automerge": true,
-      "matchPackageNames": [
-        "/^@cloudflare//"
-      ]
+      "matchPackageNames": ["/^@cloudflare//"]
     },
     {
       "groupName": "SimpleWebAuthn packages",
       "matchUpdateTypes": ["patch", "minor"],
       "automerge": true,
-      "matchPackageNames": [
-        "/^@simplewebauthn//"
-      ]
+      "matchPackageNames": ["/^@simplewebauthn//"]
     },
     {
       "groupName": "CodeMirror packages",
       "matchUpdateTypes": ["patch", "minor"],
       "automerge": true,
-      "matchPackageNames": [
-        "/^@codemirror//",
-        "/^@uiw/react-codemirror$/",
-        "/^codemirror$/"
-      ]
+      "matchPackageNames": ["/^@codemirror//", "/^@uiw/react-codemirror$/", "/^codemirror$/"]
     },
     {
       "groupName": "React ecosystem",
       "matchUpdateTypes": ["patch", "minor"],
       "automerge": true,
-      "matchPackageNames": [
-        "/^react$/",
-        "/^react-dom$/",
-        "/^react-router-dom$/"
-      ]
+      "matchPackageNames": ["/^react$/", "/^react-dom$/", "/^react-router-dom$/"]
     },
     {
       "groupName": "Build tooling",

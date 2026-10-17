@@ -3,9 +3,15 @@ import { Database, ArrowLeft, Server, Zap } from 'lucide-react'
 import { useLocale } from '../hooks/useLocale'
 
 const FEATURE_KEYS = [
-  'about.feature_1', 'about.feature_2', 'about.feature_3',
-  'about.feature_4', 'about.feature_5', 'about.feature_6',
-  'about.feature_7', 'about.feature_8', 'about.feature_9',
+  'about.feature_1',
+  'about.feature_2',
+  'about.feature_3',
+  'about.feature_4',
+  'about.feature_5',
+  'about.feature_6',
+  'about.feature_7',
+  'about.feature_8',
+  'about.feature_9',
 ] as const
 
 const STACK = [
@@ -45,9 +51,7 @@ export default function AboutPage() {
 
         {/* Description */}
         <div className="card p-5">
-          <p className="text-sm text-zinc-600 dark:text-zinc-400 leading-relaxed">
-            {t('about.description')}
-          </p>
+          <p className="text-sm text-zinc-600 dark:text-zinc-400 leading-relaxed">{t('about.description')}</p>
         </div>
 
         {/* Features */}

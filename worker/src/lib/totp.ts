@@ -21,11 +21,7 @@ async function getDerivedKey(env: Env): Promise<CryptoKey> {
 
 async function encrypt(key: CryptoKey, plaintext: string): Promise<string> {
   const iv = crypto.getRandomValues(new Uint8Array(12))
-  const ct = await crypto.subtle.encrypt(
-    { name: 'AES-GCM', iv },
-    key,
-    new TextEncoder().encode(plaintext)
-  )
+  const ct = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, new TextEncoder().encode(plaintext))
   const combined = new Uint8Array(iv.byteLength + ct.byteLength)
   combined.set(iv)
   combined.set(new Uint8Array(ct), iv.byteLength)

@@ -48,17 +48,26 @@ export default function ForgotPassword() {
           {message ? (
             <div className="space-y-4">
               <p className="text-sm text-zinc-300">{message}</p>
-              <Link to="/login" className="btn-secondary w-full block text-center">{t('auth.back_to_signin')}</Link>
+              <Link to="/login" className="btn-secondary w-full block text-center">
+                {t('auth.back_to_signin')}
+              </Link>
             </div>
           ) : (
             <form onSubmit={handleSubmit} className="space-y-4">
               <div>
-                <label htmlFor="forgot-email" className="label">{t('auth.email')}</label>
+                <label htmlFor="forgot-email" className="label">
+                  {t('auth.email')}
+                </label>
                 <input
                   id="forgot-email"
-                  type="email" value={email} onChange={(e) => setEmail(e.target.value)}
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  className="input"
+                  placeholder={t('auth.placeholder_email')}
+                  required
                   // biome-ignore lint/a11y/noAutofocus: single-purpose auth form; focusing its first field is the expected entry point
-                  className="input" placeholder={t('auth.placeholder_email')} required autoFocus
+                  autoFocus
                 />
               </div>
               <button type="submit" className="btn-primary w-full" disabled={loading}>

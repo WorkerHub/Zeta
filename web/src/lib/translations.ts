@@ -96,7 +96,8 @@ export const translations: Record<Locale, Record<string, string>> = {
     'user.sign_out': 'Sign out',
 
     // About modal
-    'about.description': 'A self-hosted SQL query interface for Cloudflare D1 databases. Runs entirely on Cloudflare - no servers to manage.',
+    'about.description':
+      'A self-hosted SQL query interface for Cloudflare D1 databases. Runs entirely on Cloudflare - no servers to manage.',
     'about.features': 'Features',
     'about.tech_stack': 'Tech Stack',
     'about.feature_1': 'SQL Notebooks - multiple named tabs, auto-saved, each bound to a database',

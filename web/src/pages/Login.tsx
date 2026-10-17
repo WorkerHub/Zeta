@@ -66,25 +66,38 @@ export default function Login() {
 
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
-              <label htmlFor="login-email" className="label">{t('auth.email')}</label>
+              <label htmlFor="login-email" className="label">
+                {t('auth.email')}
+              </label>
               <input
                 id="login-email"
-                type="email" value={email} onChange={(e) => setEmail(e.target.value)}
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                className="input"
+                placeholder={t('auth.placeholder_email')}
+                required
                 // biome-ignore lint/a11y/noAutofocus: single-purpose auth form; focusing its first field is the expected entry point
-                className="input" placeholder={t('auth.placeholder_email')} required autoFocus
+                autoFocus
               />
             </div>
             <div>
-              <label htmlFor="login-password" className="label">{t('auth.password')}</label>
+              <label htmlFor="login-password" className="label">
+                {t('auth.password')}
+              </label>
               <div className="relative">
                 <input
                   id="login-password"
-                  type={showPw ? 'text' : 'password'} value={password}
+                  type={showPw ? 'text' : 'password'}
+                  value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  className="input pr-10" placeholder="••••••••" required
+                  className="input pr-10"
+                  placeholder="••••••••"
+                  required
                 />
                 <button
-                  type="button" onClick={() => setShowPw(!showPw)}
+                  type="button"
+                  onClick={() => setShowPw(!showPw)}
                   className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-zinc-300"
                 >
                   {showPw ? <EyeOff size={16} /> : <Eye size={16} />}

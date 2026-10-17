@@ -15,7 +15,11 @@ describe('classifySql', () => {
     ['read-only pragma', 'PRAGMA table_info(users)', 'read'],
     ['schema-qualified read pragma', 'PRAGMA main.table_info(users)', 'read'],
     ['cte select', 'WITH a AS (SELECT 1) SELECT * FROM a', 'read'],
-    ['recursive cte', 'WITH RECURSIVE r(n) AS (SELECT 1 UNION ALL SELECT n+1 FROM r WHERE n<5) SELECT n FROM r', 'read'],
+    [
+      'recursive cte',
+      'WITH RECURSIVE r(n) AS (SELECT 1 UNION ALL SELECT n+1 FROM r WHERE n<5) SELECT n FROM r',
+      'read',
+    ],
     ['cte using replace() function', "WITH a AS (SELECT replace('a','b','c') x) SELECT x FROM a", 'read'],
     ['cte named like write keyword in quotes', 'WITH "delete" AS (SELECT 1) SELECT * FROM "delete"', 'read'],
 

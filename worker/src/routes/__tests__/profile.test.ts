@@ -5,11 +5,16 @@ import { bearer, callWorker, fakeD1, fakeEnv, postJson } from './fakes'
 const PASSWORD = 'correct horse battery'
 let passwordHash: string
 
-beforeAll(async () => { passwordHash = await hashPassword(PASSWORD) })
+beforeAll(async () => {
+  passwordHash = await hashPassword(PASSWORD)
+})
 
 function profileEnv() {
   const { db, calls } = fakeD1((sql) =>
-    sql.startsWith('SELECT email, password_hash FROM users') ? { email: 'a@example.com', password_hash: passwordHash } : null)
+    sql.startsWith('SELECT email, password_hash FROM users')
+      ? { email: 'a@example.com', password_hash: passwordHash }
+      : null
+  )
   return { env: fakeEnv({ DB: db }), calls }
 }
 
@@ -25,14 +30,24 @@ describe.each([
     const { env, calls } = profileEnv()
     const headers = await bearer(env, 'u1')
     expect((await callWorker(env, path, { method: 'DELETE', headers })).status).toBe(400)
-    expect((await callWorker(env, path, { ...del({ currentPassword: 'wrong' }), headers: { ...headers, 'Content-Type': 'application/json' } })).status).toBe(403)
+    expect(
+      (
+        await callWorker(env, path, {
+          ...del({ currentPassword: 'wrong' }),
+          headers: { ...headers, 'Content-Type': 'application/json' },
+        })
+      ).status
+    ).toBe(403)
     expect(deleted(calls)).toBe(false)
   })
 
   it('works with the current password', async () => {
     const { env, calls } = profileEnv()
     const headers = await bearer(env, 'u1')
-    const res = await callWorker(env, path, { ...del({ currentPassword: PASSWORD }), headers: { ...headers, 'Content-Type': 'application/json' } })
+    const res = await callWorker(env, path, {
+      ...del({ currentPassword: PASSWORD }),
+      headers: { ...headers, 'Content-Type': 'application/json' },
+    })
     expect(res.status).toBe(200)
     expect(deleted(calls)).toBe(true)
     expect(calls.find((c) => c.sql.startsWith(deleteSql))!.args).toEqual(['cred-1', 'u1'])
@@ -55,11 +70,17 @@ describe('POST /api/profile/change-password', () => {
   it('rejects a wrong current password and accepts the right one', async () => {
     const { env, calls } = profileEnv()
     const headers = await bearer(env, 'u1')
-    const wrong = await callWorker(env, '/api/profile/change-password',
-      postJson({ currentPassword: 'wrong', newPassword: 'new password' }, { headers }))
+    const wrong = await callWorker(
+      env,
+      '/api/profile/change-password',
+      postJson({ currentPassword: 'wrong', newPassword: 'new password' }, { headers })
+    )
     expect(wrong.status).toBe(403)
-    const ok = await callWorker(env, '/api/profile/change-password',
-      postJson({ currentPassword: PASSWORD, newPassword: 'new password' }, { headers }))
+    const ok = await callWorker(
+      env,
+      '/api/profile/change-password',
+      postJson({ currentPassword: PASSWORD, newPassword: 'new password' }, { headers })
+    )
     expect(ok.status).toBe(200)
     expect(calls.filter((c) => c.sql.startsWith('UPDATE users SET password_hash'))).toHaveLength(1)
   })

@@ -39,9 +39,10 @@ export default function TwoFactorModal({ pendingToken, onSuccess, onCancel }: Pr
     setError('')
     setLoading(true)
     try {
-      const res = method === 'totp'
-        ? await authApi.verify2faTotp({ pendingToken, code })
-        : await authApi.verifyEmailOtp({ pendingToken, code })
+      const res =
+        method === 'totp'
+          ? await authApi.verify2faTotp({ pendingToken, code })
+          : await authApi.verifyEmailOtp({ pendingToken, code })
       onSuccess(res.accessToken, res.user)
     } catch (err) {
       setError(err instanceof Error ? err.message : t('errors.verify_failed'))
@@ -87,12 +88,27 @@ export default function TwoFactorModal({ pendingToken, onSuccess, onCancel }: Pr
             <button
               type="button"
               key={m}
-              onClick={() => { setMethod(m); setCode(''); setError(''); setOtpSent(false) }}
+              onClick={() => {
+                setMethod(m)
+                setCode('')
+                setError('')
+                setOtpSent(false)
+              }}
               className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-medium border transition-colors ${method === m ? 'bg-blue-600 border-blue-600 text-white' : 'bg-zinc-100 border-zinc-200 text-zinc-500 hover:text-zinc-800 dark:bg-zinc-800 dark:border-zinc-700 dark:text-zinc-400 dark:hover:text-zinc-200'}`}
             >
-              {m === 'totp' ? <><Smartphone size={13} /> {t('2fa.authenticator')}</>
-                : m === 'email-otp' ? <><Mail size={13} /> {t('2fa.email_otp')}</>
-                : <><Fingerprint size={13} /> {t('2fa.passkey')}</>}
+              {m === 'totp' ? (
+                <>
+                  <Smartphone size={13} /> {t('2fa.authenticator')}
+                </>
+              ) : m === 'email-otp' ? (
+                <>
+                  <Mail size={13} /> {t('2fa.email_otp')}
+                </>
+              ) : (
+                <>
+                  <Fingerprint size={13} /> {t('2fa.passkey')}
+                </>
+              )}
             </button>
           ))}
         </div>
@@ -100,14 +116,21 @@ export default function TwoFactorModal({ pendingToken, onSuccess, onCancel }: Pr
         {method === 'totp' && (
           <div className="space-y-4">
             <div>
-              <label htmlFor="twofa-totp-code" className="label">{t('2fa.enter_code')}</label>
+              <label htmlFor="twofa-totp-code" className="label">
+                {t('2fa.enter_code')}
+              </label>
               <input
                 id="twofa-totp-code"
-                type="text" inputMode="numeric" pattern="\d{6}" maxLength={6}
-                value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, ''))}
+                type="text"
+                inputMode="numeric"
+                pattern="\d{6}"
+                maxLength={6}
+                value={code}
+                onChange={(e) => setCode(e.target.value.replace(/\D/g, ''))}
                 className="input text-center text-2xl tracking-[0.5em] font-mono"
+                placeholder="000000"
                 // biome-ignore lint/a11y/noAutofocus: focus moves into the dialog that just opened
-                placeholder="000000" autoFocus
+                autoFocus
               />
             </div>
           </div>
@@ -123,14 +146,21 @@ export default function TwoFactorModal({ pendingToken, onSuccess, onCancel }: Pr
             ) : (
               <div>
                 <p className="text-sm text-emerald-400 mb-4">{t('2fa.code_sent')}</p>
-                <label htmlFor="twofa-email-code" className="label">{t('2fa.enter_code')}</label>
+                <label htmlFor="twofa-email-code" className="label">
+                  {t('2fa.enter_code')}
+                </label>
                 <input
                   id="twofa-email-code"
-                  type="text" inputMode="numeric" pattern="\d{6}" maxLength={6}
-                  value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, ''))}
+                  type="text"
+                  inputMode="numeric"
+                  pattern="\d{6}"
+                  maxLength={6}
+                  value={code}
+                  onChange={(e) => setCode(e.target.value.replace(/\D/g, ''))}
                   className="input text-center text-2xl tracking-[0.5em] font-mono"
+                  placeholder="000000"
                   // biome-ignore lint/a11y/noAutofocus: focus moves into the dialog that just opened
-                  placeholder="000000" autoFocus
+                  autoFocus
                 />
               </div>
             )}
@@ -139,12 +169,7 @@ export default function TwoFactorModal({ pendingToken, onSuccess, onCancel }: Pr
 
         {method === 'passkey' && (
           <div className="flex flex-col items-center py-2">
-            <button
-              type="button"
-              onClick={signInWithPasskey}
-              disabled={loading}
-              className="btn-secondary w-full gap-2"
-            >
+            <button type="button" onClick={signInWithPasskey} disabled={loading} className="btn-secondary w-full gap-2">
               <Fingerprint size={14} />
               {loading ? t('profile.passkey_waiting') : t('2fa.use_passkey')}
             </button>
@@ -154,7 +179,9 @@ export default function TwoFactorModal({ pendingToken, onSuccess, onCancel }: Pr
         {error && <p className="text-sm text-red-400 mt-3">{error}</p>}
 
         <div className="mt-6 flex gap-3">
-          <button type="button" onClick={onCancel} className="btn-secondary flex-1">{t('2fa.cancel')}</button>
+          <button type="button" onClick={onCancel} className="btn-secondary flex-1">
+            {t('2fa.cancel')}
+          </button>
           {(method === 'totp' || (method === 'email-otp' && otpSent)) && (
             <button type="button" onClick={verify} disabled={loading || code.length < 6} className="btn-primary flex-1">
               {loading ? t('2fa.verifying') : t('2fa.verify')}

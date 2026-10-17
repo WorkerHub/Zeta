@@ -22,7 +22,8 @@ function RouteLoading() {
 function PrivateRoute({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuthContext()
   const { t } = useLocale()
-  if (loading) return <div className="flex h-screen items-center justify-center text-zinc-500 text-sm">{t('common.loading')}</div>
+  if (loading)
+    return <div className="flex h-screen items-center justify-center text-zinc-500 text-sm">{t('common.loading')}</div>
   if (!user) return <Navigate to="/login" replace />
   return <>{children}</>
 }
@@ -30,7 +31,8 @@ function PrivateRoute({ children }: { children: React.ReactNode }) {
 function AdminRoute({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuthContext()
   const { t } = useLocale()
-  if (loading) return <div className="flex h-screen items-center justify-center text-zinc-500 text-sm">{t('common.loading')}</div>
+  if (loading)
+    return <div className="flex h-screen items-center justify-center text-zinc-500 text-sm">{t('common.loading')}</div>
   if (!user) return <Navigate to="/login" replace />
   if (user.role !== 'admin') return <Navigate to="/query" replace />
   return <>{children}</>
@@ -48,10 +50,38 @@ export default function App() {
             <Route path="/forgot-password" element={<ForgotPassword />} />
             <Route path="/reset-password" element={<ResetPassword />} />
             <Route path="/verify-email" element={<VerifyEmail />} />
-            <Route path="/query" element={<PrivateRoute><QueryPage /></PrivateRoute>} />
-            <Route path="/profile" element={<PrivateRoute><ProfilePage /></PrivateRoute>} />
-            <Route path="/about" element={<PrivateRoute><AboutPage /></PrivateRoute>} />
-            <Route path="/admin/*" element={<AdminRoute><AdminPage /></AdminRoute>} />
+            <Route
+              path="/query"
+              element={
+                <PrivateRoute>
+                  <QueryPage />
+                </PrivateRoute>
+              }
+            />
+            <Route
+              path="/profile"
+              element={
+                <PrivateRoute>
+                  <ProfilePage />
+                </PrivateRoute>
+              }
+            />
+            <Route
+              path="/about"
+              element={
+                <PrivateRoute>
+                  <AboutPage />
+                </PrivateRoute>
+              }
+            />
+            <Route
+              path="/admin/*"
+              element={
+                <AdminRoute>
+                  <AdminPage />
+                </AdminRoute>
+              }
+            />
             <Route path="*" element={<Navigate to="/query" replace />} />
           </Routes>
         </Suspense>

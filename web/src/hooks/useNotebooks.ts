@@ -24,7 +24,7 @@ export function useNotebooks() {
     return () => {
       debounceTimers.current.forEach((timer, id) => {
         clearTimeout(timer)
-        const nb = notebooksRef.current.find(n => n.id === id)
+        const nb = notebooksRef.current.find((n) => n.id === id)
         if (nb) notebooksApi.update(id, { sql_content: nb.sql_content }).catch(() => {})
       })
       debounceTimers.current.clear()
@@ -32,7 +32,8 @@ export function useNotebooks() {
   }, [])
 
   useEffect(() => {
-    notebooksApi.list()
+    notebooksApi
+      .list()
       .then(async ({ results }) => {
         let nbs = results
         if (nbs.length === 0) {
@@ -41,7 +42,7 @@ export function useNotebooks() {
         }
         setNotebooks(nbs)
         const stored = localStorage.getItem(ACTIVE_NOTEBOOK_KEY)
-        const validId = stored && nbs.some(n => n.id === stored) ? stored : (nbs[0]?.id ?? null)
+        const validId = stored && nbs.some((n) => n.id === stored) ? stored : (nbs[0]?.id ?? null)
         setActiveIdState(validId)
       })
       .catch(() => {})
@@ -56,24 +57,27 @@ export function useNotebooks() {
   const createNotebook = useCallback(async () => {
     if (notebooksRef.current.length >= MAX_NOTEBOOKS) return
     const nb = await notebooksApi.create({})
-    setNotebooks(prev => [...prev, nb])
+    setNotebooks((prev) => [...prev, nb])
     setActiveId(nb.id)
   }, [setActiveId])
 
   const deleteNotebook = useCallback(async (id: string) => {
     const current = notebooksRef.current
-    const deletedIdx = current.findIndex(n => n.id === id)
-    const remaining = current.filter(n => n.id !== id)
+    const deletedIdx = current.findIndex((n) => n.id === id)
+    const remaining = current.filter((n) => n.id !== id)
 
     // Clear any pending debounce before the API call to avoid a 404 race
     const timer = debounceTimers.current.get(id)
-    if (timer) { clearTimeout(timer); debounceTimers.current.delete(id) }
+    if (timer) {
+      clearTimeout(timer)
+      debounceTimers.current.delete(id)
+    }
 
     await notebooksApi.delete(id)
 
-    setNotebooks(prev => prev.filter(n => n.id !== id).map((n, i) => ({ ...n, position: i })))
+    setNotebooks((prev) => prev.filter((n) => n.id !== id).map((n, i) => ({ ...n, position: i })))
 
-    setActiveIdState(prev => {
+    setActiveIdState((prev) => {
       if (prev !== id) return prev
       const next = remaining[Math.max(0, deletedIdx - 1)]
       const newId = next?.id ?? null
@@ -84,23 +88,24 @@ export function useNotebooks() {
 
   const renameNotebook = useCallback(async (id: string, name: string) => {
     const trimmed = name.trim() || 'Untitled'
-    const prevName = notebooksRef.current.find(n => n.id === id)?.name ?? null
-    setNotebooks(p => p.map(n => n.id === id ? { ...n, name: trimmed } : n))
+    const prevName = notebooksRef.current.find((n) => n.id === id)?.name ?? null
+    setNotebooks((p) => p.map((n) => (n.id === id ? { ...n, name: trimmed } : n)))
     try {
       await notebooksApi.update(id, { name: trimmed })
     } catch {
-      if (prevName !== null) setNotebooks(p => p.map(n => n.id === id ? { ...n, name: prevName } : n))
+      if (prevName !== null) setNotebooks((p) => p.map((n) => (n.id === id ? { ...n, name: prevName } : n)))
     }
   }, [])
 
   const updateContent = useCallback((id: string, sql_content: string) => {
-    setNotebooks(prev => prev.map(n => n.id === id ? { ...n, sql_content } : n))
+    setNotebooks((prev) => prev.map((n) => (n.id === id ? { ...n, sql_content } : n)))
 
     const existing = debounceTimers.current.get(id)
     if (existing) clearTimeout(existing)
 
     const timer = setTimeout(() => {
-      notebooksApi.update(id, { sql_content })
+      notebooksApi
+        .update(id, { sql_content })
         .then(() => setSaveError(false))
         .catch(() => setSaveError(true))
       debounceTimers.current.delete(id)
@@ -109,12 +114,12 @@ export function useNotebooks() {
   }, [])
 
   const updateDatabase = useCallback(async (id: string, database_id: string | null) => {
-    const prev = notebooksRef.current.find(n => n.id === id)?.database_id ?? null
-    setNotebooks(p => p.map(n => n.id === id ? { ...n, database_id } : n))
+    const prev = notebooksRef.current.find((n) => n.id === id)?.database_id ?? null
+    setNotebooks((p) => p.map((n) => (n.id === id ? { ...n, database_id } : n)))
     try {
       await notebooksApi.update(id, { database_id })
     } catch {
-      setNotebooks(p => p.map(n => n.id === id ? { ...n, database_id: prev } : n))
+      setNotebooks((p) => p.map((n) => (n.id === id ? { ...n, database_id: prev } : n)))
     }
   }, [])
 

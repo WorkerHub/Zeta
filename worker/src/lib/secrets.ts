@@ -9,7 +9,7 @@ export const isEncryptedSecret = (v: string): boolean => v.startsWith(PREFIX)
 // Idempotent: already-encrypted values are returned unchanged.
 export async function sealSecret(env: Env, plaintext: string): Promise<string> {
   if (!plaintext || isEncryptedSecret(plaintext)) return plaintext
-  return PREFIX + await encryptTotpSecret(env, plaintext)
+  return PREFIX + (await encryptTotpSecret(env, plaintext))
 }
 
 // Values without the prefix are legacy plaintext and are returned as-is.
@@ -24,13 +24,17 @@ export async function openSecret(env: Env, stored: string): Promise<string> {
 // concurrent settings save is never overwritten.
 export async function sealLegacySecret(env: Env, key: string, raw: string, field: string): Promise<boolean> {
   let config: Record<string, unknown>
-  try { config = JSON.parse(raw) } catch { return false }
+  try {
+    config = JSON.parse(raw)
+  } catch {
+    return false
+  }
   const value = config?.[field]
   if (typeof value !== 'string' || !value || isEncryptedSecret(value)) return false
   const sealed = JSON.stringify({ ...config, [field]: await sealSecret(env, value) })
   const T = tables(env)
-  await env.DB.prepare(
-    `UPDATE ${T.settings} SET value = ?1, updated_at = ?2 WHERE key = ?3 AND value = ?4`
-  ).bind(sealed, now(), key, raw).run()
+  await env.DB.prepare(`UPDATE ${T.settings} SET value = ?1, updated_at = ?2 WHERE key = ?3 AND value = ?4`)
+    .bind(sealed, now(), key, raw)
+    .run()
   return true
 }

@@ -15,7 +15,9 @@ describe('setup endpoint', () => {
   it('seeds registration as closed (the first account can still register)', async () => {
     const { db, calls } = fakeD1()
     await callWorker(fakeEnv({ DB: db }), '/api/setup', postJson({ secret: 'test-setup-secret' }))
-    const seed = calls.find((c) => c.sql.startsWith('INSERT OR IGNORE INTO settings') && c.args[0] === 'registration_enabled')
+    const seed = calls.find(
+      (c) => c.sql.startsWith('INSERT OR IGNORE INTO settings') && c.args[0] === 'registration_enabled'
+    )
     expect(seed?.args[1]).toBe('false')
   })
 
@@ -52,7 +54,9 @@ describe('setup endpoint', () => {
 
   describe('query_history upgrade', () => {
     const tableInfo = (notnull: number) => [
-      { name: 'id', notnull: 0 }, { name: 'user_id', notnull }, { name: 'database_id', notnull },
+      { name: 'id', notnull: 0 },
+      { name: 'user_id', notnull },
+      { name: 'database_id', notnull },
       { name: 'sql', notnull: 1 },
     ]
     const foreignKeys = (onDelete: string) => [
@@ -70,7 +74,9 @@ describe('setup endpoint', () => {
       const start = sqls.indexOf('DROP TABLE IF EXISTS query_history_new')
       expect(start).toBeGreaterThan(-1)
       const rebuild = sqls.slice(start)
-      expect(rebuild[1]).toMatch(/^CREATE TABLE IF NOT EXISTS query_history_new \( id TEXT PRIMARY KEY, user_id TEXT REFERENCES users\(id\) ON DELETE SET NULL, database_id TEXT REFERENCES d1_databases\(id\) ON DELETE SET NULL,/)
+      expect(rebuild[1]).toMatch(
+        /^CREATE TABLE IF NOT EXISTS query_history_new \( id TEXT PRIMARY KEY, user_id TEXT REFERENCES users\(id\) ON DELETE SET NULL, database_id TEXT REFERENCES d1_databases\(id\) ON DELETE SET NULL,/
+      )
       expect(rebuild[2]).toMatch(/^INSERT INTO query_history_new \(.+\) SELECT .+ FROM query_history$/)
       expect(rebuild[3]).toBe('DROP TABLE query_history')
       expect(rebuild[4]).toBe('ALTER TABLE query_history_new RENAME TO query_history')
@@ -102,13 +108,20 @@ describe('setup endpoint', () => {
     })
 
     it('respects TABLE_PREFIX', async () => {
-      const { db, calls } = fakeD1((sql) => (sql.startsWith('PRAGMA table_info(kp_query_history)') ? tableInfo(1) : null))
-      const res = await callWorker(fakeEnv({ DB: db, TABLE_PREFIX: 'kp' }), '/api/setup',
-        postJson({ secret: 'test-setup-secret' }))
+      const { db, calls } = fakeD1((sql) =>
+        sql.startsWith('PRAGMA table_info(kp_query_history)') ? tableInfo(1) : null
+      )
+      const res = await callWorker(
+        fakeEnv({ DB: db, TABLE_PREFIX: 'kp' }),
+        '/api/setup',
+        postJson({ secret: 'test-setup-secret' })
+      )
       expect(res.status).toBe(200)
       const sqls = calls.map((c) => c.sql.replace(/\s+/g, ' '))
       expect(sqls).toContain('ALTER TABLE kp_query_history_new RENAME TO kp_query_history')
-      expect(sqls.find((q) => q.startsWith('CREATE TABLE IF NOT EXISTS kp_query_history_new'))).toContain('REFERENCES kp_users(id)')
+      expect(sqls.find((q) => q.startsWith('CREATE TABLE IF NOT EXISTS kp_query_history_new'))).toContain(
+        'REFERENCES kp_users(id)'
+      )
     })
   })
 })

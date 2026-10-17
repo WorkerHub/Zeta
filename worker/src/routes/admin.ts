@@ -28,15 +28,21 @@ admin.get('/users', async (c) => {
       `SELECT id, email, name, role, email_verified, two_factor_required, created_at
        FROM ${T.users} WHERE email LIKE ?1 ESCAPE '\\' OR name LIKE ?1 ESCAPE '\\'
        ORDER BY created_at DESC LIMIT ?2 OFFSET ?3`
-    ).bind(like, limit, offset).all<Omit<UserRow, 'password_hash' | 'updated_at'>>()
+    )
+      .bind(like, limit, offset)
+      .all<Omit<UserRow, 'password_hash' | 'updated_at'>>()
     total = await c.env.DB.prepare(
       `SELECT COUNT(*) as n FROM ${T.users} WHERE email LIKE ?1 ESCAPE '\\' OR name LIKE ?1 ESCAPE '\\'`
-    ).bind(like).first<{ n: number }>()
+    )
+      .bind(like)
+      .first<{ n: number }>()
   } else {
     rows = await c.env.DB.prepare(
       `SELECT id, email, name, role, email_verified, two_factor_required, created_at
        FROM ${T.users} ORDER BY created_at DESC LIMIT ?1 OFFSET ?2`
-    ).bind(limit, offset).all<Omit<UserRow, 'password_hash' | 'updated_at'>>()
+    )
+      .bind(limit, offset)
+      .all<Omit<UserRow, 'password_hash' | 'updated_at'>>()
     total = await c.env.DB.prepare(`SELECT COUNT(*) as n FROM ${T.users}`).first<{ n: number }>()
   }
 
@@ -47,13 +53,17 @@ admin.get('/users/:id', async (c) => {
   const T = tables(c.env)
   const user = await c.env.DB.prepare(
     `SELECT id, email, name, role, email_verified, two_factor_required, created_at FROM ${T.users} WHERE id = ?1`
-  ).bind(c.req.param('id')).first<Omit<UserRow, 'password_hash' | 'updated_at'>>()
+  )
+    .bind(c.req.param('id'))
+    .first<Omit<UserRow, 'password_hash' | 'updated_at'>>()
   if (!user) return c.json({ error: 'User not found' }, 404)
 
   const perms = await c.env.DB.prepare(
     `SELECT p.*, d.name as database_name FROM ${T.user_database_permissions} p
      JOIN ${T.d1_databases} d ON d.id = p.database_id WHERE p.user_id = ?1`
-  ).bind(user.id).all()
+  )
+    .bind(user.id)
+    .all()
 
   return c.json({ ...user, permissions: perms.results })
 })
@@ -79,20 +89,31 @@ admin.post('/users', async (c) => {
   await c.env.DB.prepare(
     `INSERT INTO ${T.users} (id, email, name, role, password_hash, email_verified, created_at, updated_at)
      VALUES (?1, ?2, ?3, ?4, ?5, 1, ?6, ?6)`
-  ).bind(id, email, body.name.trim(), body.role ?? 'member', passwordHash, now()).run()
+  )
+    .bind(id, email, body.name.trim(), body.role ?? 'member', passwordHash, now())
+    .run()
 
-  c.executionCtx.waitUntil(audit(c.env, {
-    userId: c.get('userId'), action: 'create_user', resource: id,
-    ip: c.req.header('cf-connecting-ip')
-  }))
+  c.executionCtx.waitUntil(
+    audit(c.env, {
+      userId: c.get('userId'),
+      action: 'create_user',
+      resource: id,
+      ip: c.req.header('cf-connecting-ip'),
+    })
+  )
   return c.json({ id }, 201)
 })
 
 admin.patch('/users/:id', async (c) => {
-  const body = await c.req.json<{
-    role?: string; two_factor_required?: boolean
-    name?: string; email?: string; password?: string
-  }>().catch(() => null)
+  const body = await c.req
+    .json<{
+      role?: string
+      two_factor_required?: boolean
+      name?: string
+      email?: string
+      password?: string
+    }>()
+    .catch(() => null)
   if (!body) return c.json({ error: 'Invalid body' }, 400)
 
   const updates: string[] = []
@@ -103,8 +124,12 @@ admin.patch('/users/:id', async (c) => {
     if (!['admin', 'member'].includes(body.role)) return c.json({ error: 'Invalid role' }, 400)
     if (body.role === 'member') {
       const T2 = tables(c.env)
-      const adminCount = await c.env.DB.prepare(`SELECT COUNT(*) as n FROM ${T2.users} WHERE role = 'admin'`).first<{ n: number }>()
-      const currentUser = await c.env.DB.prepare(`SELECT role FROM ${T2.users} WHERE id = ?1`).bind(c.req.param('id')).first<{ role: string }>()
+      const adminCount = await c.env.DB.prepare(`SELECT COUNT(*) as n FROM ${T2.users} WHERE role = 'admin'`).first<{
+        n: number
+      }>()
+      const currentUser = await c.env.DB.prepare(`SELECT role FROM ${T2.users} WHERE id = ?1`)
+        .bind(c.req.param('id'))
+        .first<{ role: string }>()
       if (currentUser?.role === 'admin' && (adminCount?.n ?? 0) <= 1) {
         return c.json({ error: 'Cannot demote the last admin' }, 400)
       }
@@ -125,9 +150,9 @@ admin.patch('/users/:id', async (c) => {
     if (!body.email.trim()) return c.json({ error: 'Email cannot be empty' }, 400)
     const email = body.email.trim().toLowerCase()
     const T2 = tables(c.env)
-    const conflict = await c.env.DB.prepare(
-      `SELECT id FROM ${T2.users} WHERE email = ?1 AND id != ?2`
-    ).bind(email, c.req.param('id')).first()
+    const conflict = await c.env.DB.prepare(`SELECT id FROM ${T2.users} WHERE email = ?1 AND id != ?2`)
+      .bind(email, c.req.param('id'))
+      .first()
     if (conflict) return c.json({ error: 'Email already in use' }, 409)
     updates.push(`email = ?${i++}`)
     bindings.push(email)
@@ -148,18 +173,22 @@ admin.patch('/users/:id', async (c) => {
   bindings.push(c.req.param('id'))
 
   const T = tables(c.env)
-  await c.env.DB.prepare(
-    `UPDATE ${T.users} SET ${updates.join(', ')} WHERE id = ?${i}`
-  ).bind(...bindings).run()
+  await c.env.DB.prepare(`UPDATE ${T.users} SET ${updates.join(', ')} WHERE id = ?${i}`)
+    .bind(...bindings)
+    .run()
 
   if ((body.password !== undefined && body.password !== '') || body.role !== undefined || body.email !== undefined) {
     await c.env.KV.put(KV.sessionInvalidatedAt(c.req.param('id')), String(now()), { expirationTtl: 7 * 24 * 3600 })
   }
 
-  c.executionCtx.waitUntil(audit(c.env, {
-    userId: c.get('userId'), action: 'update_user', resource: c.req.param('id'),
-    ip: c.req.header('cf-connecting-ip')
-  }))
+  c.executionCtx.waitUntil(
+    audit(c.env, {
+      userId: c.get('userId'),
+      action: 'update_user',
+      resource: c.req.param('id'),
+      ip: c.req.header('cf-connecting-ip'),
+    })
+  )
   return c.json({ message: 'User updated' })
 })
 
@@ -170,7 +199,9 @@ admin.delete('/users/:id', async (c) => {
   const target = await c.env.DB.prepare(`SELECT role FROM ${T.users} WHERE id = ?1`).bind(id).first<{ role: string }>()
   if (!target) return c.json({ error: 'User not found' }, 404)
   if (target.role === 'admin') {
-    const adminCount = await c.env.DB.prepare(`SELECT COUNT(*) as n FROM ${T.users} WHERE role = 'admin'`).first<{ n: number }>()
+    const adminCount = await c.env.DB.prepare(`SELECT COUNT(*) as n FROM ${T.users} WHERE role = 'admin'`).first<{
+      n: number
+    }>()
     if ((adminCount?.n ?? 0) <= 1) return c.json({ error: 'Cannot delete the last admin' }, 400)
   }
   // D1 enforces foreign keys, but older schemas lack ON DELETE actions on some refs (and
@@ -187,10 +218,14 @@ admin.delete('/users/:id', async (c) => {
     c.env.DB.prepare(`DELETE FROM ${T.users} WHERE id = ?1`).bind(id),
   ])
   await c.env.KV.put(KV.sessionInvalidatedAt(id), String(now()), { expirationTtl: 7 * 24 * 3600 })
-  c.executionCtx.waitUntil(audit(c.env, {
-    userId: c.get('userId'), action: 'delete_user', resource: id,
-    ip: c.req.header('cf-connecting-ip')
-  }))
+  c.executionCtx.waitUntil(
+    audit(c.env, {
+      userId: c.get('userId'),
+      action: 'delete_user',
+      resource: id,
+      ip: c.req.header('cf-connecting-ip'),
+    })
+  )
   return c.json({ message: 'User deleted' })
 })
 
@@ -203,9 +238,13 @@ admin.get('/databases', async (c) => {
 })
 
 admin.post('/databases', async (c) => {
-  const body = await c.req.json<{
-    name?: string; description?: string; binding_name?: string
-  }>().catch(() => null)
+  const body = await c.req
+    .json<{
+      name?: string
+      description?: string
+      binding_name?: string
+    }>()
+    .catch(() => null)
   if (!body?.name || !body.binding_name) {
     return c.json({ error: 'name and binding_name are required' }, 400)
   }
@@ -216,19 +255,26 @@ admin.post('/databases', async (c) => {
 
   const T = tables(c.env)
   const dup = await c.env.DB.prepare(`SELECT id FROM ${T.d1_databases} WHERE binding_name = ?1`)
-    .bind(body.binding_name).first()
+    .bind(body.binding_name)
+    .first()
   if (dup) return c.json({ error: 'This binding is already registered' }, 409)
 
   const id = uuid()
   await c.env.DB.prepare(
     `INSERT INTO ${T.d1_databases} (id, name, description, binding_name, is_active, created_at, created_by)
      VALUES (?1, ?2, ?3, ?4, 1, ?5, ?6)`
-  ).bind(id, body.name, body.description ?? null, body.binding_name, now(), c.get('userId')).run()
+  )
+    .bind(id, body.name, body.description ?? null, body.binding_name, now(), c.get('userId'))
+    .run()
 
-  c.executionCtx.waitUntil(audit(c.env, {
-    userId: c.get('userId'), action: 'create_database', resource: id,
-    ip: c.req.header('cf-connecting-ip')
-  }))
+  c.executionCtx.waitUntil(
+    audit(c.env, {
+      userId: c.get('userId'),
+      action: 'create_database',
+      resource: id,
+      ip: c.req.header('cf-connecting-ip'),
+    })
+  )
   return c.json({ id }, 201)
 })
 
@@ -240,21 +286,35 @@ admin.patch('/databases/:id', async (c) => {
   const bindings: unknown[] = []
   let i = 1
 
-  if (body.name) { updates.push(`name = ?${i++}`); bindings.push(body.name) }
-  if (body.description !== undefined) { updates.push(`description = ?${i++}`); bindings.push(body.description) }
-  if (body.is_active !== undefined) { updates.push(`is_active = ?${i++}`); bindings.push(body.is_active ? 1 : 0) }
+  if (body.name) {
+    updates.push(`name = ?${i++}`)
+    bindings.push(body.name)
+  }
+  if (body.description !== undefined) {
+    updates.push(`description = ?${i++}`)
+    bindings.push(body.description)
+  }
+  if (body.is_active !== undefined) {
+    updates.push(`is_active = ?${i++}`)
+    bindings.push(body.is_active ? 1 : 0)
+  }
 
   if (updates.length === 0) return c.json({ error: 'Nothing to update' }, 400)
   bindings.push(c.req.param('id'))
 
   const T = tables(c.env)
   await c.env.DB.prepare(`UPDATE ${T.d1_databases} SET ${updates.join(', ')} WHERE id = ?${i}`)
-    .bind(...bindings).run()
+    .bind(...bindings)
+    .run()
 
-  c.executionCtx.waitUntil(audit(c.env, {
-    userId: c.get('userId'), action: 'update_database', resource: c.req.param('id'),
-    ip: c.req.header('cf-connecting-ip')
-  }))
+  c.executionCtx.waitUntil(
+    audit(c.env, {
+      userId: c.get('userId'),
+      action: 'update_database',
+      resource: c.req.param('id'),
+      ip: c.req.header('cf-connecting-ip'),
+    })
+  )
   return c.json({ message: 'Updated' })
 })
 
@@ -262,9 +322,9 @@ admin.delete('/databases/:id', async (c) => {
   const T = tables(c.env)
   const dbId = c.req.param('id')
 
-  const exists = await c.env.DB.prepare(
-    `SELECT id FROM ${T.d1_databases} WHERE id = ?1`
-  ).bind(dbId).first<{ id: string }>()
+  const exists = await c.env.DB.prepare(`SELECT id FROM ${T.d1_databases} WHERE id = ?1`)
+    .bind(dbId)
+    .first<{ id: string }>()
   if (!exists) return c.json({ error: 'Database not found' }, 404)
 
   await c.env.DB.batch([
@@ -273,10 +333,14 @@ admin.delete('/databases/:id', async (c) => {
     c.env.DB.prepare(`UPDATE ${T.query_history} SET database_id = NULL WHERE database_id = ?1`).bind(dbId),
     c.env.DB.prepare(`DELETE FROM ${T.d1_databases} WHERE id = ?1`).bind(dbId),
   ])
-  c.executionCtx.waitUntil(audit(c.env, {
-    userId: c.get('userId'), action: 'delete_database', resource: dbId,
-    ip: c.req.header('cf-connecting-ip')
-  }))
+  c.executionCtx.waitUntil(
+    audit(c.env, {
+      userId: c.get('userId'),
+      action: 'delete_database',
+      resource: dbId,
+      ip: c.req.header('cf-connecting-ip'),
+    })
+  )
   return c.json({ message: 'Deleted' })
 })
 
@@ -288,7 +352,9 @@ admin.get('/databases/:id/permissions', async (c) => {
     `SELECT p.*, u.email, u.name as user_name
      FROM ${T.user_database_permissions} p JOIN ${T.users} u ON u.id = p.user_id
      WHERE p.database_id = ?1`
-  ).bind(c.req.param('id')).all()
+  )
+    .bind(c.req.param('id'))
+    .all()
   return c.json({ results: rows.results })
 })
 
@@ -303,26 +369,36 @@ admin.put('/databases/:id/permissions/:userId', async (c) => {
     `INSERT INTO ${T.user_database_permissions} (id, user_id, database_id, permission, granted_by, granted_at)
      VALUES (?1, ?2, ?3, ?4, ?5, ?6)
      ON CONFLICT(user_id, database_id) DO UPDATE SET permission = ?4, granted_by = ?5, granted_at = ?6`
-  ).bind(uuid(), c.req.param('userId'), c.req.param('id'), body.permission, c.get('userId'), now()).run()
+  )
+    .bind(uuid(), c.req.param('userId'), c.req.param('id'), body.permission, c.get('userId'), now())
+    .run()
 
-  c.executionCtx.waitUntil(audit(c.env, {
-    userId: c.get('userId'), action: 'set_permission', resource: c.req.param('id'),
-    metadata: { targetUser: c.req.param('userId'), permission: body.permission },
-    ip: c.req.header('cf-connecting-ip')
-  }))
+  c.executionCtx.waitUntil(
+    audit(c.env, {
+      userId: c.get('userId'),
+      action: 'set_permission',
+      resource: c.req.param('id'),
+      metadata: { targetUser: c.req.param('userId'), permission: body.permission },
+      ip: c.req.header('cf-connecting-ip'),
+    })
+  )
   return c.json({ message: 'Permission set' })
 })
 
 admin.delete('/databases/:id/permissions/:userId', async (c) => {
   const T = tables(c.env)
-  await c.env.DB.prepare(
-    `DELETE FROM ${T.user_database_permissions} WHERE user_id = ?1 AND database_id = ?2`
-  ).bind(c.req.param('userId'), c.req.param('id')).run()
-  c.executionCtx.waitUntil(audit(c.env, {
-    userId: c.get('userId'), action: 'revoke_permission', resource: c.req.param('id'),
-    metadata: { targetUser: c.req.param('userId') },
-    ip: c.req.header('cf-connecting-ip')
-  }))
+  await c.env.DB.prepare(`DELETE FROM ${T.user_database_permissions} WHERE user_id = ?1 AND database_id = ?2`)
+    .bind(c.req.param('userId'), c.req.param('id'))
+    .run()
+  c.executionCtx.waitUntil(
+    audit(c.env, {
+      userId: c.get('userId'),
+      action: 'revoke_permission',
+      resource: c.req.param('id'),
+      metadata: { targetUser: c.req.param('userId') },
+      ip: c.req.header('cf-connecting-ip'),
+    })
+  )
   return c.json({ message: 'Permission revoked' })
 })
 
@@ -331,14 +407,22 @@ admin.delete('/databases/:id/permissions/:userId', async (c) => {
 const SECRET_MASK = '••••••'
 
 const EXPOSED_SETTINGS = [
-  'registration_enabled', 'require_email_verification', 'enforce_2fa',
-  'email_provider', 'smtp_config', 'resend_config', 'app_name',
+  'registration_enabled',
+  'require_email_verification',
+  'enforce_2fa',
+  'email_provider',
+  'smtp_config',
+  'resend_config',
+  'app_name',
 ]
 
 admin.get('/settings', async (c) => {
   const cfg = await getSettings(c.env, EXPOSED_SETTINGS)
   // Opportunistically encrypt secrets still stored as plaintext by older versions
-  for (const [key, field] of [['smtp_config', 'password'], ['resend_config', 'api_key']] as const) {
+  for (const [key, field] of [
+    ['smtp_config', 'password'],
+    ['resend_config', 'api_key'],
+  ] as const) {
     const raw = cfg[key]
     if (raw) c.executionCtx.waitUntil(sealLegacySecret(c.env, key, raw, field).catch(() => false))
   }
@@ -348,14 +432,18 @@ admin.get('/settings', async (c) => {
       const smtp = JSON.parse(cfg.smtp_config)
       if (smtp.password) smtp.password = SECRET_MASK
       cfg.smtp_config = JSON.stringify(smtp)
-    } catch { /* ignore malformed */ }
+    } catch {
+      /* ignore malformed */
+    }
   }
   if (cfg.resend_config) {
     try {
       const resend = JSON.parse(cfg.resend_config)
       if (resend.api_key) resend.api_key = SECRET_MASK
       cfg.resend_config = JSON.stringify(resend)
-    } catch { /* ignore malformed */ }
+    } catch {
+      /* ignore malformed */
+    }
   }
   return c.json(cfg)
 })
@@ -372,7 +460,11 @@ admin.patch('/settings', async (c) => {
   for (const key of ['smtp_config', 'resend_config']) {
     if (body[key] === undefined) continue
     let from: unknown
-    try { from = (JSON.parse(String(body[key])) as { from?: unknown } | null)?.from } catch { continue }
+    try {
+      from = (JSON.parse(String(body[key])) as { from?: unknown } | null)?.from
+    } catch {
+      continue
+    }
     if (from !== undefined && from !== '' && (typeof from !== 'string' || !isValidEmail(from))) {
       return c.json({ error: 'Invalid from address' }, 400)
     }
@@ -391,12 +483,20 @@ admin.patch('/settings', async (c) => {
     if (key === 'smtp_config' || key === 'resend_config') {
       const secretField = key === 'smtp_config' ? 'password' : 'api_key'
       let newConfig: Record<string, unknown>
-      try { newConfig = JSON.parse(v) } catch { continue }
+      try {
+        newConfig = JSON.parse(v)
+      } catch {
+        continue
+      }
       if (typeof newConfig !== 'object' || newConfig === null || Array.isArray(newConfig)) continue
       // Empty or masked secret means "keep the stored one"; never persist the placeholder.
       if (!newConfig[secretField] || newConfig[secretField] === SECRET_MASK) {
         let existing: Record<string, unknown> = {}
-        try { existing = existingSettings[key] ? JSON.parse(existingSettings[key]) : {} } catch { /* */ }
+        try {
+          existing = existingSettings[key] ? JSON.parse(existingSettings[key]) : {}
+        } catch {
+          /* */
+        }
         newConfig[secretField] = existing[secretField] || ''
       }
       // Encrypt at rest; also upgrades legacy plaintext values the next time settings are saved.
@@ -409,10 +509,13 @@ admin.patch('/settings', async (c) => {
     }
   }
 
-  c.executionCtx.waitUntil(audit(c.env, {
-    userId: c.get('userId'), action: 'update_settings',
-    ip: c.req.header('cf-connecting-ip')
-  }))
+  c.executionCtx.waitUntil(
+    audit(c.env, {
+      userId: c.get('userId'),
+      action: 'update_settings',
+      ip: c.req.header('cf-connecting-ip'),
+    })
+  )
   return c.json({ message: 'Settings saved' })
 })
 

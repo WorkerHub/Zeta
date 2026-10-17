@@ -48,10 +48,22 @@ function tokenize(sql: string): Token[] {
 }
 
 const READ_PRAGMAS = new Set([
-  'table_info', 'table_xinfo', 'table_list', 'index_list', 'index_info', 'index_xinfo',
-  'foreign_key_list', 'foreign_key_check', 'database_list', 'collation_list',
-  'function_list', 'module_list', 'pragma_list', 'compile_options',
-  'integrity_check', 'quick_check',
+  'table_info',
+  'table_xinfo',
+  'table_list',
+  'index_list',
+  'index_info',
+  'index_xinfo',
+  'foreign_key_list',
+  'foreign_key_check',
+  'database_list',
+  'collation_list',
+  'function_list',
+  'module_list',
+  'pragma_list',
+  'compile_options',
+  'integrity_check',
+  'quick_check',
 ])
 
 const CTE_WRITE_KEYWORDS = new Set(['insert', 'update', 'delete', 'replace'])

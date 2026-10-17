@@ -1,6 +1,18 @@
 import { useState, useRef, useEffect } from 'react'
 import { Link, Routes, Route, useLocation, Navigate } from 'react-router-dom'
-import { Database, Users, Settings, Shield, Globe, Monitor, Sun, Moon, User as UserIcon, Info, LogOut } from 'lucide-react'
+import {
+  Database,
+  Users,
+  Settings,
+  Shield,
+  Globe,
+  Monitor,
+  Sun,
+  Moon,
+  User as UserIcon,
+  Info,
+  LogOut,
+} from 'lucide-react'
 import { useLocale } from '../../hooks/useLocale'
 import { useTheme } from '../../hooks/useTheme'
 import { useAuthContext } from '../../hooks/useAuth'
@@ -34,7 +46,8 @@ export default function AdminLayout() {
     { to: '/admin/settings', label: t('admin.settings'), icon: Settings },
   ]
 
-  const menuItemClass = 'flex items-center gap-2 px-4 py-2.5 text-sm text-zinc-600 hover:bg-zinc-50 hover:text-zinc-900 dark:text-zinc-300 dark:hover:bg-zinc-800 dark:hover:text-zinc-100 transition-colors'
+  const menuItemClass =
+    'flex items-center gap-2 px-4 py-2.5 text-sm text-zinc-600 hover:bg-zinc-50 hover:text-zinc-900 dark:text-zinc-300 dark:hover:bg-zinc-800 dark:hover:text-zinc-100 transition-colors'
 
   return (
     <div className="flex h-screen bg-zinc-50 dark:bg-zinc-950">
@@ -49,7 +62,8 @@ export default function AdminLayout() {
         <nav className="flex-1 p-2">
           {nav.map(({ to, label, icon: Icon }) => (
             <Link
-              key={to} to={to}
+              key={to}
+              to={to}
               className={`flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm mb-0.5 transition-colors ${loc.pathname.startsWith(to) ? 'bg-zinc-200 text-zinc-900 dark:bg-zinc-800 dark:text-zinc-100' : 'text-zinc-500 hover:bg-zinc-100 hover:text-zinc-700 dark:text-zinc-400 dark:hover:bg-zinc-800/50 dark:hover:text-zinc-200'}`}
             >
               <Icon size={15} />
@@ -66,9 +80,13 @@ export default function AdminLayout() {
           {/* Mobile nav items */}
           <div className="sm:hidden flex items-center gap-1 flex-1 overflow-hidden">
             {nav.map(({ to, label, icon: Icon }) => (
-              <Link key={to} to={to}
-                className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-colors shrink-0 ${loc.pathname.startsWith(to) ? 'bg-zinc-200 text-zinc-900 dark:bg-zinc-800 dark:text-zinc-100' : 'text-zinc-500'}`}>
-                <Icon size={13} />{label}
+              <Link
+                key={to}
+                to={to}
+                className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-colors shrink-0 ${loc.pathname.startsWith(to) ? 'bg-zinc-200 text-zinc-900 dark:bg-zinc-800 dark:text-zinc-100' : 'text-zinc-500'}`}
+              >
+                <Icon size={13} />
+                {label}
               </Link>
             ))}
           </div>
@@ -119,8 +137,11 @@ export default function AdminLayout() {
                 <Link to="/about" onClick={() => setShowUserMenu(false)} className={menuItemClass}>
                   <Info size={14} /> {t('user.about')}
                 </Link>
-                <button type="button" onClick={logout}
-                  className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-red-400 hover:bg-zinc-50 dark:hover:bg-zinc-800 transition-colors border-t border-zinc-100 dark:border-zinc-800">
+                <button
+                  type="button"
+                  onClick={logout}
+                  className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-red-400 hover:bg-zinc-50 dark:hover:bg-zinc-800 transition-colors border-t border-zinc-100 dark:border-zinc-800"
+                >
                   <LogOut size={14} /> {t('user.sign_out')}
                 </button>
               </div>

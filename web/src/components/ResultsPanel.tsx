@@ -28,10 +28,10 @@ export default function ResultsPanel({ results, activeIndex, onSelectIndex }: Pr
             const meta = hasError
               ? t('results.error_short')
               : r.results.length > 0
-              ? `${r.results.length}r`
-              : r.changes !== undefined
-              ? `${r.changes}c`
-              : '0r'
+                ? `${r.results.length}r`
+                : r.changes !== undefined
+                  ? `${r.changes}c`
+                  : '0r'
             return (
               <button
                 type="button"
@@ -45,11 +45,14 @@ export default function ResultsPanel({ results, activeIndex, onSelectIndex }: Pr
                 }`}
               >
                 <div className="flex items-center gap-1 mb-0.5">
-                  {hasError
-                    ? <AlertCircle size={10} className="text-red-400 shrink-0" />
-                    : <CheckCircle2 size={10} className="text-emerald-400 shrink-0" />
-                  }
-                  <span className={`text-[10px] ${isActive ? 'text-zinc-600 dark:text-zinc-300' : 'text-zinc-500 dark:text-zinc-400'}`}>
+                  {hasError ? (
+                    <AlertCircle size={10} className="text-red-400 shrink-0" />
+                  ) : (
+                    <CheckCircle2 size={10} className="text-emerald-400 shrink-0" />
+                  )}
+                  <span
+                    className={`text-[10px] ${isActive ? 'text-zinc-600 dark:text-zinc-300' : 'text-zinc-500 dark:text-zinc-400'}`}
+                  >
                     #{i + 1} · {meta} · {r.duration_ms}ms
                   </span>
                 </div>
@@ -84,12 +87,10 @@ export default function ResultsPanel({ results, activeIndex, onSelectIndex }: Pr
                 {active.results.length > 0
                   ? t(active.results.length === 1 ? 'results.row' : 'results.rows', { n: active.results.length })
                   : active.changes !== undefined
-                  ? t(active.changes === 1 ? 'results.change' : 'results.changes', { n: active.changes })
-                  : t('results.rows', { n: 0 })}
+                    ? t(active.changes === 1 ? 'results.change' : 'results.changes', { n: active.changes })
+                    : t('results.rows', { n: 0 })}
               </span>
-              {active.truncated && (
-                <span className="text-xs text-amber-500">{t('results.truncated')}</span>
-              )}
+              {active.truncated && <span className="text-xs text-amber-500">{t('results.truncated')}</span>}
               <span className="text-zinc-300 dark:text-zinc-600 text-xs">·</span>
               <span className="text-xs text-zinc-500">{active.duration_ms}ms</span>
             </>

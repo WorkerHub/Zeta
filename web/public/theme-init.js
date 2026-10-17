@@ -1,4 +1,4 @@
-(() => {
+;(() => {
   var t = localStorage.getItem('theme') || 'auto'
   var dark = t === 'dark' || (t === 'auto' && window.matchMedia('(prefers-color-scheme: dark)').matches)
   document.documentElement.classList.toggle('dark', dark)

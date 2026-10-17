@@ -16,21 +16,19 @@ async function authenticate(c: Ctx) {
   return payload
 }
 
-export const requireAuth: MiddlewareHandler<{ Bindings: Env; Variables: Variables }> =
-  async (c, next) => {
-    const payload = await authenticate(c)
-    if (!payload) return c.json({ error: 'Unauthorized' }, 401)
-    c.set('userId', payload.sub)
-    c.set('userRole', payload.role)
-    await next()
-  }
+export const requireAuth: MiddlewareHandler<{ Bindings: Env; Variables: Variables }> = async (c, next) => {
+  const payload = await authenticate(c)
+  if (!payload) return c.json({ error: 'Unauthorized' }, 401)
+  c.set('userId', payload.sub)
+  c.set('userRole', payload.role)
+  await next()
+}
 
-export const requireAdmin: MiddlewareHandler<{ Bindings: Env; Variables: Variables }> =
-  async (c, next) => {
-    const payload = await authenticate(c)
-    if (!payload) return c.json({ error: 'Unauthorized' }, 401)
-    if (payload.role !== 'admin') return c.json({ error: 'Forbidden' }, 403)
-    c.set('userId', payload.sub)
-    c.set('userRole', payload.role)
-    await next()
-  }
+export const requireAdmin: MiddlewareHandler<{ Bindings: Env; Variables: Variables }> = async (c, next) => {
+  const payload = await authenticate(c)
+  if (!payload) return c.json({ error: 'Unauthorized' }, 401)
+  if (payload.role !== 'admin') return c.json({ error: 'Forbidden' }, 403)
+  c.set('userId', payload.sub)
+  c.set('userRole', payload.role)
+  await next()
+}

@@ -12,10 +12,21 @@ export default function VerifyEmail() {
   const [message, setMessage] = useState('')
 
   useEffect(() => {
-    if (!token) { setStatus('error'); setMessage(t('errors.no_token')); return }
-    authApi.verifyEmail(token)
-      .then((res) => { setStatus('success'); setMessage(res.message) })
-      .catch((err) => { setStatus('error'); setMessage(err instanceof Error ? err.message : t('errors.verify_failed')) })
+    if (!token) {
+      setStatus('error')
+      setMessage(t('errors.no_token'))
+      return
+    }
+    authApi
+      .verifyEmail(token)
+      .then((res) => {
+        setStatus('success')
+        setMessage(res.message)
+      })
+      .catch((err) => {
+        setStatus('error')
+        setMessage(err instanceof Error ? err.message : t('errors.verify_failed'))
+      })
   }, [token, t])
 
   return (
@@ -34,14 +45,18 @@ export default function VerifyEmail() {
             <div className="space-y-4">
               <CheckCircle size={40} className="mx-auto text-emerald-400" />
               <p className="text-zinc-700 dark:text-zinc-200">{message}</p>
-              <Link to="/login" className="btn-primary inline-block">{t('auth.verify_success')}</Link>
+              <Link to="/login" className="btn-primary inline-block">
+                {t('auth.verify_success')}
+              </Link>
             </div>
           )}
           {status === 'error' && (
             <div className="space-y-4">
               <XCircle size={40} className="mx-auto text-red-400" />
               <p className="text-red-400">{message}</p>
-              <Link to="/login" className="btn-secondary inline-block">{t('auth.verify_fail')}</Link>
+              <Link to="/login" className="btn-secondary inline-block">
+                {t('auth.verify_fail')}
+              </Link>
             </div>
           )}
         </div>
