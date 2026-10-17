@@ -1,10 +1,56 @@
 import { Hono } from 'hono'
+import type { D1Database } from '@cloudflare/workers-types'
 import type { Env, Variables } from '../types'
 import { now, tables } from '../lib/db'
 
 const setup = new Hono<{ Bindings: Env; Variables: Variables }>()
 
 // ── DDL builder (idempotent – all use IF NOT EXISTS) ──────────────────────────
+
+// user_id / database_id are nullable so history survives deleting a user or database.
+function historyTableDDL(T: ReturnType<typeof tables>, name: string): string {
+  return `CREATE TABLE IF NOT EXISTS ${name} (
+      id TEXT PRIMARY KEY,
+      user_id TEXT REFERENCES ${T.users}(id),
+      database_id TEXT REFERENCES ${T.d1_databases}(id),
+      sql TEXT NOT NULL,
+      duration_ms INTEGER,
+      row_count INTEGER,
+      error TEXT,
+      executed_at INTEGER NOT NULL
+    )`
+}
+
+function historyIndexDDL(T: ReturnType<typeof tables>): string[] {
+  return [
+    `CREATE INDEX IF NOT EXISTS idx_${T.query_history}_user ON ${T.query_history}(user_id)`,
+    `CREATE INDEX IF NOT EXISTS idx_${T.query_history}_db   ON ${T.query_history}(database_id)`,
+    `CREATE INDEX IF NOT EXISTS idx_${T.query_history}_executed ON ${T.query_history}(executed_at)`,
+  ]
+}
+
+// Databases initialised by older versions have NOT NULL history refs, which makes deleting a
+// user or database fail now that their history rows are kept with NULL refs. SQLite cannot
+// relax NOT NULL in place, so rebuild the table once (same change as migrations/0002, but
+// prefix-aware and usable on deployments that were set up through this endpoint).
+async function relaxHistoryRefs(db: D1Database, T: ReturnType<typeof tables>): Promise<boolean> {
+  const cols = await db.prepare(`PRAGMA table_info(${T.query_history})`)
+    .all<{ name: string; notnull: number }>()
+  const strict = cols.results.some((col) => (col.name === 'user_id' || col.name === 'database_id') && col.notnull)
+  if (!strict) return false
+
+  const tmp = `${T.query_history}_new`
+  const columns = 'id, user_id, database_id, sql, duration_ms, row_count, error, executed_at'
+  await db.batch([
+    `DROP TABLE IF EXISTS ${tmp}`,
+    historyTableDDL(T, tmp),
+    `INSERT INTO ${tmp} (${columns}) SELECT ${columns} FROM ${T.query_history}`,
+    `DROP TABLE ${T.query_history}`,
+    `ALTER TABLE ${tmp} RENAME TO ${T.query_history}`,
+    ...historyIndexDDL(T),
+  ].map((stmt) => db.prepare(stmt)))
+  return true
+}
 
 function buildDDL(T: ReturnType<typeof tables>): string[] {
   return [
@@ -63,19 +109,8 @@ function buildDDL(T: ReturnType<typeof tables>): string[] {
     `CREATE INDEX IF NOT EXISTS idx_${T.user_database_permissions}_user ON ${T.user_database_permissions}(user_id)`,
     `CREATE INDEX IF NOT EXISTS idx_${T.user_database_permissions}_db   ON ${T.user_database_permissions}(database_id)`,
 
-    `CREATE TABLE IF NOT EXISTS ${T.query_history} (
-      id TEXT PRIMARY KEY,
-      user_id TEXT REFERENCES ${T.users}(id),
-      database_id TEXT REFERENCES ${T.d1_databases}(id),
-      sql TEXT NOT NULL,
-      duration_ms INTEGER,
-      row_count INTEGER,
-      error TEXT,
-      executed_at INTEGER NOT NULL
-    )`,
-    `CREATE INDEX IF NOT EXISTS idx_${T.query_history}_user ON ${T.query_history}(user_id)`,
-    `CREATE INDEX IF NOT EXISTS idx_${T.query_history}_db   ON ${T.query_history}(database_id)`,
-    `CREATE INDEX IF NOT EXISTS idx_${T.query_history}_executed ON ${T.query_history}(executed_at)`,
+    historyTableDDL(T, T.query_history),
+    ...historyIndexDDL(T),
 
     `CREATE TABLE IF NOT EXISTS ${T.settings} (
       key TEXT PRIMARY KEY,
@@ -169,6 +204,16 @@ setup.post('/', async (c) => {
     errors.push(`DDL error: ${err instanceof Error ? err.message : String(err)}`)
   }
 
+  // Schema upgrades for databases created by older versions
+  const upgraded: string[] = []
+  if (errors.length === 0) {
+    try {
+      if (await relaxHistoryRefs(c.env.DB, T)) upgraded.push(`${T.query_history}: nullable user_id/database_id`)
+    } catch (err) {
+      errors.push(`Upgrade error: ${err instanceof Error ? err.message : String(err)}`)
+    }
+  }
+
   // Seed default settings (INSERT OR IGNORE)
   if (errors.length === 0) {
     try {
@@ -191,6 +236,7 @@ setup.post('/', async (c) => {
   return c.json({
     ok: true,
     message: 'Database initialised successfully. You can now register at /register — the first user becomes admin.',
+    ...(upgraded.length > 0 && { upgraded }),
   })
 })
 

@@ -154,7 +154,7 @@ Expected response:
 { "ok": true, "message": "Database initialised successfully. You can now register at /register — the first user becomes admin." }
 ```
 
-> The endpoint is idempotent — safe to call multiple times.
+> The endpoint is idempotent — safe to call multiple times. **Re-run it after every upgrade**: it also applies schema upgrades to databases created by earlier versions (e.g. making `query_history` keep rows when a user or database is deleted — until then, deleting users or databases fails).
 >
 > Earlier versions used `GET /api/setup/<SETUP_SECRET>`. That form is gone: it now returns `405` and does nothing. If you ever opened the old URL, consider rotating `SETUP_SECRET`.
 

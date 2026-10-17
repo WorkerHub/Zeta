@@ -154,7 +154,7 @@ curl -X POST https://<你的域名>/api/setup \
 { "ok": true, "message": "Database initialised successfully. You can now register at /register — the first user becomes admin." }
 ```
 
-> 该接口是幂等的，重复调用不会造成任何破坏，可安全地多次调用。
+> 该接口是幂等的，重复调用不会造成任何破坏，可安全地多次调用。**每次升级部署后请再调用一次**：它还会对旧版本创建的数据库执行 Schema 升级（例如让 `query_history` 在删除用户或数据库时保留记录——升级前删除用户或数据库会失败）。
 >
 > 旧版本使用的 `GET /api/setup/<SETUP_SECRET>` 已废弃：现在会返回 `405` 且不执行任何操作。如果曾经访问过旧 URL，建议轮换 `SETUP_SECRET`。
 

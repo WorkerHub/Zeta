@@ -39,7 +39,7 @@ pnpm run deploy   # builds web then deploys worker (which embeds the SPA)
    - `APP_URL` — your custom domain (e.g. `https://zeta.example.com`)
    - `TABLE_PREFIX` — (optional) prefix for all internal tables, e.g. `kp` → tables become `kp_users`, `kp_settings`, etc. Must be set **before** running setup. Cannot be changed after initialisation.
 5. `pnpm run deploy` to build & deploy
-6. Initialise the database: `curl -X POST https://<your-domain>/api/setup -H 'Content-Type: application/json' -d '{"secret":"<SETUP_SECRET>"}'` (the old `GET /api/setup/<secret>` form returns 405)
+6. Initialise the database: `curl -X POST https://<your-domain>/api/setup -H 'Content-Type: application/json' -d '{"secret":"<SETUP_SECRET>"}'` (the old `GET /api/setup/<secret>` form returns 405). Re-run after upgrades — it also applies schema upgrades (e.g. nullable `query_history` refs) to setup-initialised databases
 7. Register at `/register` — first user automatically becomes admin
 
 ## Adding a Queryable D1 Database

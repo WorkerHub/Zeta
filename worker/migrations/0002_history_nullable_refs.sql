@@ -1,6 +1,8 @@
 -- Keep query history when a user or database is deleted: the references become NULL
 -- instead of the rows being deleted. SQLite cannot relax NOT NULL in place, so rebuild.
--- NOTE: deployments using TABLE_PREFIX must apply the equivalent change to <prefix>_query_history manually.
+-- NOTE: only for databases created from these migrations. Databases initialised through
+-- POST /api/setup (the documented path, including TABLE_PREFIX deployments) get the same change
+-- by re-running POST /api/setup after deploying.
 CREATE TABLE query_history_new (
   id TEXT PRIMARY KEY,
   user_id TEXT REFERENCES users(id),
