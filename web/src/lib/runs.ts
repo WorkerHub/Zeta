@@ -64,7 +64,8 @@ export function removeRun(s: NotebookRunsState, runId: string): NotebookRunsStat
 }
 
 export function clearRunsState(s: NotebookRunsState): NotebookRunsState {
-  return { ...s, list: [], hasMore: false, loaded: true, selectedRunId: null }
+  // Also settles a page that was in flight when the clear happened (its response is dropped)
+  return { ...s, list: [], hasMore: false, loaded: true, loading: false, loadError: false, selectedRunId: null }
 }
 
 // Stores `value` as the most recently used entry, evicting the least recently used beyond `max`

@@ -52,11 +52,17 @@ export default function RunHistoryDrawer({
   const [resultIdx, setResultIdx] = useState(0)
   const selectedRunId = selectedRun?.id ?? null
 
-  // Focus moves into the drawer while it is open, and back to whatever opened it on close
+  // Focus moves into the drawer while it is open, and back to whatever opened it on close; the
+  // History button is gone once the list is empty, so fall back to the notebook's active tab
   useEffect(() => {
     const previous = document.activeElement instanceof HTMLElement ? document.activeElement : null
     closeRef.current?.focus()
-    return () => previous?.focus()
+    return () => {
+      const target = previous?.isConnected
+        ? previous
+        : document.querySelector<HTMLElement>('#notebook-tabs [role="tab"][aria-selected="true"]')
+      target?.focus()
+    }
   }, [])
 
   // Esc closes the drawer from anywhere inside it
@@ -130,7 +136,9 @@ export default function RunHistoryDrawer({
   }
 
   async function clearAll() {
-    if (!window.confirm(t('runs.clear_confirm', { n: runs.length }))) return
+    // The exact count is only known once every page is loaded
+    const message = hasMore ? t('runs.clear_confirm_more') : t('runs.clear_confirm', { n: runs.length })
+    if (!window.confirm(message)) return
     setActionError('')
     setBusy('all')
     try {
@@ -172,6 +180,7 @@ export default function RunHistoryDrawer({
             disabled={runs.length === 0 || busy !== null}
             className="flex shrink-0 items-center gap-1 rounded-md px-2 py-1 text-xs text-red-500 transition-colors hover:bg-red-500/10 disabled:cursor-not-allowed disabled:opacity-40"
             title={t('runs.clear')}
+            aria-label={t('runs.clear')}
           >
             {busy === 'all' ? <Loader2 size={12} className="animate-spin" /> : <Trash2 size={12} />}
             {t('runs.clear_all')}
@@ -205,8 +214,27 @@ export default function RunHistoryDrawer({
         )}
 
         {runs.length === 0 ? (
-          <div className="flex flex-1 items-center justify-center px-6 text-center text-sm text-zinc-400 dark:text-zinc-600">
-            {loading ? t('common.loading') : loadError ? t('runs.list_failed') : t('runs.history_empty')}
+          <div className="flex flex-1 flex-col items-center justify-center gap-3 px-6 text-center text-sm text-zinc-400 dark:text-zinc-600">
+            <p className="flex items-center gap-2">
+              {loading && <Loader2 size={14} className="animate-spin" />}
+              {loading
+                ? t('common.loading')
+                : loadError
+                  ? t('runs.list_failed')
+                  : hasMore
+                    ? t('runs.history_more_available')
+                    : t('runs.history_empty')}
+            </p>
+            {/* Older records survive deleting every loaded one, so pagination stays reachable */}
+            {hasMore && !loading && (
+              <button
+                type="button"
+                onClick={onLoadMore}
+                className="rounded-md px-3 py-1.5 text-xs text-blue-500 hover:bg-zinc-100 dark:hover:bg-zinc-800"
+              >
+                {loadError ? `${t('runs.list_failed')} · ${t('runs.load_more')}` : t('runs.load_more')}
+              </button>
+            )}
           </div>
         ) : (
           <div className="flex min-h-0 flex-1 flex-col sm:flex-row">
@@ -284,7 +312,7 @@ export default function RunHistoryDrawer({
                         onClick={onLoadMore}
                         className="w-full rounded-md py-1.5 text-xs text-red-400 hover:bg-zinc-100 dark:hover:bg-zinc-800"
                       >
-                        {t('runs.load_failed')} · {t('runs.load_more')}
+                        {t('runs.list_failed')} · {t('runs.load_more')}
                       </button>
                     ) : (
                       <button

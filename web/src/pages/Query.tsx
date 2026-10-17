@@ -405,6 +405,7 @@ export default function QueryPage() {
 
       {/* Notebook tab bar */}
       <div
+        id="notebook-tabs"
         role="tablist"
         className="flex items-center border-b border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 shrink-0 overflow-x-auto scrollbar-none min-h-[36px]"
       >
