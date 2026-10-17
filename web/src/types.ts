@@ -55,6 +55,7 @@ export interface StatementResult {
   changes?: number // present for INSERT/UPDATE/DELETE
   truncated?: boolean // server capped the returned rows
   error?: string
+  stored_rows?: number // a saved run kept only this many of the rows
 }
 
 export interface QueryHistoryItem {
@@ -77,4 +78,33 @@ export interface Notebook {
   position: number
   created_at: number
   updated_at: number
+}
+
+// A saved notebook run, as listed (without its results)
+export interface NotebookRunSummary {
+  id: string
+  notebook_id: string
+  database_id: string
+  database_name: string | null
+  sql: string
+  statement_count: number
+  row_count: number
+  error_count: number
+  duration_ms: number
+  storage_truncated: number
+  results_bytes: number
+  executed_at: number // milliseconds
+  accessible: boolean // the user can still query its database (and so see its results)
+}
+
+export interface NotebookRun extends NotebookRunSummary {
+  results: StatementResult[]
+}
+
+export interface RunSettings {
+  run_limit: number | null // the user's own limit; null follows the admin limit
+  admin_run_limit: number
+  effective_run_limit: number
+  storage_used_bytes: number
+  storage_quota_bytes: number
 }

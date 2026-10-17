@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { History, XCircle, CheckCircle2, Clock } from 'lucide-react'
 import { queryApi } from '../lib/api'
 import { useLocale } from '../hooks/useLocale'
+import { timeAgo } from '../lib/time'
 import type { QueryHistoryItem } from '../types'
 
 interface Props {
@@ -27,20 +28,6 @@ export default function QueryHistoryPanel({ databaseId, onSelect }: Props) {
       })
       .finally(() => setLoading(false))
   }, [databaseId])
-
-  const timeAgo = (ts: number) => {
-    const diff = Math.floor(Date.now() / 1000) - ts
-    if (locale === 'zh') {
-      if (diff < 60) return '刚刚'
-      if (diff < 3600) return `${Math.floor(diff / 60)}分钟前`
-      if (diff < 86400) return `${Math.floor(diff / 3600)}小时前`
-      return `${Math.floor(diff / 86400)}天前`
-    }
-    if (diff < 60) return 'just now'
-    if (diff < 3600) return `${Math.floor(diff / 60)}m ago`
-    if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`
-    return `${Math.floor(diff / 86400)}d ago`
-  }
 
   return (
     <div className="h-full flex flex-col">
@@ -75,7 +62,7 @@ export default function QueryHistoryPanel({ databaseId, onSelect }: Props) {
                 ) : (
                   <CheckCircle2 size={11} className="text-emerald-400 shrink-0" />
                 )}
-                <span className="text-xs text-zinc-500">{timeAgo(item.executed_at)}</span>
+                <span className="text-xs text-zinc-500">{timeAgo(item.executed_at, locale)}</span>
                 {item.duration_ms !== null && (
                   <>
                     <span className="text-zinc-300 dark:text-zinc-700">·</span>

@@ -8,6 +8,7 @@ import { KV } from '../lib/kv'
 import { sealSecret, sealLegacySecret } from '../lib/secrets'
 import { resolveQueryBinding } from '../lib/bindings'
 import { sendEmail, isValidEmail } from '../lib/email'
+import { MAX_RUN_LIMIT, MAX_RUN_QUOTA_MB, parseBoundedInt, pruneRuns } from '../lib/runs'
 
 const admin = new Hono<{ Bindings: Env; Variables: Variables }>()
 admin.use('*', requireAdmin)
@@ -209,6 +210,7 @@ admin.delete('/users/:id', async (c) => {
   await c.env.DB.batch([
     c.env.DB.prepare(`DELETE FROM ${T.totp_credentials} WHERE user_id = ?1`).bind(id),
     c.env.DB.prepare(`DELETE FROM ${T.passkey_credentials} WHERE user_id = ?1`).bind(id),
+    c.env.DB.prepare(`DELETE FROM ${T.notebook_runs} WHERE user_id = ?1`).bind(id),
     c.env.DB.prepare(`DELETE FROM ${T.notebooks} WHERE user_id = ?1`).bind(id),
     c.env.DB.prepare(`UPDATE ${T.query_history} SET user_id = NULL WHERE user_id = ?1`).bind(id),
     c.env.DB.prepare(`DELETE FROM ${T.user_database_permissions} WHERE user_id = ?1`).bind(id),
@@ -329,6 +331,7 @@ admin.delete('/databases/:id', async (c) => {
 
   await c.env.DB.batch([
     c.env.DB.prepare(`UPDATE ${T.notebooks} SET database_id = NULL WHERE database_id = ?1`).bind(dbId),
+    c.env.DB.prepare(`DELETE FROM ${T.notebook_runs} WHERE database_id = ?1`).bind(dbId),
     c.env.DB.prepare(`DELETE FROM ${T.user_database_permissions} WHERE database_id = ?1`).bind(dbId),
     c.env.DB.prepare(`UPDATE ${T.query_history} SET database_id = NULL WHERE database_id = ?1`).bind(dbId),
     c.env.DB.prepare(`DELETE FROM ${T.d1_databases} WHERE id = ?1`).bind(dbId),
@@ -387,9 +390,17 @@ admin.put('/databases/:id/permissions/:userId', async (c) => {
 
 admin.delete('/databases/:id/permissions/:userId', async (c) => {
   const T = tables(c.env)
-  await c.env.DB.prepare(`DELETE FROM ${T.user_database_permissions} WHERE user_id = ?1 AND database_id = ?2`)
-    .bind(c.req.param('userId'), c.req.param('id'))
-    .run()
+  // The user's saved results from this database go with the access to it
+  await c.env.DB.batch([
+    c.env.DB.prepare(`DELETE FROM ${T.user_database_permissions} WHERE user_id = ?1 AND database_id = ?2`).bind(
+      c.req.param('userId'),
+      c.req.param('id')
+    ),
+    c.env.DB.prepare(`DELETE FROM ${T.notebook_runs} WHERE user_id = ?1 AND database_id = ?2`).bind(
+      c.req.param('userId'),
+      c.req.param('id')
+    ),
+  ])
   c.executionCtx.waitUntil(
     audit(c.env, {
       userId: c.get('userId'),
@@ -414,6 +425,8 @@ const EXPOSED_SETTINGS = [
   'smtp_config',
   'resend_config',
   'app_name',
+  'notebook_run_limit',
+  'run_storage_quota_mb',
 ]
 
 admin.get('/settings', async (c) => {
@@ -449,6 +462,11 @@ admin.get('/settings', async (c) => {
 })
 
 const BOOLEAN_SETTINGS = new Set(['registration_enabled', 'require_email_verification', 'enforce_2fa'])
+// Limits on saved notebook runs (see lib/runs.ts): integer ranges
+const RUN_SETTINGS: Record<string, number> = {
+  notebook_run_limit: MAX_RUN_LIMIT,
+  run_storage_quota_mb: MAX_RUN_QUOTA_MB,
+}
 const VALID_EMAIL_PROVIDERS = ['none', 'resend', 'smtp']
 
 admin.patch('/settings', async (c) => {
@@ -470,8 +488,15 @@ admin.patch('/settings', async (c) => {
     }
   }
 
+  for (const [key, max] of Object.entries(RUN_SETTINGS)) {
+    if (body[key] !== undefined && parseBoundedInt(String(body[key]), 1, max) === null) {
+      return c.json({ error: `Invalid ${key}` }, 400)
+    }
+  }
+
   const allowed = new Set(EXPOSED_SETTINGS)
   const existingSettings = await getSettings(c.env, EXPOSED_SETTINGS)
+  let runLimitsChanged = false
 
   for (const [key, value] of Object.entries(body)) {
     if (!allowed.has(key)) continue
@@ -479,6 +504,12 @@ admin.patch('/settings', async (c) => {
     const v = String(value)
     if (BOOLEAN_SETTINGS.has(key) && v !== 'true' && v !== 'false') continue
     if (key === 'email_provider' && !VALID_EMAIL_PROVIDERS.includes(v)) continue
+    if (key in RUN_SETTINGS) {
+      const n = String(parseBoundedInt(v, 1, RUN_SETTINGS[key]!))
+      if (existingSettings[key] !== n) runLimitsChanged = true
+      await setSetting(c.env, key, n)
+      continue
+    }
 
     if (key === 'smtp_config' || key === 'resend_config') {
       const secretField = key === 'smtp_config' ? 'password' : 'api_key'
@@ -513,6 +544,8 @@ admin.patch('/settings', async (c) => {
     }
   }
 
+  // Lower limits apply to the runs already stored right away
+  if (runLimitsChanged) c.executionCtx.waitUntil(pruneRuns(c.env))
   c.executionCtx.waitUntil(
     audit(c.env, {
       userId: c.get('userId'),

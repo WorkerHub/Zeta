@@ -13,7 +13,8 @@
 ## 功能特性
 
 - **SQL Notebook** — 每位用户可创建多个命名 SQL 编辑器标签页，自动保存，每个标签页独立绑定数据库；支持重命名、每用户最多 20 个
-- **SQL 编辑器** — 完整 SQL 输入，语法高亮（CodeMirror 6），Ctrl/Cmd+Enter 执行，支持选中片段单独运行，显示耗时和行数
+- **SQL 编辑器** — 完整 SQL 输入，语法高亮（CodeMirror 6），Ctrl/Cmd+Enter 执行，支持选中片段单独运行，显示耗时和行数；读查询最多返回 5000 行，在 SQL 层面强制限制
+- **运行结果保留** — 每次运行 Notebook 都会连同结果一起保存，切换标签页、离开页面、刷新或换设备后仍可查看；可翻看、删除或清空之前的运行记录（见[查询结果保留](#查询结果保留)）
 - **查询历史** — 每个数据库最近 50 条记录，点击即可重新执行
 - **多数据库** — 连接多个 D1 数据库，按用户分配每个数据库的 `read`（只读）或 `write`（读写）权限
 - **身份验证** — 邮箱 + 密码登录、邮件验证、找回密码、可选 TOTP / 邮件 OTP / Passkey（WebAuthn）二步验证
@@ -154,7 +155,7 @@ curl -X POST https://<你的域名>/api/setup \
 { "ok": true, "message": "Database initialised successfully. You can now register at /register — the first user becomes admin. On new installs registration then stays closed until an admin opens it in Admin → Settings." }
 ```
 
-> 该接口是幂等的，重复调用不会造成任何破坏，可安全地多次调用。**每次升级部署后请再调用一次**：它还会对旧版本创建的数据库执行 Schema 升级（例如让 `query_history` 在删除用户或数据库时保留记录——升级前删除用户或数据库会失败；以及创建 `rate_limits` 表，让登录 / 两步验证 / 邮件的限流计数精确生效——该表创建前会退回到近似的 KV 计数；以及在 `user_database_permissions` 表的外键仍指向不带前缀的 `users` / `d1_databases` 表时重建该表——修复前授权、撤销数据库权限以及删除用户或数据库都会报 `no such table` 错误。用户或数据库已不存在的权限记录会被丢弃，丢弃的行数会在响应的 `permissionsRepair` 字段中给出）。
+> 该接口是幂等的，重复调用不会造成任何破坏，可安全地多次调用。**每次升级部署后请再调用一次**：它还会对旧版本创建的数据库执行 Schema 升级（例如让 `query_history` 在删除用户或数据库时保留记录——升级前删除用户或数据库会失败；以及创建 `rate_limits` 表，让登录 / 两步验证 / 邮件的限流计数精确生效——该表创建前会退回到近似的 KV 计数；以及在 `user_database_permissions` 表的外键仍指向不带前缀的 `users` / `d1_databases` 表时重建该表——修复前授权、撤销数据库权限以及删除用户或数据库都会报 `no such table` 错误。用户或数据库已不存在的权限记录会被丢弃，丢弃的行数会在响应的 `permissionsRepair` 字段中给出；以及为[查询结果保留](#查询结果保留)创建 `notebook_runs` 表并给 `users` 表添加 `notebook_run_limit` 列——升级前运行结果不会被保存，运行记录列表也无法加载）。通过迁移文件创建的数据库可执行 `pnpm migrate:remote`（`0004_notebook_runs.sql`）完成同样的升级。
 >
 > 旧版本使用的 `GET /api/setup/<SETUP_SECRET>` 已废弃：现在会返回 `405` 且不执行任何操作。如果曾经访问过旧 URL，建议轮换 `SETUP_SECRET`。
 
@@ -189,6 +190,23 @@ D1 数据库通过 GitHub Actions Variables 在部署时自动注入 Worker，**
 3. 在**管理后台 → 数据库**中点击**添加数据库**，输入绑定名称（例如 `QUERY_DB_1`）。
 
 4. 在**数据库 → 权限**中为需要访问的用户分配权限（只读 / 读写）。
+
+---
+
+## 查询结果保留
+
+每次运行 Notebook（单条或多条语句）都会连同结果保存到应用数据库的 `notebook_runs` 表中。有两项限制控制其大小，均在 **管理后台 → 设置 → 查询结果保留** 中配置：
+
+| 限制 | 默认值 | 范围 | 作用 |
+|------|--------|------|------|
+| 每个 Notebook 保留的运行记录数 | 100 | 1–1000 | 超出的旧记录会被删除。用户可在 **个人资料 → 查询结果保留** 中设置更小的值，取两者中较小的生效。 |
+| 每个用户运行结果存储上限 | 50 MB | 1–1024 MB | 超出时删除该用户最旧的运行记录（不限 Notebook）。 |
+
+调低任一项都会立即作用于已保存的记录。单次运行最多保存 512 KB 结果（D1 单行上限为 2 MB），更大的结果只保留前面的行，结果面板中会给出提示。另外，读查询最多返回 5000 行：`SELECT`、`VALUES`、`WITH` 语句会以 `SELECT * FROM (<原语句>) LIMIT 5001` 的形式执行，由数据库本身提前停止（`PRAGMA` / `EXPLAIN` 在返回后截断）。
+
+**容量估算：** 应用数据库中运行记录最多占用 *用户数 × 每用户存储上限*——按默认 50 MB 计，10 个用户约 500 MB，正好是 Workers 免费版 D1 单库的容量上限（付费版为 10 GB）。请按用户数调整这两项限制。
+
+**安全性：** 保存的结果以明文存放在应用数据库中，与被查询数据在其自身数据库中的存放方式相同。只有所有者本人能查看和读取；每次读取都会重新校验对被查询数据库的访问权限：数据库被停用时结果不可见；撤销该用户对数据库的权限，或删除数据库、Notebook、用户时，相关结果会被一并删除。
 
 ---
 
@@ -275,9 +293,11 @@ git config blame.ignoreRevsFile .git-blame-ignore-revs
 | `POST /api/auth/*` | 注册、登录、注销、令牌刷新、邮件验证、密码重置、2FA（TOTP / 邮件 OTP / Passkey） |
 | `GET/PATCH /api/profile/*` | 个人信息、修改密码、TOTP 设置/确认/删除、Passkey 注册/删除。删除 TOTP 或 Passkey 需在 JSON 请求体中提供 `{"currentPassword": "..."}` |
 | `GET /api/databases` | 列出当前用户可访问的数据库 |
-| `POST /api/query` | 对绑定的 D1 数据库执行 SQL |
+| `POST /api/query` | 对绑定的 D1 数据库执行 SQL（多条语句用 `/batch`）。读查询最多返回 5000 行，超出时返回 `truncated: true`。带上 `notebookId` 时，这次运行会保存到该 Notebook 下，响应中附带 `run_id` / `executed_at` |
 | `GET /api/query/history` | 查询执行历史（可按数据库过滤） |
 | `GET/POST/PATCH/DELETE /api/notebooks` | SQL Notebook 的增删改查（每用户，最多 20 个） |
+| `GET/DELETE /api/notebooks/:id/runs[/:runId]` | Notebook 的运行记录：列表（按时间倒序，支持 `limit`/`offset`）、读取单条及其结果、删除单条、清空全部 |
+| `GET/PUT /api/profile/run-settings` | 用户自己的保留次数（`run_limit`，`null` 表示跟随管理员上限）及存储用量 |
 | `GET/POST/PATCH/DELETE /api/admin/*` | 仅管理员：用户、数据库、权限、设置 |
 | `POST /api/setup` | 幂等的数据库 Schema 初始化（JSON 请求体 `{"secret": "<SETUP_SECRET>"}`） |
 | `GET /api/health` | 健康检查 |

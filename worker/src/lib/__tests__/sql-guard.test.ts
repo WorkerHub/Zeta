@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { classifySql, checkSqlAccess, type SqlClass } from '../sql-guard'
+import { classifySql, checkSqlAccess, limitReadSql, type SqlClass } from '../sql-guard'
 
 const ctes = (n: number) => Array.from({ length: n }, (_, i) => `c${i} AS (SELECT ${i})`).join(', ')
 
@@ -94,5 +94,45 @@ describe('checkSqlAccess', () => {
   it('rejects multiple statements and empty SQL for everyone', () => {
     expect(checkSqlAccess('multiple', 'write_drop')).not.toBeNull()
     expect(checkSqlAccess('empty', 'write_drop')).not.toBeNull()
+  })
+})
+
+describe('limitReadSql', () => {
+  it('wraps SELECT, VALUES and read-only WITH in a LIMIT one past the cap', () => {
+    for (const sql of [
+      'SELECT * FROM t',
+      'VALUES (1), (2)',
+      'WITH a AS (SELECT 1) SELECT * FROM a',
+      'SELECT * FROM t ORDER BY x DESC LIMIT 10 OFFSET 5',
+    ]) {
+      const wrapped = limitReadSql(sql, 5000)
+      expect(wrapped).toBe(`SELECT * FROM (\n${sql}\n) LIMIT 5001`)
+      expect(classifySql(wrapped!)).toBe('read')
+    }
+  })
+
+  it('drops the trailing semicolon and keeps comments from swallowing the parenthesis', () => {
+    expect(limitReadSql('SELECT 1;', 10)).toBe('SELECT * FROM (\nSELECT 1\n) LIMIT 11')
+    expect(limitReadSql("SELECT ';' FROM t; -- done", 10)).toBe("SELECT * FROM (\nSELECT ';' FROM t\n) LIMIT 11")
+    expect(limitReadSql('SELECT 1 -- note', 10)).toBe('SELECT * FROM (\nSELECT 1 -- note\n) LIMIT 11')
+    expect(limitReadSql('SELECT 1 /* open', 10)).toBe('SELECT * FROM (\nSELECT 1 /* open*/\n) LIMIT 11')
+  })
+
+  it('leaves EXPLAIN and PRAGMA unwrapped', () => {
+    expect(limitReadSql('EXPLAIN QUERY PLAN SELECT 1', 10)).toBeNull()
+    expect(limitReadSql('PRAGMA table_info(users)', 10)).toBeNull()
+  })
+
+  it('cannot be used to smuggle in a second statement', () => {
+    // A top-level `;` is rejected before any rewriting
+    expect(classifySql('SELECT 1) ; DELETE FROM t; SELECT (1')).toBe('multiple')
+  })
+
+  it('does not wrap SQL with unbalanced parentheses, which could escape the outer LIMIT', () => {
+    expect(limitReadSql('SELECT 1) UNION SELECT (2', 10)).toBeNull()
+    expect(limitReadSql('SELECT 1), t WHERE x IN (SELECT 1', 10)).toBeNull()
+    expect(limitReadSql('SELECT (1', 10)).toBeNull()
+    // Parentheses inside strings, identifiers and comments do not count
+    expect(limitReadSql('SELECT \')\' AS "(" -- (', 10)).not.toBeNull()
   })
 })

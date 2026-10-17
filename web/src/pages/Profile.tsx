@@ -18,6 +18,7 @@ import QRCode from 'qrcode'
 import { startRegistration } from '@simplewebauthn/browser'
 import { profileApi } from '../lib/api'
 import { useLocale } from '../hooks/useLocale'
+import RunSettingsCard from '../components/RunSettingsCard'
 import type { User } from '../types'
 
 export default function ProfilePage() {
@@ -418,6 +419,9 @@ export default function ProfilePage() {
           </button>
           {passkeyError && <p className="text-sm text-red-400 mt-2">{passkeyError}</p>}
         </div>
+
+        {/* Saved query runs */}
+        <RunSettingsCard />
       </div>
 
       {removal && (

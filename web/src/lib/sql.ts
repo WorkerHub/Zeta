@@ -1,3 +1,6 @@
+// Rows a read statement returns at most; the server caps it in the SQL itself (worker MAX_RESULT_ROWS)
+export const MAX_RESULT_ROWS = 5000
+
 /**
  * Split a SQL string into individual statements on `;`, ignoring semicolons
  * inside single-quoted strings (`''` escape), line comments (`--`), and

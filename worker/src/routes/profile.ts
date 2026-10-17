@@ -9,6 +9,7 @@ import { generateTotpSecret, encryptTotpSecret, getTotpUri, verifyTotpCode } fro
 import { generateRegistrationOptions, verifyRegistrationResponse } from '@simplewebauthn/server'
 import { isoBase64URL } from '@simplewebauthn/server/helpers'
 import { KV } from '../lib/kv'
+import { getRunPolicy, parseBoundedInt, pruneRuns } from '../lib/runs'
 
 const profile = new Hono<{ Bindings: Env; Variables: Variables }>()
 profile.use('*', requireAuth)
@@ -79,6 +80,48 @@ profile.patch('/me', async (c) => {
     .bind(body.name.trim(), now(), c.get('userId'))
     .run()
   return c.json({ message: 'Updated' })
+})
+
+// ── Saved-run settings ────────────────────────────────────────────────────────
+// A user may keep fewer runs per notebook than the admin limit (never more), and sees how much
+// of the storage quota their saved results use.
+
+async function runSettings(c: Ctx) {
+  const userId = c.get('userId')
+  const T = tables(c.env)
+  const [policy, used] = await Promise.all([
+    getRunPolicy(c.env, userId),
+    c.env.DB.prepare(`SELECT COALESCE(SUM(results_bytes), 0) AS bytes FROM ${T.notebook_runs} WHERE user_id = ?1`)
+      .bind(userId)
+      .first<{ bytes: number }>(),
+  ])
+  return {
+    run_limit: policy.userLimit,
+    admin_run_limit: policy.adminLimit,
+    effective_run_limit: policy.effectiveLimit,
+    storage_used_bytes: used?.bytes ?? 0,
+    storage_quota_bytes: policy.quotaBytes,
+  }
+}
+
+profile.get('/run-settings', async (c) => c.json(await runSettings(c)))
+
+profile.put('/run-settings', async (c) => {
+  const body = await c.req.json<{ run_limit?: unknown }>().catch(() => null)
+  if (!body || !('run_limit' in body)) return c.json({ error: 'Invalid run_limit' }, 400)
+  let runLimit: number | null = null
+  if (body.run_limit !== null) {
+    const { adminLimit } = await getRunPolicy(c.env, c.get('userId'))
+    runLimit = typeof body.run_limit === 'number' ? parseBoundedInt(body.run_limit, 1, adminLimit) : null
+    if (runLimit === null) return c.json({ error: 'Invalid run_limit' }, 400)
+  }
+  const T = tables(c.env)
+  await c.env.DB.prepare(`UPDATE ${T.users} SET notebook_run_limit = ?1 WHERE id = ?2`)
+    .bind(runLimit, c.get('userId'))
+    .run()
+  // Awaited so the returned usage already reflects the pruning
+  await pruneRuns(c.env, { userId: c.get('userId') })
+  return c.json(await runSettings(c))
 })
 
 // ── POST /api/profile/change-password ────────────────────────────────────────
