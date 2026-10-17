@@ -9,12 +9,13 @@ const SALT_LEN = 32
 
 export async function hashPassword(password: string): Promise<string> {
   const salt = crypto.getRandomValues(new Uint8Array(SALT_LEN))
-  const keyMaterial = await crypto.subtle.importKey(
-    'raw', new TextEncoder().encode(password), 'PBKDF2', false, ['deriveBits']
-  )
+  const keyMaterial = await crypto.subtle.importKey('raw', new TextEncoder().encode(password), 'PBKDF2', false, [
+    'deriveBits',
+  ])
   const bits = await crypto.subtle.deriveBits(
     { name: 'PBKDF2', hash: 'SHA-256', salt, iterations: PBKDF2_ITERATIONS },
-    keyMaterial, 256
+    keyMaterial,
+    256
   )
   const saltHex = bufToHex(salt)
   const hashHex = bufToHex(new Uint8Array(bits))
@@ -29,13 +30,10 @@ export async function verifyPassword(password: string, stored: string): Promise<
   if (Number.isNaN(iterations) || iterations <= 0 || iterations > 600_000) return false
   const salt = hexToBuf(saltHex ?? '')
   const expected = hexToBuf(hashHex ?? '')
-  const keyMaterial = await crypto.subtle.importKey(
-    'raw', new TextEncoder().encode(password), 'PBKDF2', false, ['deriveBits']
-  )
-  const bits = await crypto.subtle.deriveBits(
-    { name: 'PBKDF2', hash: 'SHA-256', salt, iterations },
-    keyMaterial, 256
-  )
+  const keyMaterial = await crypto.subtle.importKey('raw', new TextEncoder().encode(password), 'PBKDF2', false, [
+    'deriveBits',
+  ])
+  const bits = await crypto.subtle.deriveBits({ name: 'PBKDF2', hash: 'SHA-256', salt, iterations }, keyMaterial, 256)
   // Constant-time compare
   const derived = new Uint8Array(bits)
   if (derived.length !== expected.length) return false
@@ -71,27 +69,29 @@ export interface Pending2faTokenPayload {
   type: 'pending_2fa'
 }
 
-const ACCESS_TTL = 15 * 60         // 15 min
-const REFRESH_TTL = 7 * 24 * 3600  // 7 days
-const PENDING_TTL = 10 * 60        // 10 min
+const ACCESS_TTL = 15 * 60 // 15 min
+const REFRESH_TTL = 7 * 24 * 3600 // 7 days
+const PENDING_TTL = 10 * 60 // 10 min
 
 async function hmacKey(secret: string): Promise<CryptoKey> {
-  return crypto.subtle.importKey(
-    'raw', new TextEncoder().encode(secret),
-    { name: 'HMAC', hash: 'SHA-256' }, false, ['sign', 'verify']
-  )
+  return crypto.subtle.importKey('raw', new TextEncoder().encode(secret), { name: 'HMAC', hash: 'SHA-256' }, false, [
+    'sign',
+    'verify',
+  ])
 }
 
 function b64url(buf: ArrayBuffer | Uint8Array): string {
   const arr = buf instanceof Uint8Array ? buf : new Uint8Array(buf)
   let binary = ''
   for (let i = 0; i < arr.length; i++) binary += String.fromCharCode(arr[i]!)
-  return btoa(binary)
-    .replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '')
+  return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '')
 }
 
 function b64urlDecode(s: string): Uint8Array {
-  const padded = s.replace(/-/g, '+').replace(/_/g, '/').padEnd(s.length + (4 - s.length % 4) % 4, '=')
+  const padded = s
+    .replace(/-/g, '+')
+    .replace(/_/g, '/')
+    .padEnd(s.length + ((4 - (s.length % 4)) % 4), '=')
   const bin = atob(padded)
   return Uint8Array.from(bin, (c) => c.charCodeAt(0))
 }
@@ -111,10 +111,13 @@ async function verifyJwt<T>(token: string, secret: string): Promise<T | null> {
   try {
     const headerObj = JSON.parse(new TextDecoder().decode(b64urlDecode(header))) as { alg?: string }
     if (headerObj.alg !== 'HS256') return null
-  } catch { return null }
+  } catch {
+    return null
+  }
   const key = await hmacKey(secret)
   const valid = await crypto.subtle.verify(
-    'HMAC', key,
+    'HMAC',
+    key,
     b64urlDecode(sig),
     new TextEncoder().encode(`${header}.${body}`)
   )
@@ -124,34 +127,50 @@ async function verifyJwt<T>(token: string, secret: string): Promise<T | null> {
   return payload
 }
 
-export async function createAccessToken(
-  userId: string, role: 'admin' | 'member', secret: string
-): Promise<string> {
+export async function createAccessToken(userId: string, role: 'admin' | 'member', secret: string): Promise<string> {
   const now = Math.floor(Date.now() / 1000)
-  return signJwt({
-    sub: userId, role, jti: crypto.randomUUID(),
-    iat: now, exp: now + ACCESS_TTL, type: 'access'
-  }, secret)
+  return signJwt(
+    {
+      sub: userId,
+      role,
+      jti: crypto.randomUUID(),
+      iat: now,
+      exp: now + ACCESS_TTL,
+      type: 'access',
+    },
+    secret
+  )
 }
 
 export async function createRefreshToken(userId: string, secret: string): Promise<string> {
   const now = Math.floor(Date.now() / 1000)
-  return signJwt({
-    sub: userId, jti: crypto.randomUUID(),
-    iat: now, exp: now + REFRESH_TTL, type: 'refresh'
-  }, secret)
+  return signJwt(
+    {
+      sub: userId,
+      jti: crypto.randomUUID(),
+      iat: now,
+      exp: now + REFRESH_TTL,
+      type: 'refresh',
+    },
+    secret
+  )
 }
 
 export async function createPending2faToken(userId: string, secret: string): Promise<string> {
   const now = Math.floor(Date.now() / 1000)
-  return signJwt({
-    sub: userId, jti: crypto.randomUUID(), iat: now, exp: now + PENDING_TTL, type: 'pending_2fa'
-  }, secret)
+  return signJwt(
+    {
+      sub: userId,
+      jti: crypto.randomUUID(),
+      iat: now,
+      exp: now + PENDING_TTL,
+      type: 'pending_2fa',
+    },
+    secret
+  )
 }
 
-export async function verifyAccessToken(
-  token: string | undefined, secret: string
-): Promise<AccessTokenPayload | null> {
+export async function verifyAccessToken(token: string | undefined, secret: string): Promise<AccessTokenPayload | null> {
   if (!token) return null
   const payload = await verifyJwt<AccessTokenPayload>(token, secret)
   if (payload?.type !== 'access') return null
@@ -159,7 +178,8 @@ export async function verifyAccessToken(
 }
 
 export async function verifyRefreshToken(
-  token: string | undefined, secret: string
+  token: string | undefined,
+  secret: string
 ): Promise<RefreshTokenPayload | null> {
   if (!token) return null
   const payload = await verifyJwt<RefreshTokenPayload>(token, secret)
@@ -168,7 +188,8 @@ export async function verifyRefreshToken(
 }
 
 export async function verifyPending2faToken(
-  token: string | undefined, secret: string
+  token: string | undefined,
+  secret: string
 ): Promise<Pending2faTokenPayload | null> {
   if (!token) return null
   const payload = await verifyJwt<Pending2faTokenPayload>(token, secret)
@@ -217,7 +238,9 @@ async function hitCounter(env: Env, key: string, ttl: number): Promise<number> {
          count = CASE WHEN expires_at <= ?3 THEN 1 ELSE count + 1 END,
          expires_at = CASE WHEN expires_at <= ?3 THEN ?2 ELSE expires_at END
        RETURNING count`
-    ).bind(key, ts + ttl, ts).first<{ count: number }>()
+    )
+      .bind(key, ts + ttl, ts)
+      .first<{ count: number }>()
     if (!row) throw new Error('rate_limits upsert returned no row')
     // Expired rows are otherwise only reset on their next hit; sweep them now and then.
     if (Math.random() < 0.01) {

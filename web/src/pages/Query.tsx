@@ -6,10 +6,24 @@ import { oneDark } from '@codemirror/theme-one-dark'
 import { keymap } from '@codemirror/view'
 import { Prec } from '@codemirror/state'
 import {
-  Database, Play, ChevronDown, LogOut,
-  User as UserIcon, History, AlertCircle, Loader2,
-  Shield, Monitor, Sun, Moon, X, Globe, Plus, Info,
-  Columns2, LayoutPanelTop
+  Database,
+  Play,
+  ChevronDown,
+  LogOut,
+  User as UserIcon,
+  History,
+  AlertCircle,
+  Loader2,
+  Shield,
+  Monitor,
+  Sun,
+  Moon,
+  X,
+  Globe,
+  Plus,
+  Info,
+  Columns2,
+  LayoutPanelTop,
 } from 'lucide-react'
 import { databasesApi, queryApi, ApiError } from '../lib/api'
 import { useAuthContext } from '../hooks/useAuth'
@@ -23,22 +37,28 @@ import type { Database as DbType, StatementResult } from '../types'
 
 const THEME_ICONS = { auto: Monitor, light: Sun, dark: Moon }
 
-
 export default function QueryPage() {
   const { user, logout } = useAuthContext()
   const { theme, cycleTheme } = useTheme()
   const { t, locale, changeLocale } = useLocale()
   const [databases, setDatabases] = useState<DbType[]>([])
   const {
-    notebooks, activeId, setActiveId,
-    createNotebook, deleteNotebook, renameNotebook,
-    updateContent, updateDatabase, saveError,
-    loading: notebooksLoading, canCreate,
+    notebooks,
+    activeId,
+    setActiveId,
+    createNotebook,
+    deleteNotebook,
+    renameNotebook,
+    updateContent,
+    updateDatabase,
+    saveError,
+    loading: notebooksLoading,
+    canCreate,
   } = useNotebooks()
 
-  const activeNotebook = notebooks.find(n => n.id === activeId) ?? null
+  const activeNotebook = notebooks.find((n) => n.id === activeId) ?? null
   const sqlText = activeNotebook?.sql_content ?? ''
-  const selectedDb = databases.find(d => d.id === activeNotebook?.database_id) ?? null
+  const selectedDb = databases.find((d) => d.id === activeNotebook?.database_id) ?? null
   const [statementResults, setStatementResults] = useState<StatementResult[]>([])
   const [activeResultIdx, setActiveResultIdx] = useState(0)
   const [runError, setRunError] = useState('')
@@ -66,8 +86,8 @@ export default function QueryPage() {
   }, [])
 
   // Layout: 'vertical' = top/bottom, 'horizontal' = left/right
-  const [layout, setLayout] = useState<'vertical' | 'horizontal'>(() =>
-    (localStorage.getItem('query-layout') as 'vertical' | 'horizontal') ?? 'vertical'
+  const [layout, setLayout] = useState<'vertical' | 'horizontal'>(
+    () => (localStorage.getItem('query-layout') as 'vertical' | 'horizontal') ?? 'vertical'
   )
 
   // Draggable split
@@ -80,7 +100,10 @@ export default function QueryPage() {
   const ThemeIcon = THEME_ICONS[theme]
 
   useEffect(() => {
-    databasesApi.list().then(setDatabases).catch(() => {})
+    databasesApi
+      .list()
+      .then(setDatabases)
+      .catch(() => {})
   }, [])
 
   // Close dropdowns on outside click
@@ -125,7 +148,14 @@ export default function QueryPage() {
           if (err instanceof ApiError) {
             setStatementResults([{ sql: stmt, results: [], duration_ms: 0, error: err.message }])
           } else {
-            setStatementResults([{ sql: stmt, results: [], duration_ms: 0, error: err instanceof Error ? err.message : t('errors.query_failed') }])
+            setStatementResults([
+              {
+                sql: stmt,
+                results: [],
+                duration_ms: 0,
+                error: err instanceof Error ? err.message : t('errors.query_failed'),
+              },
+            ])
           }
         }
       } else {
@@ -143,20 +173,27 @@ export default function QueryPage() {
   // Cmd/Ctrl+Enter: override CodeMirror's default Mod-Enter (insertBlankLine)
   // so we can read the selection directly from view state before it gets cleared.
   const runQueryRef = useRef(runQuery)
-  useEffect(() => { runQueryRef.current = runQuery }, [runQuery])
+  useEffect(() => {
+    runQueryRef.current = runQuery
+  }, [runQuery])
 
-  const runShortcutExtension = useMemo(() =>
-    Prec.highest(keymap.of([{
-      key: 'Mod-Enter',
-      run: (view) => {
-        const sel = view.state.selection.main
-        const selected = sel.empty ? '' : view.state.sliceDoc(sel.from, sel.to)
-        selectedSqlRef.current = selected
-        setSelectedSql(selected)
-        runQueryRef.current()
-        return true
-      },
-    }])),
+  const runShortcutExtension = useMemo(
+    () =>
+      Prec.highest(
+        keymap.of([
+          {
+            key: 'Mod-Enter',
+            run: (view) => {
+              const sel = view.state.selection.main
+              const selected = sel.empty ? '' : view.state.sliceDoc(sel.from, sel.to)
+              selectedSqlRef.current = selected
+              setSelectedSql(selected)
+              runQueryRef.current()
+              return true
+            },
+          },
+        ])
+      ),
     []
   )
 
@@ -200,11 +237,7 @@ export default function QueryPage() {
   }
 
   if (notebooksLoading) {
-    return (
-      <div className="flex h-screen items-center justify-center text-zinc-500 text-sm">
-        {t('common.loading')}
-      </div>
-    )
+    return <div className="flex h-screen items-center justify-center text-zinc-500 text-sm">{t('common.loading')}</div>
   }
 
   return (
@@ -233,19 +266,21 @@ export default function QueryPage() {
             <div className="absolute left-0 top-full mt-1 w-64 bg-white border border-zinc-200 dark:bg-zinc-900 dark:border-zinc-700 rounded-xl shadow-xl z-20 overflow-hidden">
               {databases.length === 0 ? (
                 <p className="px-4 py-3 text-sm text-zinc-500">{t('query.no_databases')}</p>
-              ) : databases.map((db) => (
-                <button
-                  type="button"
-                  key={db.id}
-                  onClick={() => {
-                    if (activeId) updateDatabase(activeId, db.id)
-                    setShowDbMenu(false)
-                  }}
-                  className={`w-full text-left px-4 py-2.5 text-sm hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors ${selectedDb?.id === db.id ? 'text-blue-500' : 'text-zinc-700 dark:text-zinc-200'}`}
-                >
-                  {db.name}
-                </button>
-              ))}
+              ) : (
+                databases.map((db) => (
+                  <button
+                    type="button"
+                    key={db.id}
+                    onClick={() => {
+                      if (activeId) updateDatabase(activeId, db.id)
+                      setShowDbMenu(false)
+                    }}
+                    className={`w-full text-left px-4 py-2.5 text-sm hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors ${selectedDb?.id === db.id ? 'text-blue-500' : 'text-zinc-700 dark:text-zinc-200'}`}
+                  >
+                    {db.name}
+                  </button>
+                ))
+              )}
             </div>
           )}
         </div>
@@ -297,22 +332,34 @@ export default function QueryPage() {
                 <p className="text-sm font-medium text-zinc-800 dark:text-zinc-200 truncate">{user?.name}</p>
                 <p className="text-xs text-zinc-500 truncate">{user?.email}</p>
               </div>
-              <Link to="/profile" onClick={() => setShowUserMenu(false)}
-                className="flex items-center gap-2 px-4 py-2.5 text-sm text-zinc-600 hover:bg-zinc-50 hover:text-zinc-900 dark:text-zinc-300 dark:hover:bg-zinc-800 dark:hover:text-zinc-100 transition-colors">
+              <Link
+                to="/profile"
+                onClick={() => setShowUserMenu(false)}
+                className="flex items-center gap-2 px-4 py-2.5 text-sm text-zinc-600 hover:bg-zinc-50 hover:text-zinc-900 dark:text-zinc-300 dark:hover:bg-zinc-800 dark:hover:text-zinc-100 transition-colors"
+              >
                 <UserIcon size={14} /> {t('user.profile_security')}
               </Link>
               {user?.role === 'admin' && (
-                <Link to="/admin" onClick={() => setShowUserMenu(false)}
-                  className="flex items-center gap-2 px-4 py-2.5 text-sm text-zinc-600 hover:bg-zinc-50 hover:text-zinc-900 dark:text-zinc-300 dark:hover:bg-zinc-800 dark:hover:text-zinc-100 transition-colors">
+                <Link
+                  to="/admin"
+                  onClick={() => setShowUserMenu(false)}
+                  className="flex items-center gap-2 px-4 py-2.5 text-sm text-zinc-600 hover:bg-zinc-50 hover:text-zinc-900 dark:text-zinc-300 dark:hover:bg-zinc-800 dark:hover:text-zinc-100 transition-colors"
+                >
                   <Shield size={14} /> {t('user.admin_panel')}
                 </Link>
               )}
-              <Link to="/about" onClick={() => setShowUserMenu(false)}
-                className="flex items-center gap-2 px-4 py-2.5 text-sm text-zinc-600 hover:bg-zinc-50 hover:text-zinc-900 dark:text-zinc-300 dark:hover:bg-zinc-800 dark:hover:text-zinc-100 transition-colors">
+              <Link
+                to="/about"
+                onClick={() => setShowUserMenu(false)}
+                className="flex items-center gap-2 px-4 py-2.5 text-sm text-zinc-600 hover:bg-zinc-50 hover:text-zinc-900 dark:text-zinc-300 dark:hover:bg-zinc-800 dark:hover:text-zinc-100 transition-colors"
+              >
                 <Info size={14} /> {t('user.about')}
               </Link>
-              <button type="button" onClick={logout}
-                className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-red-400 hover:bg-zinc-50 dark:hover:bg-zinc-800 transition-colors border-t border-zinc-100 dark:border-zinc-800">
+              <button
+                type="button"
+                onClick={logout}
+                className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-red-400 hover:bg-zinc-50 dark:hover:bg-zinc-800 transition-colors border-t border-zinc-100 dark:border-zinc-800"
+              >
                 <LogOut size={14} /> {t('user.sign_out')}
               </button>
             </div>
@@ -321,7 +368,10 @@ export default function QueryPage() {
       </header>
 
       {/* Notebook tab bar */}
-      <div role="tablist" className="flex items-center border-b border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 shrink-0 overflow-x-auto scrollbar-none min-h-[36px]">
+      <div
+        role="tablist"
+        className="flex items-center border-b border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 shrink-0 overflow-x-auto scrollbar-none min-h-[36px]"
+      >
         {notebooks.map((nb) => (
           <div
             key={nb.id}
@@ -358,7 +408,10 @@ export default function QueryPage() {
                   setRenamingId(null)
                 }}
                 onKeyDown={(e) => {
-                  if (e.key === 'Enter') { renameNotebook(nb.id, renameValue); setRenamingId(null) }
+                  if (e.key === 'Enter') {
+                    renameNotebook(nb.id, renameValue)
+                    setRenamingId(null)
+                  }
                   if (e.key === 'Escape') setRenamingId(null)
                 }}
                 onClick={(e) => e.stopPropagation()}
@@ -414,13 +467,16 @@ export default function QueryPage() {
           {/* SQL Editor */}
           <div
             className={`flex flex-col ${layout === 'horizontal' ? 'border-r' : 'border-b'} border-zinc-200 dark:border-zinc-800`}
-            style={layout === 'horizontal'
-              ? { width: `${editorPct}%`, minWidth: 200 }
-              : { height: `${editorPct}%`, minHeight: 120 }
+            style={
+              layout === 'horizontal'
+                ? { width: `${editorPct}%`, minWidth: 200 }
+                : { height: `${editorPct}%`, minHeight: 120 }
             }
           >
             <div className="flex items-center justify-between px-4 py-2 border-b border-zinc-200 dark:border-zinc-800 shrink-0">
-              <span className="text-xs font-medium text-zinc-500 uppercase tracking-wider">{t('query.sql_editor')}</span>
+              <span className="text-xs font-medium text-zinc-500 uppercase tracking-wider">
+                {t('query.sql_editor')}
+              </span>
               <div className="flex items-center gap-2">
                 {/* Layout toggle buttons */}
                 <div className="hidden sm:flex items-center gap-0.5 rounded-md border border-zinc-200 dark:border-zinc-700 p-0.5">
@@ -461,7 +517,9 @@ export default function QueryPage() {
             <div className="flex-1 overflow-hidden">
               <CodeMirror
                 value={sqlText}
-                onChange={(val) => { if (activeId) updateContent(activeId, val) }}
+                onChange={(val) => {
+                  if (activeId) updateContent(activeId, val)
+                }}
                 onUpdate={(update) => {
                   const sel = update.state.selection.main
                   const selected = sel.empty ? '' : update.state.sliceDoc(sel.from, sel.to)
@@ -522,7 +580,9 @@ export default function QueryPage() {
           <div className="w-80 border-l border-zinc-200 dark:border-zinc-800 overflow-auto shrink-0 hidden lg:block">
             <QueryHistoryPanel
               databaseId={selectedDb.id}
-              onSelect={(s) => { if (activeId) updateContent(activeId, s) }}
+              onSelect={(s) => {
+                if (activeId) updateContent(activeId, s)
+              }}
             />
           </div>
         )}
@@ -534,7 +594,10 @@ export default function QueryPage() {
         <div className="relative flex-1" ref={dbMenuRef}>
           <button
             type="button"
-            onClick={() => { setShowDbMenu(!showDbMenu); setShowHistory(false) }}
+            onClick={() => {
+              setShowDbMenu(!showDbMenu)
+              setShowHistory(false)
+            }}
             className="w-full flex items-center gap-1.5 px-3 py-2 rounded-lg bg-zinc-100 border border-zinc-200 text-sm text-zinc-700 dark:bg-zinc-800 dark:border-zinc-700 dark:text-zinc-200 transition-colors"
           >
             <Database size={13} className="text-zinc-400 shrink-0" />
@@ -563,7 +626,10 @@ export default function QueryPage() {
         {/* History button */}
         <button
           type="button"
-          onClick={() => { setShowHistory(!showHistory); setShowDbMenu(false) }}
+          onClick={() => {
+            setShowHistory(!showHistory)
+            setShowDbMenu(false)
+          }}
           className={`btn-ghost p-2.5 ${showHistory ? 'text-blue-500 bg-blue-500/10' : ''}`}
         >
           <History size={17} />
@@ -587,7 +653,10 @@ export default function QueryPage() {
           {/* biome-ignore lint/a11y/useKeyWithClickEvents: backdrop is a pointer-only dismiss target; the sheet has its own close button */}
           {/* biome-ignore lint/a11y/noStaticElementInteractions: pointer-only backdrop; the sheet has its own close button */}
           <div className="absolute inset-0 bg-black/40" onClick={() => setShowHistory(false)} />
-          <div className="relative bg-white dark:bg-zinc-900 rounded-t-2xl border-t border-zinc-200 dark:border-zinc-800 flex flex-col" style={{ maxHeight: '70vh' }}>
+          <div
+            className="relative bg-white dark:bg-zinc-900 rounded-t-2xl border-t border-zinc-200 dark:border-zinc-800 flex flex-col"
+            style={{ maxHeight: '70vh' }}
+          >
             <div className="flex items-center justify-between px-4 py-3 border-b border-zinc-200 dark:border-zinc-800 shrink-0">
               <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">{t('query.query_history')}</span>
               <button type="button" onClick={() => setShowHistory(false)} className="btn-ghost p-1.5">
@@ -597,7 +666,10 @@ export default function QueryPage() {
             <div className="overflow-auto flex-1">
               <QueryHistoryPanel
                 databaseId={selectedDb.id}
-                onSelect={(s) => { if (activeId) updateContent(activeId, s); setShowHistory(false) }}
+                onSelect={(s) => {
+                  if (activeId) updateContent(activeId, s)
+                  setShowHistory(false)
+                }}
               />
             </div>
           </div>

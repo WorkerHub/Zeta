@@ -7,8 +7,8 @@ export interface Env {
   ASSETS: Fetcher
   // Secrets (set via CF dashboard)
   JWT_SECRET: string
-  ENCRYPTION_KEY: string   // 64-char hex string (32 bytes) for AES-GCM TOTP encryption
-  SETUP_SECRET: string     // random secret required by POST /api/setup
+  ENCRYPTION_KEY: string // 64-char hex string (32 bytes) for AES-GCM TOTP encryption
+  SETUP_SECRET: string // random secret required by POST /api/setup
   // Vars (set via CF dashboard)
   APP_URL: string
   TABLE_PREFIX?: string

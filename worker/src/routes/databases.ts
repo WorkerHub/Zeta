@@ -26,7 +26,9 @@ databases.get('/', async (c) => {
        JOIN ${T.user_database_permissions} p ON p.database_id = d.id
        WHERE p.user_id = ?1 AND d.is_active = 1
        ORDER BY d.name`
-    ).bind(userId).all<DatabaseRow>()
+    )
+      .bind(userId)
+      .all<DatabaseRow>()
     rows = result.results
   }
 
@@ -35,17 +37,21 @@ databases.get('/', async (c) => {
   if (role !== 'admin') {
     const perms = await c.env.DB.prepare(
       `SELECT database_id, permission FROM ${T.user_database_permissions} WHERE user_id = ?1`
-    ).bind(userId).all<{ database_id: string; permission: string }>()
+    )
+      .bind(userId)
+      .all<{ database_id: string; permission: string }>()
     permMap = new Map(perms.results.map((r) => [r.database_id, r.permission]))
   }
 
-  return c.json(rows.map((db) => ({
-    id: db.id,
-    name: db.name,
-    description: db.description,
-    ...(role === 'admin' ? { binding_name: db.binding_name } : {}),
-    permission: role === 'admin' ? 'write_drop' : (permMap.get(db.id) ?? 'read'),
-  })))
+  return c.json(
+    rows.map((db) => ({
+      id: db.id,
+      name: db.name,
+      description: db.description,
+      ...(role === 'admin' ? { binding_name: db.binding_name } : {}),
+      permission: role === 'admin' ? 'write_drop' : (permMap.get(db.id) ?? 'read'),
+    }))
+  )
 })
 
 export default databases

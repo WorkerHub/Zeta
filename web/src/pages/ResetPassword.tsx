@@ -16,8 +16,14 @@ export default function ResetPassword() {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
-    if (password !== confirm) { setError(t('auth.pw_mismatch')); return }
-    if (password.length < 8) { setError(t('auth.pw_min_error')); return }
+    if (password !== confirm) {
+      setError(t('auth.pw_mismatch'))
+      return
+    }
+    if (password.length < 8) {
+      setError(t('auth.pw_min_error'))
+      return
+    }
     setError('')
     setLoading(true)
     try {
@@ -35,7 +41,9 @@ export default function ResetPassword() {
       <div className="min-h-screen flex items-center justify-center p-4 bg-zinc-50 dark:bg-zinc-950">
         <div className="card p-6 text-center">
           <p className="text-red-400 mb-4">{t('auth.invalid_reset')}</p>
-          <Link to="/forgot-password" className="btn-primary">{t('auth.request_new')}</Link>
+          <Link to="/forgot-password" className="btn-primary">
+            {t('auth.request_new')}
+          </Link>
         </div>
       </div>
     )
@@ -55,15 +63,34 @@ export default function ResetPassword() {
           <h1 className="text-lg font-semibold text-zinc-900 mb-6 dark:text-zinc-100">{t('auth.reset_title')}</h1>
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
-              <label htmlFor="reset-password" className="label">{t('auth.new_password')}</label>
-              <input id="reset-password" type="password" value={password} onChange={(e) => setPassword(e.target.value)}
+              <label htmlFor="reset-password" className="label">
+                {t('auth.new_password')}
+              </label>
+              <input
+                id="reset-password"
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                className="input"
+                placeholder={t('auth.pw_min')}
+                required
                 // biome-ignore lint/a11y/noAutofocus: single-purpose auth form; focusing its first field is the expected entry point
-                className="input" placeholder={t('auth.pw_min')} required autoFocus />
+                autoFocus
+              />
             </div>
             <div>
-              <label htmlFor="reset-confirm" className="label">{t('auth.confirm_password')}</label>
-              <input id="reset-confirm" type="password" value={confirm} onChange={(e) => setConfirm(e.target.value)}
-                className="input" placeholder={t('auth.repeat_password')} required />
+              <label htmlFor="reset-confirm" className="label">
+                {t('auth.confirm_password')}
+              </label>
+              <input
+                id="reset-confirm"
+                type="password"
+                value={confirm}
+                onChange={(e) => setConfirm(e.target.value)}
+                className="input"
+                placeholder={t('auth.repeat_password')}
+                required
+              />
             </div>
             {error && <p className="text-sm text-red-400">{error}</p>}
             <button type="submit" className="btn-primary w-full" disabled={loading}>

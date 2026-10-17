@@ -24,7 +24,8 @@ export default function QueryHistoryPanel({ databaseId, onSelect }: Props) {
 
   useEffect(() => {
     setLoading(true)
-    queryApi.history({ databaseId, limit: 50 })
+    queryApi
+      .history({ databaseId, limit: 50 })
       .then((res) => setItems(res.results as HistoryItem[]))
       .catch(() => {})
       .finally(() => setLoading(false))
@@ -51,9 +52,13 @@ export default function QueryHistoryPanel({ databaseId, onSelect }: Props) {
         <span className="text-xs font-medium text-zinc-500 uppercase tracking-wider">{t('query.query_history')}</span>
       </div>
       {loading ? (
-        <div className="flex items-center justify-center flex-1 text-zinc-400 dark:text-zinc-600 text-sm">{t('common.loading')}</div>
+        <div className="flex items-center justify-center flex-1 text-zinc-400 dark:text-zinc-600 text-sm">
+          {t('common.loading')}
+        </div>
       ) : items.length === 0 ? (
-        <div className="flex items-center justify-center flex-1 text-zinc-400 dark:text-zinc-600 text-sm">{t('query.no_history')}</div>
+        <div className="flex items-center justify-center flex-1 text-zinc-400 dark:text-zinc-600 text-sm">
+          {t('query.no_history')}
+        </div>
       ) : (
         <div className="flex-1 overflow-auto">
           {items.map((item) => (
@@ -64,9 +69,11 @@ export default function QueryHistoryPanel({ databaseId, onSelect }: Props) {
               className="w-full text-left px-4 py-3 border-b border-zinc-100 hover:bg-zinc-50 dark:border-zinc-800/50 dark:hover:bg-zinc-800/30 transition-colors group"
             >
               <div className="flex items-center gap-1.5 mb-1">
-                {item.error
-                  ? <XCircle size={11} className="text-red-400 shrink-0" />
-                  : <CheckCircle2 size={11} className="text-emerald-400 shrink-0" />}
+                {item.error ? (
+                  <XCircle size={11} className="text-red-400 shrink-0" />
+                ) : (
+                  <CheckCircle2 size={11} className="text-emerald-400 shrink-0" />
+                )}
                 <span className="text-xs text-zinc-500">{timeAgo(item.executed_at)}</span>
                 {item.duration_ms !== null && (
                   <>
@@ -78,7 +85,9 @@ export default function QueryHistoryPanel({ databaseId, onSelect }: Props) {
                 {item.row_count !== null && !item.error && (
                   <>
                     <span className="text-zinc-300 dark:text-zinc-700">·</span>
-                    <span className="text-xs text-zinc-400 dark:text-zinc-600">{item.row_count} {item.row_count === 1 ? t('query.row') : t('query.rows')}</span>
+                    <span className="text-xs text-zinc-400 dark:text-zinc-600">
+                      {item.row_count} {item.row_count === 1 ? t('query.row') : t('query.rows')}
+                    </span>
                   </>
                 )}
               </div>

@@ -6,14 +6,17 @@ function envWithSettings(settings: Record<string, string>) {
   const { db } = fakeD1((sql, args) =>
     sql.startsWith('SELECT value FROM settings') && settings[args[0] as string] !== undefined
       ? { value: settings[args[0] as string] }
-      : null)
+      : null
+  )
   return fakeEnv({ DB: db })
 }
 
 const payload = { to: 'user@example.com', subject: 'Hi', html: '<p>Hi</p>', text: 'Hi' }
 const injected = 'noreply@example.com>\r\nRCPT TO:<victim@example.com'
 
-afterEach(() => { vi.restoreAllMocks() })
+afterEach(() => {
+  vi.restoreAllMocks()
+})
 
 describe('sendEmail sender validation', () => {
   it('refuses an SMTP from address that could inject commands', async () => {

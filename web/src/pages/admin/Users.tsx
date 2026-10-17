@@ -5,9 +5,7 @@ import { useAuthContext } from '../../hooks/useAuth'
 import { useLocale } from '../../hooks/useLocale'
 import type { User } from '../../types'
 
-type ModalState =
-  | { mode: 'create' }
-  | { mode: 'edit'; user: User }
+type ModalState = { mode: 'create' } | { mode: 'edit'; user: User }
 
 const EMPTY_FORM = { name: '', email: '', password: '', role: 'member' }
 
@@ -41,7 +39,9 @@ export default function AdminUsers() {
     }
   }, [search, page])
 
-  useEffect(() => { load() }, [load])
+  useEffect(() => {
+    load()
+  }, [load])
 
   async function changeRole(id: string, role: string) {
     await adminApi.updateUser(id, { role })
@@ -105,7 +105,9 @@ export default function AdminUsers() {
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-lg font-semibold text-zinc-900 dark:text-zinc-100">{t('admin.users')}</h1>
         <div className="flex items-center gap-2">
-          <span className="badge badge-zinc">{total} {t('admin_users.total')}</span>
+          <span className="badge badge-zinc">
+            {total} {t('admin_users.total')}
+          </span>
           <button type="button" onClick={openCreate} className="btn-primary btn-sm flex items-center gap-1.5">
             <UserPlus size={13} />
             {t('admin_users.add_user')}
@@ -113,16 +115,20 @@ export default function AdminUsers() {
         </div>
       </div>
 
-      {deleteError && (
-        <p className="mb-3 text-sm text-red-400">{deleteError}</p>
-      )}
+      {deleteError && <p className="mb-3 text-sm text-red-400">{deleteError}</p>}
 
       {/* Search */}
       <div className="relative mb-4">
         <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500" />
         <input
-          type="text" value={search} onChange={(e) => { setSearch(e.target.value); setPage(0) }}
-          className="input pl-9" placeholder={t('admin_users.search')}
+          type="text"
+          value={search}
+          onChange={(e) => {
+            setSearch(e.target.value)
+            setPage(0)
+          }}
+          className="input pl-9"
+          placeholder={t('admin_users.search')}
         />
       </div>
 
@@ -131,59 +137,82 @@ export default function AdminUsers() {
           <thead>
             <tr className="border-b border-zinc-200 dark:border-zinc-800 bg-zinc-100/50 dark:bg-zinc-800/30">
               <th className="text-left px-4 py-3 text-xs font-medium text-zinc-500">{t('admin_users.user')}</th>
-              <th className="text-left px-4 py-3 text-xs font-medium text-zinc-500 hidden md:table-cell">{t('admin_users.verified')}</th>
+              <th className="text-left px-4 py-3 text-xs font-medium text-zinc-500 hidden md:table-cell">
+                {t('admin_users.verified')}
+              </th>
               <th className="text-left px-4 py-3 text-xs font-medium text-zinc-500">{t('admin_users.role')}</th>
-              <th className="text-left px-4 py-3 text-xs font-medium text-zinc-500 hidden lg:table-cell">{t('admin_users.joined')}</th>
+              <th className="text-left px-4 py-3 text-xs font-medium text-zinc-500 hidden lg:table-cell">
+                {t('admin_users.joined')}
+              </th>
               <th className="px-4 py-3" />
             </tr>
           </thead>
           <tbody>
             {loading ? (
-              <tr><td colSpan={5} className="px-4 py-8 text-center text-zinc-500 text-sm">{t('admin_users.loading')}</td></tr>
-            ) : users.length === 0 ? (
-              <tr><td colSpan={5} className="px-4 py-8 text-center text-zinc-500 text-sm">{t('admin_users.no_users')}</td></tr>
-            ) : users.map((u) => (
-              <tr key={u.id} className="border-b border-zinc-100 hover:bg-zinc-50 dark:border-zinc-800/50 dark:hover:bg-zinc-800/20 transition-colors">
-                <td className="px-4 py-3">
-                  <p className="font-medium text-zinc-800 dark:text-zinc-200">{u.name}</p>
-                  <p className="text-xs text-zinc-500">{u.email}</p>
-                </td>
-                <td className="px-4 py-3 hidden md:table-cell">
-                  {u.email_verified ? (
-                    <CheckCircle size={15} className="text-emerald-400" />
-                  ) : (
-                    <XCircle size={15} className="text-zinc-600" />
-                  )}
-                </td>
-                <td className="px-4 py-3">
-                  <select
-                    value={u.role}
-                    onChange={(e) => changeRole(u.id, e.target.value)}
-                    className="bg-zinc-100 border border-zinc-200 rounded-md px-2 py-1 text-xs text-zinc-700 dark:bg-zinc-800 dark:border-zinc-700 dark:text-zinc-200 focus:outline-none focus:border-blue-500"
-                  >
-                    <option value="member">member</option>
-                    <option value="admin">admin</option>
-                  </select>
-                </td>
-                <td className="px-4 py-3 hidden lg:table-cell">
-                  <span className="text-xs text-zinc-500">
-                    {new Date(u.created_at * 1000).toLocaleDateString()}
-                  </span>
-                </td>
-                <td className="px-4 py-3 text-right">
-                  {u.id !== me?.id && (
-                    <div className="flex items-center justify-end gap-0.5">
-                      <button type="button" onClick={() => openEdit(u)} className="btn-ghost p-1.5 btn-sm text-zinc-400">
-                        <Pencil size={13} />
-                      </button>
-                      <button type="button" onClick={() => setDeleteTarget(u)} className="btn-ghost p-1.5 text-red-400 btn-sm">
-                        <Trash2 size={13} />
-                      </button>
-                    </div>
-                  )}
+              <tr>
+                <td colSpan={5} className="px-4 py-8 text-center text-zinc-500 text-sm">
+                  {t('admin_users.loading')}
                 </td>
               </tr>
-            ))}
+            ) : users.length === 0 ? (
+              <tr>
+                <td colSpan={5} className="px-4 py-8 text-center text-zinc-500 text-sm">
+                  {t('admin_users.no_users')}
+                </td>
+              </tr>
+            ) : (
+              users.map((u) => (
+                <tr
+                  key={u.id}
+                  className="border-b border-zinc-100 hover:bg-zinc-50 dark:border-zinc-800/50 dark:hover:bg-zinc-800/20 transition-colors"
+                >
+                  <td className="px-4 py-3">
+                    <p className="font-medium text-zinc-800 dark:text-zinc-200">{u.name}</p>
+                    <p className="text-xs text-zinc-500">{u.email}</p>
+                  </td>
+                  <td className="px-4 py-3 hidden md:table-cell">
+                    {u.email_verified ? (
+                      <CheckCircle size={15} className="text-emerald-400" />
+                    ) : (
+                      <XCircle size={15} className="text-zinc-600" />
+                    )}
+                  </td>
+                  <td className="px-4 py-3">
+                    <select
+                      value={u.role}
+                      onChange={(e) => changeRole(u.id, e.target.value)}
+                      className="bg-zinc-100 border border-zinc-200 rounded-md px-2 py-1 text-xs text-zinc-700 dark:bg-zinc-800 dark:border-zinc-700 dark:text-zinc-200 focus:outline-none focus:border-blue-500"
+                    >
+                      <option value="member">member</option>
+                      <option value="admin">admin</option>
+                    </select>
+                  </td>
+                  <td className="px-4 py-3 hidden lg:table-cell">
+                    <span className="text-xs text-zinc-500">{new Date(u.created_at * 1000).toLocaleDateString()}</span>
+                  </td>
+                  <td className="px-4 py-3 text-right">
+                    {u.id !== me?.id && (
+                      <div className="flex items-center justify-end gap-0.5">
+                        <button
+                          type="button"
+                          onClick={() => openEdit(u)}
+                          className="btn-ghost p-1.5 btn-sm text-zinc-400"
+                        >
+                          <Pencil size={13} />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setDeleteTarget(u)}
+                          className="btn-ghost p-1.5 text-red-400 btn-sm"
+                        >
+                          <Trash2 size={13} />
+                        </button>
+                      </div>
+                    )}
+                  </td>
+                </tr>
+              ))
+            )}
           </tbody>
         </table>
       </div>
@@ -195,8 +224,22 @@ export default function AdminUsers() {
             {page * limit + 1}–{Math.min((page + 1) * limit, total)} / {total}
           </span>
           <div className="flex gap-2">
-            <button type="button" onClick={() => setPage(p => p - 1)} disabled={page === 0} className="btn-secondary btn-sm">{t('admin_users.prev')}</button>
-            <button type="button" onClick={() => setPage(p => p + 1)} disabled={(page + 1) * limit >= total} className="btn-secondary btn-sm">{t('admin_users.next')}</button>
+            <button
+              type="button"
+              onClick={() => setPage((p) => p - 1)}
+              disabled={page === 0}
+              className="btn-secondary btn-sm"
+            >
+              {t('admin_users.prev')}
+            </button>
+            <button
+              type="button"
+              onClick={() => setPage((p) => p + 1)}
+              disabled={(page + 1) * limit >= total}
+              className="btn-secondary btn-sm"
+            >
+              {t('admin_users.next')}
+            </button>
           </div>
         </div>
       )}
@@ -206,18 +249,29 @@ export default function AdminUsers() {
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
           <div className="card w-full max-w-sm p-6 shadow-2xl">
             <div className="flex items-center justify-between mb-4">
-              <h2 className="text-base font-semibold text-zinc-900 dark:text-zinc-100">{t('admin_users.confirm_delete')}</h2>
-              <button type="button" onClick={() => setDeleteTarget(null)} className="btn-ghost p-1.5 rounded-lg"><X size={16} /></button>
+              <h2 className="text-base font-semibold text-zinc-900 dark:text-zinc-100">
+                {t('admin_users.confirm_delete')}
+              </h2>
+              <button type="button" onClick={() => setDeleteTarget(null)} className="btn-ghost p-1.5 rounded-lg">
+                <X size={16} />
+              </button>
             </div>
             <p className="text-sm text-zinc-500 dark:text-zinc-400">
               {t('admin_users.confirm_delete_desc')}{' '}
-              <span className="font-medium text-zinc-800 dark:text-zinc-200">{deleteTarget.name}</span>
-              {' '}({deleteTarget.email})?
+              <span className="font-medium text-zinc-800 dark:text-zinc-200">{deleteTarget.name}</span> (
+              {deleteTarget.email})?
             </p>
             <p className="text-sm text-zinc-500 dark:text-zinc-400 mt-1">{t('admin_users.confirm_delete_warn')}</p>
             <div className="mt-6 flex gap-3">
-              <button type="button" onClick={() => setDeleteTarget(null)} className="btn-secondary flex-1">{t('admin_users.cancel')}</button>
-              <button type="button" onClick={() => deleteUser(deleteTarget.id)} disabled={deleteLoading} className="btn-danger flex-1">
+              <button type="button" onClick={() => setDeleteTarget(null)} className="btn-secondary flex-1">
+                {t('admin_users.cancel')}
+              </button>
+              <button
+                type="button"
+                onClick={() => deleteUser(deleteTarget.id)}
+                disabled={deleteLoading}
+                className="btn-danger flex-1"
+              >
                 {deleteLoading ? '…' : t('admin_users.confirm')}
               </button>
             </div>
@@ -233,41 +287,62 @@ export default function AdminUsers() {
               <h2 className="text-lg font-semibold text-zinc-900 dark:text-zinc-100">
                 {modal.mode === 'create' ? t('admin_users.new_user') : t('admin_users.edit_user')}
               </h2>
-              <button type="button" onClick={closeModal} className="btn-ghost p-1.5 rounded-lg"><X size={16} /></button>
+              <button type="button" onClick={closeModal} className="btn-ghost p-1.5 rounded-lg">
+                <X size={16} />
+              </button>
             </div>
 
             <div className="space-y-4">
               <div>
-                <label htmlFor="user-name" className="label">{t('admin_users.name')}</label>
+                <label htmlFor="user-name" className="label">
+                  {t('admin_users.name')}
+                </label>
                 <input
                   id="user-name"
-                  type="text" value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
+                  type="text"
+                  value={form.name}
+                  onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
+                  className="input"
+                  required
                   // biome-ignore lint/a11y/noAutofocus: focus moves into the dialog that just opened
-                  className="input" required autoFocus
+                  autoFocus
                 />
               </div>
               <div>
-                <label htmlFor="user-email" className="label">{t('admin_users.email')}</label>
+                <label htmlFor="user-email" className="label">
+                  {t('admin_users.email')}
+                </label>
                 <input
                   id="user-email"
-                  type="email" value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))}
-                  className="input" required
+                  type="email"
+                  value={form.email}
+                  onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))}
+                  className="input"
+                  required
                 />
               </div>
               <div>
-                <label htmlFor="user-password" className="label">{t('admin_users.password')}</label>
+                <label htmlFor="user-password" className="label">
+                  {t('admin_users.password')}
+                </label>
                 <input
                   id="user-password"
-                  type="password" value={form.password} onChange={e => setForm(f => ({ ...f, password: e.target.value }))}
-                  className="input" placeholder={modal.mode === 'edit' ? t('admin_users.password_hint') : ''}
+                  type="password"
+                  value={form.password}
+                  onChange={(e) => setForm((f) => ({ ...f, password: e.target.value }))}
+                  className="input"
+                  placeholder={modal.mode === 'edit' ? t('admin_users.password_hint') : ''}
                   required={modal.mode === 'create'}
                 />
               </div>
               <div>
-                <label htmlFor="user-role" className="label">{t('admin_users.role')}</label>
+                <label htmlFor="user-role" className="label">
+                  {t('admin_users.role')}
+                </label>
                 <select
                   id="user-role"
-                  value={form.role} onChange={e => setForm(f => ({ ...f, role: e.target.value }))}
+                  value={form.role}
+                  onChange={(e) => setForm((f) => ({ ...f, role: e.target.value }))}
                   className="input"
                 >
                   <option value="member">member</option>
@@ -279,7 +354,9 @@ export default function AdminUsers() {
             {formError && <p className="text-sm text-red-400 mt-3">{formError}</p>}
 
             <div className="mt-6 flex gap-3">
-              <button type="button" onClick={closeModal} className="btn-secondary flex-1">{t('admin_users.cancel')}</button>
+              <button type="button" onClick={closeModal} className="btn-secondary flex-1">
+                {t('admin_users.cancel')}
+              </button>
               <button type="button" onClick={submitModal} disabled={formLoading} className="btn-primary flex-1">
                 {formLoading ? '…' : modal.mode === 'create' ? t('admin_users.create') : t('admin_users.save')}
               </button>

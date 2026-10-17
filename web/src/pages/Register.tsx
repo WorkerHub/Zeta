@@ -15,7 +15,10 @@ export default function Register() {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     setError('')
-    if (form.password.length < 8) { setError(t('auth.pw_min_error')); return }
+    if (form.password.length < 8) {
+      setError(t('auth.pw_min_error'))
+      return
+    }
     setLoading(true)
     try {
       await authApi.register(form)
@@ -63,17 +66,45 @@ export default function Register() {
           ) : (
             <form onSubmit={handleSubmit} className="space-y-4">
               <div>
-                <label htmlFor="register-name" className="label">{t('auth.name')}</label>
-                {/* biome-ignore lint/a11y/noAutofocus: single-purpose auth form; focusing its first field is the expected entry point */}
-                <input id="register-name" type="text" {...field('name')} className="input" placeholder={t('auth.placeholder_name')} required autoFocus />
+                <label htmlFor="register-name" className="label">
+                  {t('auth.name')}
+                </label>
+                <input
+                  id="register-name"
+                  type="text"
+                  {...field('name')}
+                  className="input"
+                  placeholder={t('auth.placeholder_name')}
+                  required
+                  // biome-ignore lint/a11y/noAutofocus: single-purpose auth form; focusing its first field is the expected entry point
+                  autoFocus
+                />
               </div>
               <div>
-                <label htmlFor="register-email" className="label">{t('auth.email')}</label>
-                <input id="register-email" type="email" {...field('email')} className="input" placeholder={t('auth.placeholder_email')} required />
+                <label htmlFor="register-email" className="label">
+                  {t('auth.email')}
+                </label>
+                <input
+                  id="register-email"
+                  type="email"
+                  {...field('email')}
+                  className="input"
+                  placeholder={t('auth.placeholder_email')}
+                  required
+                />
               </div>
               <div>
-                <label htmlFor="register-password" className="label">{t('auth.password')}</label>
-                <input id="register-password" type="password" {...field('password')} className="input" placeholder={t('auth.pw_min')} required />
+                <label htmlFor="register-password" className="label">
+                  {t('auth.password')}
+                </label>
+                <input
+                  id="register-password"
+                  type="password"
+                  {...field('password')}
+                  className="input"
+                  placeholder={t('auth.pw_min')}
+                  required
+                />
               </div>
 
               {error && <p className="text-sm text-red-400">{error}</p>}
@@ -86,7 +117,9 @@ export default function Register() {
 
           <p className="mt-4 text-sm text-center text-zinc-500">
             {t('auth.have_account')}{' '}
-            <Link to="/login" className="text-blue-400 hover:text-blue-300">{t('auth.signin')}</Link>
+            <Link to="/login" className="text-blue-400 hover:text-blue-300">
+              {t('auth.signin')}
+            </Link>
           </p>
         </div>
       </div>

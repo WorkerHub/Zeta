@@ -8,8 +8,15 @@ let user: UserRow
 
 beforeAll(async () => {
   user = {
-    id: 'user-123', email: 'a@example.com', password_hash: await hashPassword(PASSWORD), name: 'A',
-    role: 'member', email_verified: 1, two_factor_required: 0, created_at: 0, updated_at: 0,
+    id: 'user-123',
+    email: 'a@example.com',
+    password_hash: await hashPassword(PASSWORD),
+    name: 'A',
+    role: 'member',
+    email_verified: 1,
+    two_factor_required: 0,
+    created_at: 0,
+    updated_at: 0,
   }
 })
 
@@ -27,7 +34,7 @@ describe('POST /api/auth/login', () => {
     const env = loginEnv({ has2fa: true })
     const res = await callWorker(env, '/api/auth/login', postJson({ email: user.email, password: PASSWORD }))
     expect(res.status).toBe(200)
-    const body = await res.json() as Record<string, unknown>
+    const body = (await res.json()) as Record<string, unknown>
     expect(Object.keys(body).sort()).toEqual(['pendingToken', 'requires2fa'])
     expect(JSON.stringify(body)).not.toContain(user.id)
     // The id still reaches the 2FA step through the signed token
@@ -36,15 +43,21 @@ describe('POST /api/auth/login', () => {
   })
 
   it('logs straight in when no 2FA is configured', async () => {
-    const res = await callWorker(loginEnv({ has2fa: false }), '/api/auth/login',
-      postJson({ email: user.email, password: PASSWORD }))
+    const res = await callWorker(
+      loginEnv({ has2fa: false }),
+      '/api/auth/login',
+      postJson({ email: user.email, password: PASSWORD })
+    )
     expect(res.status).toBe(200)
     expect(await res.json()).toMatchObject({ accessToken: expect.any(String), user: { id: user.id } })
   })
 
   it('rejects a wrong password', async () => {
-    const res = await callWorker(loginEnv({ has2fa: true }), '/api/auth/login',
-      postJson({ email: user.email, password: 'nope' }))
+    const res = await callWorker(
+      loginEnv({ has2fa: true }),
+      '/api/auth/login',
+      postJson({ email: user.email, password: 'nope' })
+    )
     expect(res.status).toBe(401)
   })
 })
@@ -52,8 +65,11 @@ describe('POST /api/auth/login', () => {
 describe('login rate limiting', () => {
   it('counts a parallel burst of guesses in full instead of letting it race past the limit', async () => {
     const env = loginEnv({ has2fa: false })
-    const responses = await Promise.all(Array.from({ length: 15 }, () =>
-      callWorker(env, '/api/auth/login', postJson({ email: user.email, password: 'wrong' }))))
+    const responses = await Promise.all(
+      Array.from({ length: 15 }, () =>
+        callWorker(env, '/api/auth/login', postJson({ email: user.email, password: 'wrong' }))
+      )
+    )
     const statuses = responses.map((r) => r.status)
     expect(statuses.filter((s) => s === 401)).toHaveLength(10)
     expect(statuses.filter((s) => s === 429)).toHaveLength(5)
@@ -67,7 +83,9 @@ describe('login rate limiting', () => {
     for (let i = 0; i < 9; i++) {
       await callWorker(env, '/api/auth/login', postJson({ email: user.email, password: 'wrong' }))
     }
-    expect((await callWorker(env, '/api/auth/login', postJson({ email: user.email, password: PASSWORD }))).status).toBe(200)
+    expect((await callWorker(env, '/api/auth/login', postJson({ email: user.email, password: PASSWORD }))).status).toBe(
+      200
+    )
     for (let i = 0; i < 9; i++) {
       const res = await callWorker(env, '/api/auth/login', postJson({ email: user.email, password: 'wrong' }))
       expect(res.status).toBe(401)
@@ -80,8 +98,11 @@ describe('refresh cookie', () => {
 
   it('is Secure when the request arrived over https, even if APP_URL says http', async () => {
     const env = loginEnv({ has2fa: false })
-    const res = await callWorker(env, 'https://zeta.example.com/api/auth/login',
-      postJson({ email: user.email, password: PASSWORD }))
+    const res = await callWorker(
+      env,
+      'https://zeta.example.com/api/auth/login',
+      postJson({ email: user.email, password: PASSWORD })
+    )
     expect(res.status).toBe(200)
     expect(cookieOf(res)).toMatch(/^refresh_token=.+; Secure/)
   })
@@ -93,8 +114,11 @@ describe('refresh cookie', () => {
   })
 
   it('stays usable over plain http in local development', async () => {
-    const res = await callWorker(loginEnv({ has2fa: false }), '/api/auth/login',
-      postJson({ email: user.email, password: PASSWORD }))
+    const res = await callWorker(
+      loginEnv({ has2fa: false }),
+      '/api/auth/login',
+      postJson({ email: user.email, password: PASSWORD })
+    )
     expect(cookieOf(res)).not.toContain('Secure')
   })
 })

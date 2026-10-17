@@ -5,9 +5,7 @@ import type { Env } from '../types'
 const RESERVED_BINDINGS = new Set(['DB', 'KV', 'ASSETS'])
 const BINDING_NAME_RE = /^[A-Za-z_][A-Za-z0-9_]{0,63}$/
 
-export type QueryBindingResult =
-  | { ok: true; db: D1Database }
-  | { ok: false; error: string }
+export type QueryBindingResult = { ok: true; db: D1Database } | { ok: false; error: string }
 
 // Resolves a user-registered binding name to a queryable D1 database. Used both when an admin
 // registers a database and on every query, so rows registered before this check existed

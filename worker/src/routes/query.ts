@@ -31,7 +31,8 @@ query.post('/', async (c) => {
   // Resolve database + permission
   const T = tables(c.env)
   const db = await c.env.DB.prepare(`SELECT * FROM ${T.d1_databases} WHERE id = ?1 AND is_active = 1`)
-    .bind(body.databaseId).first<DatabaseRow>()
+    .bind(body.databaseId)
+    .first<DatabaseRow>()
   if (!db) return c.json({ error: 'Database not found' }, 404)
 
   let permission: Permission = 'read'
@@ -40,7 +41,9 @@ query.post('/', async (c) => {
   } else {
     const perm = await c.env.DB.prepare(
       `SELECT permission FROM ${T.user_database_permissions} WHERE user_id = ?1 AND database_id = ?2`
-    ).bind(userId, db.id).first<{ permission: string }>()
+    )
+      .bind(userId, db.id)
+      .first<{ permission: string }>()
     if (!perm) return c.json({ error: 'Access denied' }, 403)
     permission = (perm.permission as Permission) ?? 'read'
   }
@@ -80,7 +83,9 @@ query.post('/', async (c) => {
     c.env.DB.prepare(
       `INSERT INTO ${T.query_history} (id, user_id, database_id, sql, duration_ms, row_count, error, executed_at)
        VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)`
-    ).bind(uuid(), userId, db.id, sql, duration, rowCount, errorMsg, now()).run()
+    )
+      .bind(uuid(), userId, db.id, sql, duration, rowCount, errorMsg, now())
+      .run()
   )
 
   if (errorMsg) return c.json({ error: errorMsg }, 400)
@@ -110,7 +115,8 @@ query.post('/batch', async (c) => {
 
   // Resolve database
   const db = await c.env.DB.prepare(`SELECT * FROM ${T.d1_databases} WHERE id = ?1 AND is_active = 1`)
-    .bind(body.databaseId).first<DatabaseRow>()
+    .bind(body.databaseId)
+    .first<DatabaseRow>()
   if (!db) return c.json({ error: 'Database not found' }, 404)
 
   // Check permission once
@@ -120,7 +126,9 @@ query.post('/batch', async (c) => {
   } else {
     const perm = await c.env.DB.prepare(
       `SELECT permission FROM ${T.user_database_permissions} WHERE user_id = ?1 AND database_id = ?2`
-    ).bind(userId, db.id).first<{ permission: string }>()
+    )
+      .bind(userId, db.id)
+      .first<{ permission: string }>()
     if (!perm) return c.json({ error: 'Access denied' }, 403)
     permission = (perm.permission as Permission) ?? 'read'
   }
@@ -174,17 +182,19 @@ query.post('/batch', async (c) => {
     }
 
     const duration = Date.now() - start
-    const rowCount = errorMsg ? 0 : (changes !== undefined ? changes : stmtResult.length)
+    const rowCount = errorMsg ? 0 : changes !== undefined ? changes : stmtResult.length
 
     // Save to history (non-blocking)
     c.executionCtx.waitUntil(
       c.env.DB.prepare(
         `INSERT INTO ${T.query_history} (id, user_id, database_id, sql, duration_ms, row_count, error, executed_at)
          VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)`
-      ).bind(uuid(), userId, db.id, sql, duration, rowCount, errorMsg ?? null, now()).run()
+      )
+        .bind(uuid(), userId, db.id, sql, duration, rowCount, errorMsg ?? null, now())
+        .run()
     )
 
-    const entry: typeof results[number] = { sql, results: stmtResult, duration_ms: duration }
+    const entry: (typeof results)[number] = { sql, results: stmtResult, duration_ms: duration }
     if (changes !== undefined) entry.changes = changes
     if (errorMsg) entry.error = errorMsg
     if (truncated) entry.truncated = true
@@ -209,21 +219,27 @@ query.get('/history', async (c) => {
     if (role === 'admin') {
       rows = await c.env.DB.prepare(
         `SELECT * FROM ${T.query_history} WHERE database_id = ?1 ORDER BY executed_at DESC LIMIT ?2 OFFSET ?3`
-      ).bind(dbId, limit, offset).all()
+      )
+        .bind(dbId, limit, offset)
+        .all()
     } else {
       rows = await c.env.DB.prepare(
         `SELECT * FROM ${T.query_history} WHERE user_id = ?1 AND database_id = ?2 ORDER BY executed_at DESC LIMIT ?3 OFFSET ?4`
-      ).bind(userId, dbId, limit, offset).all()
+      )
+        .bind(userId, dbId, limit, offset)
+        .all()
     }
   } else {
     if (role === 'admin') {
-      rows = await c.env.DB.prepare(
-        `SELECT * FROM ${T.query_history} ORDER BY executed_at DESC LIMIT ?1 OFFSET ?2`
-      ).bind(limit, offset).all()
+      rows = await c.env.DB.prepare(`SELECT * FROM ${T.query_history} ORDER BY executed_at DESC LIMIT ?1 OFFSET ?2`)
+        .bind(limit, offset)
+        .all()
     } else {
       rows = await c.env.DB.prepare(
         `SELECT * FROM ${T.query_history} WHERE user_id = ?1 ORDER BY executed_at DESC LIMIT ?2 OFFSET ?3`
-      ).bind(userId, limit, offset).all()
+      )
+        .bind(userId, limit, offset)
+        .all()
     }
   }
 

@@ -5,13 +5,8 @@ import { requireAuth } from '../middleware/auth'
 import { uuid } from '../lib/id'
 import { now, audit, tables, getSetting } from '../lib/db'
 import { hashPassword, verifyPassword, beginLoginAttempt, loginAttemptSucceeded } from '../lib/auth'
-import {
-  generateTotpSecret, encryptTotpSecret,
-  getTotpUri, verifyTotpCode,
-} from '../lib/totp'
-import {
-  generateRegistrationOptions, verifyRegistrationResponse,
-} from '@simplewebauthn/server'
+import { generateTotpSecret, encryptTotpSecret, getTotpUri, verifyTotpCode } from '../lib/totp'
+import { generateRegistrationOptions, verifyRegistrationResponse } from '@simplewebauthn/server'
 import { isoBase64URL } from '@simplewebauthn/server/helpers'
 import { KV } from '../lib/kv'
 
@@ -32,7 +27,8 @@ async function confirmPassword(c: Ctx, password: unknown): Promise<Response | nu
 
   const T = tables(c.env)
   const user = await c.env.DB.prepare(`SELECT email, password_hash FROM ${T.users} WHERE id = ?1`)
-    .bind(c.get('userId')).first<{ email: string; password_hash: string | null }>()
+    .bind(c.get('userId'))
+    .first<{ email: string; password_hash: string | null }>()
   if (!user?.password_hash) return c.json({ error: 'No password set' }, 400)
 
   const ip = clientIp(c)
@@ -52,15 +48,19 @@ profile.get('/me', async (c) => {
   const T = tables(c.env)
   const user = await c.env.DB.prepare(
     `SELECT id, email, name, role, email_verified, two_factor_required, created_at FROM ${T.users} WHERE id = ?1`
-  ).bind(c.get('userId')).first<Omit<UserRow, 'password_hash' | 'updated_at'>>()
+  )
+    .bind(c.get('userId'))
+    .first<Omit<UserRow, 'password_hash' | 'updated_at'>>()
   if (!user) return c.json({ error: 'User not found' }, 404)
 
-  const totpRows = await c.env.DB.prepare(
-    `SELECT id, name, created_at FROM ${T.totp_credentials} WHERE user_id = ?1`
-  ).bind(user.id).all<Pick<TotpCredentialRow, 'id' | 'name' | 'created_at'>>()
+  const totpRows = await c.env.DB.prepare(`SELECT id, name, created_at FROM ${T.totp_credentials} WHERE user_id = ?1`)
+    .bind(user.id)
+    .all<Pick<TotpCredentialRow, 'id' | 'name' | 'created_at'>>()
   const passkeyRows = await c.env.DB.prepare(
     `SELECT id, name, created_at FROM ${T.passkey_credentials} WHERE user_id = ?1`
-  ).bind(user.id).all<Pick<PasskeyCredentialRow, 'id' | 'name' | 'created_at'>>()
+  )
+    .bind(user.id)
+    .all<Pick<PasskeyCredentialRow, 'id' | 'name' | 'created_at'>>()
 
   return c.json({
     ...user,
@@ -76,7 +76,8 @@ profile.patch('/me', async (c) => {
   if (!body?.name?.trim()) return c.json({ error: 'name is required' }, 400)
   const T = tables(c.env)
   await c.env.DB.prepare(`UPDATE ${T.users} SET name = ?1, updated_at = ?2 WHERE id = ?3`)
-    .bind(body.name.trim(), now(), c.get('userId')).run()
+    .bind(body.name.trim(), now(), c.get('userId'))
+    .run()
   return c.json({ message: 'Updated' })
 })
 
@@ -95,7 +96,8 @@ profile.post('/change-password', async (c) => {
   const T = tables(c.env)
   const hash = await hashPassword(body.newPassword)
   await c.env.DB.prepare(`UPDATE ${T.users} SET password_hash = ?1, updated_at = ?2 WHERE id = ?3`)
-    .bind(hash, now(), c.get('userId')).run()
+    .bind(hash, now(), c.get('userId'))
+    .run()
   await c.env.KV.put(KV.sessionInvalidatedAt(c.get('userId')), String(now()), { expirationTtl: 7 * 24 * 3600 })
 
   c.executionCtx.waitUntil(audit(c.env, { userId: c.get('userId'), action: 'change_password', ip: clientIp(c) }))
@@ -107,7 +109,8 @@ profile.post('/change-password', async (c) => {
 profile.post('/totp/setup', async (c) => {
   const T = tables(c.env)
   const user = await c.env.DB.prepare(`SELECT email FROM ${T.users} WHERE id = ?1`)
-    .bind(c.get('userId')).first<{ email: string }>()
+    .bind(c.get('userId'))
+    .first<{ email: string }>()
   if (!user) return c.json({ error: 'User not found' }, 404)
 
   const secret = generateTotpSecret()
@@ -136,7 +139,9 @@ profile.post('/totp/confirm', async (c) => {
   const id = uuid()
   await c.env.DB.prepare(
     `INSERT INTO ${T.totp_credentials} (id, user_id, encrypted_secret, name, created_at) VALUES (?1, ?2, ?3, ?4, ?5)`
-  ).bind(id, c.get('userId'), encryptedSecret, body.name?.trim() || 'Authenticator', now()).run()
+  )
+    .bind(id, c.get('userId'), encryptedSecret, body.name?.trim() || 'Authenticator', now())
+    .run()
 
   return c.json({ message: 'TOTP authenticator added' })
 })
@@ -150,10 +155,16 @@ profile.delete('/totp/:id', async (c) => {
   const T = tables(c.env)
   const id = c.req.param('id')
   await c.env.DB.prepare(`DELETE FROM ${T.totp_credentials} WHERE id = ?1 AND user_id = ?2`)
-    .bind(id, c.get('userId')).run()
-  c.executionCtx.waitUntil(audit(c.env, {
-    userId: c.get('userId'), action: 'delete_totp', resource: id, ip: clientIp(c),
-  }))
+    .bind(id, c.get('userId'))
+    .run()
+  c.executionCtx.waitUntil(
+    audit(c.env, {
+      userId: c.get('userId'),
+      action: 'delete_totp',
+      resource: id,
+      ip: clientIp(c),
+    })
+  )
   return c.json({ message: 'TOTP credential removed' })
 })
 
@@ -162,12 +173,15 @@ profile.delete('/totp/:id', async (c) => {
 profile.post('/passkey/register/options', async (c) => {
   const T = tables(c.env)
   const user = await c.env.DB.prepare(`SELECT id, email, name FROM ${T.users} WHERE id = ?1`)
-    .bind(c.get('userId')).first<{ id: string; email: string; name: string }>()
+    .bind(c.get('userId'))
+    .first<{ id: string; email: string; name: string }>()
   if (!user) return c.json({ error: 'User not found' }, 404)
 
   const existingCredentials = await c.env.DB.prepare(
     `SELECT credential_id FROM ${T.passkey_credentials} WHERE user_id = ?1`
-  ).bind(user.id).all<{ credential_id: string }>()
+  )
+    .bind(user.id)
+    .all<{ credential_id: string }>()
 
   const appUrl = new URL(c.env.APP_URL.trim())
   const options = await generateRegistrationOptions({
@@ -217,7 +231,9 @@ profile.post('/passkey/register/verify', async (c) => {
   const T = tables(c.env)
   await c.env.DB.prepare(
     `INSERT INTO ${T.passkey_credentials} (id, user_id, credential_id, public_key, sign_count, name, created_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)`
-  ).bind(uuid(), c.get('userId'), credId, pubKey, counter, name, now()).run()
+  )
+    .bind(uuid(), c.get('userId'), credId, pubKey, counter, name, now())
+    .run()
 
   return c.json({ message: 'Passkey registered' })
 })
@@ -230,10 +246,16 @@ profile.delete('/passkey/:id', async (c) => {
   const T = tables(c.env)
   const id = c.req.param('id')
   await c.env.DB.prepare(`DELETE FROM ${T.passkey_credentials} WHERE id = ?1 AND user_id = ?2`)
-    .bind(id, c.get('userId')).run()
-  c.executionCtx.waitUntil(audit(c.env, {
-    userId: c.get('userId'), action: 'delete_passkey', resource: id, ip: clientIp(c),
-  }))
+    .bind(id, c.get('userId'))
+    .run()
+  c.executionCtx.waitUntil(
+    audit(c.env, {
+      userId: c.get('userId'),
+      action: 'delete_passkey',
+      resource: id,
+      ip: clientIp(c),
+    })
+  )
   return c.json({ message: 'Passkey removed' })
 })
 

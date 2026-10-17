@@ -4,8 +4,15 @@ import type { Env } from '../../types'
 
 const d1 = { prepare: () => ({}) }
 const env = {
-  DB: d1, KV: {}, ASSETS: {}, JWT_SECRET: 'jwt', ENCRYPTION_KEY: 'k', SETUP_SECRET: 's', APP_URL: 'u',
-  QUERY_DB_1: d1, ANALYTICS: d1,
+  DB: d1,
+  KV: {},
+  ASSETS: {},
+  JWT_SECRET: 'jwt',
+  ENCRYPTION_KEY: 'k',
+  SETUP_SECRET: 's',
+  APP_URL: 'u',
+  QUERY_DB_1: d1,
+  ANALYTICS: d1,
 } as unknown as Env
 
 describe('resolveQueryBinding', () => {

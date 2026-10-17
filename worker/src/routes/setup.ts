@@ -48,14 +48,16 @@ async function upgradeHistoryTable(db: D1Database, T: ReturnType<typeof tables>)
 
   const tmp = `${T.query_history}_new`
   const columns = 'id, user_id, database_id, sql, duration_ms, row_count, error, executed_at'
-  await db.batch([
-    `DROP TABLE IF EXISTS ${tmp}`,
-    historyTableDDL(T, tmp),
-    `INSERT INTO ${tmp} (${columns}) SELECT ${columns} FROM ${T.query_history}`,
-    `DROP TABLE ${T.query_history}`,
-    `ALTER TABLE ${tmp} RENAME TO ${T.query_history}`,
-    ...historyIndexDDL(T),
-  ].map((stmt) => db.prepare(stmt)))
+  await db.batch(
+    [
+      `DROP TABLE IF EXISTS ${tmp}`,
+      historyTableDDL(T, tmp),
+      `INSERT INTO ${tmp} (${columns}) SELECT ${columns} FROM ${T.query_history}`,
+      `DROP TABLE ${T.query_history}`,
+      `ALTER TABLE ${tmp} RENAME TO ${T.query_history}`,
+      ...historyIndexDDL(T),
+    ].map((stmt) => db.prepare(stmt))
+  )
   return true
 }
 
@@ -239,9 +241,11 @@ setup.post('/', async (c) => {
     try {
       await c.env.DB.batch(
         DEFAULT_SETTINGS.map(([key, value]) =>
-          c.env.DB.prepare(
-            `INSERT OR IGNORE INTO ${T.settings} (key, value, updated_at) VALUES (?1, ?2, ?3)`
-          ).bind(key, value, ts)
+          c.env.DB.prepare(`INSERT OR IGNORE INTO ${T.settings} (key, value, updated_at) VALUES (?1, ?2, ?3)`).bind(
+            key,
+            value,
+            ts
+          )
         )
       )
     } catch (err) {
@@ -255,8 +259,9 @@ setup.post('/', async (c) => {
 
   return c.json({
     ok: true,
-    message: 'Database initialised successfully. You can now register at /register — the first user becomes admin. '
-      + 'On new installs registration then stays closed until an admin opens it in Admin → Settings.',
+    message:
+      'Database initialised successfully. You can now register at /register — the first user becomes admin. ' +
+      'On new installs registration then stays closed until an admin opens it in Admin → Settings.',
     ...(upgraded.length > 0 && { upgraded }),
   })
 })

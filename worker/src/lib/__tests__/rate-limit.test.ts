@@ -24,14 +24,19 @@ describe('rate limiting', () => {
   it('uses a single atomic upsert on the prefixed table', async () => {
     const { db, calls } = fakeD1()
     await checkRateLimit(fakeEnv({ DB: db, TABLE_PREFIX: 'kp' }), 'k', 5, 60)
-    expect(calls[0]!.sql.replace(/\s+/g, ' ')).toMatch(/^INSERT INTO kp_rate_limits .+ ON CONFLICT\(key\) DO UPDATE SET .+ RETURNING count$/)
+    expect(calls[0]!.sql.replace(/\s+/g, ' ')).toMatch(
+      /^INSERT INTO kp_rate_limits .+ ON CONFLICT\(key\) DO UPDATE SET .+ RETURNING count$/
+    )
   })
 
   it('falls back to KV counters when the rate_limits table does not exist yet', async () => {
-    const { db } = fakeD1((sql) => {
-      if (sql.includes('rate_limits')) throw new Error('no such table: rate_limits')
-      return null
-    }, { rateLimits: false })
+    const { db } = fakeD1(
+      (sql) => {
+        if (sql.includes('rate_limits')) throw new Error('no such table: rate_limits')
+        return null
+      },
+      { rateLimits: false }
+    )
     const env = fakeEnv({ DB: db })
     const results = []
     for (let i = 0; i < 4; i++) results.push(await checkRateLimit(env, 'k', 3, 60))
@@ -40,18 +45,24 @@ describe('rate limiting', () => {
   })
 
   it('falls back for a prefixed missing table too', async () => {
-    const { db } = fakeD1((sql) => {
-      if (sql.includes('rate_limits')) throw new Error('D1_ERROR: no such table: kp_rate_limits: SQLITE_ERROR')
-      return null
-    }, { rateLimits: false })
+    const { db } = fakeD1(
+      (sql) => {
+        if (sql.includes('rate_limits')) throw new Error('D1_ERROR: no such table: kp_rate_limits: SQLITE_ERROR')
+        return null
+      },
+      { rateLimits: false }
+    )
     expect(await checkRateLimit(fakeEnv({ DB: db, TABLE_PREFIX: 'kp' }), 'k', 3, 60)).toBe(true)
   })
 
   it('surfaces other D1 errors instead of silently switching to KV', async () => {
-    const { db } = fakeD1((sql) => {
-      if (sql.includes('rate_limits')) throw new Error('D1_ERROR: Network connection lost.')
-      return null
-    }, { rateLimits: false })
+    const { db } = fakeD1(
+      (sql) => {
+        if (sql.includes('rate_limits')) throw new Error('D1_ERROR: Network connection lost.')
+        return null
+      },
+      { rateLimits: false }
+    )
     const env = fakeEnv({ DB: db })
     await expect(checkRateLimit(env, 'k', 3, 60)).rejects.toThrow('Network connection lost')
     expect(await env.KV.get('k')).toBeNull()

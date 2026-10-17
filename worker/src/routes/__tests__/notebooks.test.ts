@@ -37,7 +37,9 @@ describe('notebook database binding', () => {
   it('creates notebooks bound to a granted database or to none', async () => {
     const { env } = notebooksEnv()
     const headers = await bearer(env, 'u1')
-    expect((await callWorker(env, '/api/notebooks', postJson({ database_id: 'db-granted' }, { headers }))).status).toBe(201)
+    expect((await callWorker(env, '/api/notebooks', postJson({ database_id: 'db-granted' }, { headers }))).status).toBe(
+      201
+    )
     expect((await callWorker(env, '/api/notebooks', postJson({}, { headers }))).status).toBe(201)
   })
 
@@ -46,7 +48,9 @@ describe('notebook database binding', () => {
     const headers = await bearer(env, 'u1')
     expect((await callWorker(env, '/api/notebooks/nb1', patch({ database_id: 'db-other' }, headers))).status).toBe(403)
     expect(wrote(calls)).toBe(false)
-    expect((await callWorker(env, '/api/notebooks/nb1', patch({ database_id: 'db-granted' }, headers))).status).toBe(200)
+    expect((await callWorker(env, '/api/notebooks/nb1', patch({ database_id: 'db-granted' }, headers))).status).toBe(
+      200
+    )
     expect((await callWorker(env, '/api/notebooks/nb1', patch({ database_id: null }, headers))).status).toBe(200)
   })
 

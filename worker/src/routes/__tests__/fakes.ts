@@ -17,9 +17,10 @@ function rateLimitTable() {
     if (sql.startsWith('INSERT INTO')) {
       const [key, expiresAt, ts] = args as [string, number, number]
       const row = rows.get(key)
-      const next = !row || row.expires_at <= ts
-        ? { count: 1, expires_at: expiresAt }
-        : { count: row.count + 1, expires_at: row.expires_at }
+      const next =
+        !row || row.expires_at <= ts
+          ? { count: 1, expires_at: expiresAt }
+          : { count: row.count + 1, expires_at: row.expires_at }
       rows.set(key, next)
       return { count: next.count }
     }
@@ -75,8 +76,12 @@ export function fakeKV(): KVNamespace {
   const store = new Map<string, string>()
   return {
     get: async (key: string) => store.get(key) ?? null,
-    put: async (key: string, value: string) => { store.set(key, value) },
-    delete: async (key: string) => { store.delete(key) },
+    put: async (key: string, value: string) => {
+      store.set(key, value)
+    },
+    delete: async (key: string) => {
+      store.delete(key)
+    },
   } as unknown as KVNamespace
 }
 
@@ -99,14 +104,16 @@ export async function callWorker(env: Env, path: string, init?: RequestInit): Pr
   const { default: worker } = await import('../../index')
   const pending: Promise<unknown>[] = []
   const ctx = {
-    waitUntil: (p: Promise<unknown>) => { pending.push(p) },
+    waitUntil: (p: Promise<unknown>) => {
+      pending.push(p)
+    },
     passThroughOnException: () => {},
     props: {},
   }
   const res = await worker.fetch(
     new Request(path.startsWith('http') ? path : `http://localhost:8787${path}`, init) as never,
     env,
-    ctx as never,
+    ctx as never
   )
   await Promise.allSettled(pending)
   return res as unknown as Response

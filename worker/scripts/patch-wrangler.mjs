@@ -16,7 +16,7 @@ const PLACEHOLDERS = [
 export const MAX_QUERY_DBS = 10
 
 // JSON string escapes (\" \\ \n \uXXXX ...) are all valid in TOML basic strings.
-export const tomlString = value => JSON.stringify(value)
+export const tomlString = (value) => JSON.stringify(value)
 
 /**
  * @param {string} template wrangler.toml contents
