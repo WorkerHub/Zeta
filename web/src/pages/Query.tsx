@@ -32,7 +32,6 @@ import { useLocale } from '../hooks/useLocale'
 import { useNotebooks } from '../hooks/useNotebooks'
 import { useNotebookRuns } from '../hooks/useNotebookRuns'
 import ResultsPanel from '../components/ResultsPanel'
-import QueryHistoryPanel from '../components/QueryHistoryPanel'
 import RunHistoryBar from '../components/RunHistoryBar'
 import RunHistoryDrawer from '../components/RunHistoryDrawer'
 import { splitSqlStatements } from '../lib/sql'
@@ -71,7 +70,6 @@ export default function QueryPage() {
   const [activeResultIdx, setActiveResultIdx] = useState(0)
   // Failures outside a query run (loading databases, deleting a notebook, managing saved runs)
   const [pageError, setPageError] = useState('')
-  const [showHistory, setShowHistory] = useState(false)
   const [showRunHistory, setShowRunHistory] = useState(false)
   const [showDbMenu, setShowDbMenu] = useState(false)
   const [showUserMenu, setShowUserMenu] = useState(false)
@@ -83,6 +81,8 @@ export default function QueryPage() {
   const dbMenuRef = useRef<HTMLDivElement>(null)
   const dbMenuDesktopRef = useRef<HTMLDivElement>(null)
   const userMenuRef = useRef<HTMLDivElement>(null)
+  // The drawer returns focus here when it closes
+  const historyBtnRef = useRef<HTMLButtonElement>(null)
 
   // Track dark mode for CodeMirror theme
   const [isDark, setIsDark] = useState(() => document.documentElement.classList.contains('dark'))
@@ -323,11 +323,22 @@ export default function QueryPage() {
 
         <div className="flex-1" />
 
-        {/* History toggle — hidden on mobile (shown in bottom bar) */}
+        {/* The only entry to the run history drawer (see below) */}
         <button
+          ref={historyBtnRef}
           type="button"
-          onClick={() => setShowHistory(!showHistory)}
-          className={`btn-ghost btn-sm gap-1.5 hidden sm:flex ${showHistory ? 'text-blue-500 bg-blue-500/10' : ''}`}
+          onClick={() => {
+            // Focus first so the drawer can hand focus back here, in browsers that do not focus
+            // buttons on click
+            historyBtnRef.current?.focus()
+            setShowRunHistory(true)
+          }}
+          aria-expanded={showRunHistory}
+          aria-haspopup="dialog"
+          aria-controls={showRunHistory ? 'run-history-panel' : undefined}
+          aria-label={t('runs.open_history')}
+          title={t('runs.history')}
+          className={`btn-ghost btn-sm gap-1.5 ${showRunHistory ? 'text-blue-500 bg-blue-500/10' : ''}`}
         >
           <History size={15} />
           <span className="hidden sm:inline">{t('query.history')}</span>
@@ -628,7 +639,6 @@ export default function QueryPage() {
                 onSelect={runs.selectRun}
                 onLoadMore={runs.loadMore}
                 onDelete={(runId) => reportRunAction(runs.deleteRun(runId))}
-                onOpenHistory={() => setShowRunHistory(true)}
               />
             )}
             {!running && !runError && statementResults.length > 0 && (
@@ -657,18 +667,6 @@ export default function QueryPage() {
             )}
           </div>
         </div>
-
-        {/* History sidebar — desktop only */}
-        {showHistory && selectedDb && (
-          <div className="w-80 border-l border-zinc-200 dark:border-zinc-800 overflow-auto shrink-0 hidden lg:block">
-            <QueryHistoryPanel
-              databaseId={selectedDb.id}
-              onSelect={(s) => {
-                if (activeId) updateContent(activeId, s)
-              }}
-            />
-          </div>
-        )}
       </div>
 
       {/* Mobile bottom bar */}
@@ -679,7 +677,6 @@ export default function QueryPage() {
             type="button"
             onClick={() => {
               setShowDbMenu(!showDbMenu)
-              setShowHistory(false)
             }}
             className="w-full flex items-center gap-1.5 px-3 py-2 rounded-lg bg-zinc-100 border border-zinc-200 text-sm text-zinc-700 dark:bg-zinc-800 dark:border-zinc-700 dark:text-zinc-200 transition-colors"
           >
@@ -706,18 +703,6 @@ export default function QueryPage() {
           )}
         </div>
 
-        {/* History button */}
-        <button
-          type="button"
-          onClick={() => {
-            setShowHistory(!showHistory)
-            setShowDbMenu(false)
-          }}
-          className={`btn-ghost p-2.5 ${showHistory ? 'text-blue-500 bg-blue-500/10' : ''}`}
-        >
-          <History size={17} />
-        </button>
-
         {/* Run button */}
         <button
           type="button"
@@ -730,36 +715,8 @@ export default function QueryPage() {
         </button>
       </div>
 
-      {/* Mobile history bottom sheet */}
-      {showHistory && selectedDb && (
-        <div className="sm:hidden fixed inset-0 z-20 flex flex-col justify-end">
-          {/* biome-ignore lint/a11y/useKeyWithClickEvents: backdrop is a pointer-only dismiss target; the sheet has its own close button */}
-          {/* biome-ignore lint/a11y/noStaticElementInteractions: pointer-only backdrop; the sheet has its own close button */}
-          <div className="absolute inset-0 bg-black/40" onClick={() => setShowHistory(false)} />
-          <div
-            className="relative bg-white dark:bg-zinc-900 rounded-t-2xl border-t border-zinc-200 dark:border-zinc-800 flex flex-col"
-            style={{ maxHeight: '70vh' }}
-          >
-            <div className="flex items-center justify-between px-4 py-3 border-b border-zinc-200 dark:border-zinc-800 shrink-0">
-              <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">{t('query.query_history')}</span>
-              <button type="button" onClick={() => setShowHistory(false)} className="btn-ghost p-1.5">
-                <X size={16} />
-              </button>
-            </div>
-            <div className="overflow-auto flex-1">
-              <QueryHistoryPanel
-                databaseId={selectedDb.id}
-                onSelect={(s) => {
-                  if (activeId) updateContent(activeId, s)
-                  setShowHistory(false)
-                }}
-              />
-            </div>
-          </div>
-        </div>
-      )}
       {/* Run history drawer — every saved run of the current notebook */}
-      {showRunHistory && activeId && (
+      {showRunHistory && (
         <RunHistoryDrawer
           runs={runs.list}
           selectedRun={selectedRun}

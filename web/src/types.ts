@@ -58,17 +58,6 @@ export interface StatementResult {
   stored_rows?: number // a saved run kept only this many of the rows
 }
 
-export interface QueryHistoryItem {
-  id: string
-  user_id: string | null // null once the user or database was deleted
-  database_id: string | null
-  sql: string
-  duration_ms: number | null
-  row_count: number | null
-  error: string | null
-  executed_at: number
-}
-
 export interface Notebook {
   id: string
   user_id: string
