@@ -1,4 +1,6 @@
-// All KV key constructors in one place – never scatter raw strings
+// All KV key constructors in one place – never scatter raw strings.
+// The *Attempts keys name rate-limit counters, which live in the D1 rate_limits table (KV only
+// as a fallback, see lib/auth.ts).
 export const KV = {
   // Email verification tokens (24h TTL)
   emailVerify: (token: string) => `email_verify:${token}`,
@@ -25,4 +27,6 @@ export const KV = {
   emailAttempts: (ip: string) => `email_attempts:${ip}`,
   // Registration rate limiting (15min TTL)
   registerAttempts: (ip: string) => `register_attempts:${ip}`,
+  // Admin test-email rate limiting (15min TTL)
+  testEmailAttempts: (userId: string) => `test_email_attempts:${userId}`,
 }

@@ -108,14 +108,14 @@ Go to **Workers & Pages → zeta → Settings → Variables and Secrets**:
 | Name | How to generate |
 |------|----------------|
 | `JWT_SECRET` | Any random 64-char string — e.g. `openssl rand -hex 32` |
-| `ENCRYPTION_KEY` | 64-char hex (32 bytes) — e.g. `openssl rand -hex 32` |
+| `ENCRYPTION_KEY` | 64-char hex (32 bytes) — e.g. `openssl rand -hex 32`. Validated strictly: any other value (a passphrase, a shorter key) is rejected instead of silently yielding a weak key |
 | `SETUP_SECRET` | Any random string — e.g. `openssl rand -hex 16` |
 
 **Variables** (type: Text):
 
 | Name | Value |
 |------|-------|
-| `APP_URL` | Your Worker URL, e.g. `https://zeta.yourname.workers.dev` or your custom domain |
+| `APP_URL` | Your Worker URL, e.g. `https://zeta.yourname.workers.dev` or your custom domain. Use the exact `https://` URL users open: it is the only origin CORS allows, the passkey RP ID and the base of email links |
 | `TABLE_PREFIX` | *(Optional)* Prefix for all internal D1 tables, e.g. `kp` → tables become `kp_users`, `kp_settings`, etc. Must be set **before** calling the setup endpoint. Cannot be changed after initialisation. |
 
 > These are kept out of GitHub entirely. The `keep_vars = true` setting in `wrangler.toml` ensures each deployment never overwrites values you set here.
@@ -151,10 +151,10 @@ curl -X POST https://<your-domain>/api/setup \
 Expected response:
 
 ```json
-{ "ok": true, "message": "Database initialised successfully. You can now register at /register — the first user becomes admin." }
+{ "ok": true, "message": "Database initialised successfully. You can now register at /register — the first user becomes admin. On new installs registration then stays closed until an admin opens it in Admin → Settings." }
 ```
 
-> The endpoint is idempotent — safe to call multiple times. **Re-run it after every upgrade**: it also applies schema upgrades to databases created by earlier versions (e.g. making `query_history` keep rows when a user or database is deleted — until then, deleting users or databases fails).
+> The endpoint is idempotent — safe to call multiple times. **Re-run it after every upgrade**: it also applies schema upgrades to databases created by earlier versions (e.g. making `query_history` keep rows when a user or database is deleted — until then, deleting users or databases fails — and creating the `rate_limits` table that makes login / 2FA / email rate limits exact; until it exists they fall back to approximate KV counters).
 >
 > Earlier versions used `GET /api/setup/<SETUP_SECRET>`. That form is gone: it now returns `405` and does nothing. If you ever opened the old URL, consider rotating `SETUP_SECRET`.
 
@@ -164,8 +164,8 @@ Expected response:
 
 Visit `https://<your-domain>/register`. The **first registered user automatically becomes admin**.
 
-Afterwards:
-- Disable registration in **Admin → Settings** if you want to prevent others from signing up
+On new installs, registration closes as soon as that first account exists. Afterwards:
+- Create accounts in **Admin → Users**, or open self-registration in **Admin → Settings** (consider also requiring email verification and 2FA there once an email provider is configured)
 - Add queryable D1 databases in **Admin → Databases**
 - Grant users access in **Admin → Databases → Permissions**
 
@@ -244,7 +244,7 @@ Then open `http://localhost:5173` in your browser.
 | Name | Type | Description |
 |------|------|-------------|
 | `JWT_SECRET` | Secret | Signs access + refresh JWTs (HS256) |
-| `ENCRYPTION_KEY` | Secret | 64-char hex — AES-GCM key for TOTP secrets |
+| `ENCRYPTION_KEY` | Secret | 64-char hex (strictly validated) — AES-GCM key for TOTP secrets and SMTP/Resend credentials |
 | `SETUP_SECRET` | Secret | Protects `POST /api/setup` |
 | `APP_URL` | Variable | Full URL of your deployment |
 | `TABLE_PREFIX` | Variable | *(Optional)* Prefix for internal tables (e.g. `kp`). Set before first setup run. Immutable after initialisation. |
@@ -258,7 +258,7 @@ All endpoints live under `/api/`. Authentication uses short-lived JWT access tok
 | Prefix | Description |
 |--------|-------------|
 | `POST /api/auth/*` | Register, login, logout, token refresh, email verification, password reset, 2FA (TOTP / Email OTP / Passkey) |
-| `GET/PATCH /api/profile/*` | Profile, password change, TOTP setup/confirm/delete, passkey registration/delete |
+| `GET/PATCH /api/profile/*` | Profile, password change, TOTP setup/confirm/delete, passkey registration/delete. Deleting a TOTP or passkey requires a JSON body `{"currentPassword": "..."}` |
 | `GET /api/databases` | List accessible databases for the current user |
 | `POST /api/query` | Execute SQL against a bound D1 database |
 | `GET /api/query/history` | Query execution history (filterable by database) |

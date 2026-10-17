@@ -1,4 +1,5 @@
 import { Hono } from 'hono'
+import type { Context } from 'hono'
 import type { Env, Variables, NotebookRow } from '../types'
 import { requireAuth } from '../middleware/auth'
 import { uuid } from '../lib/id'
@@ -9,6 +10,27 @@ notebooks.use('*', requireAuth)
 
 const MAX_NOTEBOOKS = 20
 const MAX_CONTENT_SIZE = 512 * 1024
+
+// A notebook may only be bound to an active database the user can query (admins: any). Same
+// rule as POST /api/query, and the same answer whether the id is unknown or just not granted.
+async function canUseDatabase(
+  c: Context<{ Bindings: Env; Variables: Variables }>, databaseId: unknown
+): Promise<boolean> {
+  if (databaseId === null) return true
+  if (typeof databaseId !== 'string' || !databaseId) return false
+  const T = tables(c.env)
+  const row = c.get('userRole') === 'admin'
+    ? await c.env.DB.prepare(`SELECT 1 FROM ${T.d1_databases} WHERE id = ?1 AND is_active = 1`)
+      .bind(databaseId).first()
+    : await c.env.DB.prepare(
+      `SELECT 1 FROM ${T.d1_databases} d
+       JOIN ${T.user_database_permissions} p ON p.database_id = d.id
+       WHERE d.id = ?1 AND d.is_active = 1 AND p.user_id = ?2`
+    ).bind(databaseId, c.get('userId')).first()
+  return row !== null
+}
+
+const DATABASE_DENIED = 'Database not found or access denied'
 
 // GET /api/notebooks
 notebooks.get('/', async (c) => {
@@ -24,7 +46,9 @@ notebooks.get('/', async (c) => {
 notebooks.post('/', async (c) => {
   const userId = c.get('userId')
   const T = tables(c.env)
-  const body: { name?: string; database_id?: string } = await c.req.json<{ name?: string; database_id?: string }>().catch(() => ({}))
+  const body: { name?: string; database_id?: string | null } = await c.req.json<{ name?: string; database_id?: string | null }>().catch(() => ({}))
+  const database_id = body.database_id ?? null
+  if (!(await canUseDatabase(c, database_id))) return c.json({ error: DATABASE_DENIED }, 403)
 
   const count = await c.env.DB.prepare(
     `SELECT COUNT(*) as cnt FROM ${T.notebooks} WHERE user_id = ?1`
@@ -40,7 +64,6 @@ notebooks.post('/', async (c) => {
   const id = uuid()
   const ts = now()
   const name = body.name?.trim() || 'Untitled'
-  const database_id = body.database_id ?? null
   const position = (maxPos?.max_pos ?? -1) + 1
 
   await c.env.DB.prepare(
@@ -92,6 +115,7 @@ notebooks.patch('/:id', async (c) => {
     idx++
   }
   if ('database_id' in body) {
+    if (!(await canUseDatabase(c, body.database_id ?? null))) return c.json({ error: DATABASE_DENIED }, 403)
     updates.push(`database_id = ?${idx}`)
     bindings.push(body.database_id ?? null)
     idx++

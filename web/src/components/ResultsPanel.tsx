@@ -1,6 +1,7 @@
 import { AlertCircle, CheckCircle2 } from 'lucide-react'
 import type { StatementResult } from '../types'
 import ResultTable from './ResultTable'
+import { useLocale } from '../hooks/useLocale'
 
 interface Props {
   results: StatementResult[]
@@ -9,6 +10,7 @@ interface Props {
 }
 
 export default function ResultsPanel({ results, activeIndex, onSelectIndex }: Props) {
+  const { t } = useLocale()
   const active = results[activeIndex]
   if (!active) return null
 
@@ -18,13 +20,13 @@ export default function ResultsPanel({ results, activeIndex, onSelectIndex }: Pr
       {results.length > 1 && (
         <div className="w-[130px] shrink-0 border-r border-zinc-200 dark:border-zinc-800 flex flex-col overflow-y-auto">
           <div className="px-2 py-1.5 text-[10px] text-zinc-500 dark:text-zinc-600 uppercase tracking-wider border-b border-zinc-200 dark:border-zinc-800 shrink-0">
-            {results.length} results
+            {t('results.count', { n: results.length })}
           </div>
           {results.map((r, i) => {
             const isActive = i === activeIndex
             const hasError = !!r.error
             const meta = hasError
-              ? 'error'
+              ? t('results.error_short')
               : r.results.length > 0
               ? `${r.results.length}r`
               : r.changes !== undefined
@@ -69,7 +71,7 @@ export default function ResultsPanel({ results, activeIndex, onSelectIndex }: Pr
           {active.error ? (
             <>
               <AlertCircle size={12} className="text-red-400 shrink-0" />
-              <span className="text-xs text-red-400">Error</span>
+              <span className="text-xs text-red-400">{t('results.error')}</span>
               <span className="text-zinc-300 dark:text-zinc-600 text-xs">·</span>
               <span className="text-xs text-zinc-500">{active.duration_ms}ms</span>
             </>
@@ -78,13 +80,13 @@ export default function ResultsPanel({ results, activeIndex, onSelectIndex }: Pr
               <CheckCircle2 size={12} className="text-emerald-400 shrink-0" />
               <span className="text-xs text-emerald-500">
                 {active.results.length > 0
-                  ? `${active.results.length} ${active.results.length === 1 ? 'row' : 'rows'}`
+                  ? t(active.results.length === 1 ? 'results.row' : 'results.rows', { n: active.results.length })
                   : active.changes !== undefined
-                  ? `${active.changes} ${active.changes === 1 ? 'change' : 'changes'}`
-                  : '0 rows'}
+                  ? t(active.changes === 1 ? 'results.change' : 'results.changes', { n: active.changes })
+                  : t('results.rows', { n: 0 })}
               </span>
               {active.truncated && (
-                <span className="text-xs text-amber-500">(truncated — add a LIMIT or narrow the query)</span>
+                <span className="text-xs text-amber-500">{t('results.truncated')}</span>
               )}
               <span className="text-zinc-300 dark:text-zinc-600 text-xs">·</span>
               <span className="text-xs text-zinc-500">{active.duration_ms}ms</span>

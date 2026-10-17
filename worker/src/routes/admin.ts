@@ -3,11 +3,11 @@ import type { Env, Variables, UserRow, DatabaseRow, PermissionRow } from '../typ
 import { requireAdmin } from '../middleware/auth'
 import { uuid } from '../lib/id'
 import { now, getSetting, setSetting, getSettings, audit, tables } from '../lib/db'
-import { hashPassword } from '../lib/auth'
+import { hashPassword, checkRateLimit } from '../lib/auth'
 import { KV } from '../lib/kv'
 import { sealSecret, sealLegacySecret } from '../lib/secrets'
 import { resolveQueryBinding } from '../lib/bindings'
-import { sendEmail } from '../lib/email'
+import { sendEmail, isValidEmail } from '../lib/email'
 
 const admin = new Hono<{ Bindings: Env; Variables: Variables }>()
 admin.use('*', requireAdmin)
@@ -172,7 +172,8 @@ admin.delete('/users/:id', async (c) => {
     const adminCount = await c.env.DB.prepare(`SELECT COUNT(*) as n FROM ${T.users} WHERE role = 'admin'`).first<{ n: number }>()
     if ((adminCount?.n ?? 0) <= 1) return c.json({ error: 'Cannot delete the last admin' }, 400)
   }
-  // D1 does not enforce FK CASCADE by default — delete/nullify all references manually
+  // D1 enforces foreign keys, but older schemas lack ON DELETE actions on some refs (and
+  // TABLE_PREFIX deployments may predate them) — delete/nullify all references explicitly
   await c.env.DB.batch([
     c.env.DB.prepare(`DELETE FROM ${T.totp_credentials} WHERE user_id = ?1`).bind(id),
     c.env.DB.prepare(`DELETE FROM ${T.passkey_credentials} WHERE user_id = ?1`).bind(id),
@@ -365,6 +366,17 @@ admin.patch('/settings', async (c) => {
   const body = await c.req.json<Record<string, string>>().catch(() => null)
   if (!body) return c.json({ error: 'Invalid body' }, 400)
 
+  // Reject a malformed sender up front (before anything is saved) rather than skipping it
+  // silently: it ends up in the SMTP envelope and headers.
+  for (const key of ['smtp_config', 'resend_config']) {
+    if (body[key] === undefined) continue
+    let from: unknown
+    try { from = (JSON.parse(String(body[key])) as { from?: unknown } | null)?.from } catch { continue }
+    if (from !== undefined && from !== '' && (typeof from !== 'string' || !isValidEmail(from))) {
+      return c.json({ error: 'Invalid from address' }, 400)
+    }
+  }
+
   const allowed = new Set(EXPOSED_SETTINGS)
   const existingSettings = await getSettings(c.env, EXPOSED_SETTINGS)
 
@@ -405,11 +417,15 @@ admin.patch('/settings', async (c) => {
 
 // ── Test email ─────────────────────────────────────────────────────────────────
 
-const EMAIL_RE = /^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$/
-
 admin.post('/settings/test-email', async (c) => {
-  const { to } = await c.req.json<{ to: string }>()
-  if (!to || !EMAIL_RE.test(to)) return c.json({ error: 'Invalid email address' }, 400)
+  const body = await c.req.json<{ to?: unknown }>().catch(() => null)
+  const to = body?.to
+  if (typeof to !== 'string' || !isValidEmail(to)) return c.json({ error: 'Invalid email address' }, 400)
+
+  // Sends to arbitrary recipients, so a stolen admin session must not turn it into a mail relay
+  if (!(await checkRateLimit(c.env, KV.testEmailAttempts(c.get('userId')), 5, 15 * 60))) {
+    return c.json({ error: 'Too many test emails. Try again later.' }, 429)
+  }
 
   const result = await sendEmail(c.env, {
     to,

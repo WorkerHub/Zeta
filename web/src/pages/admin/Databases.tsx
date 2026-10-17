@@ -54,7 +54,7 @@ export default function AdminDatabases() {
       setNewDb({ name: '', description: '', binding_name: '' })
       load()
     } catch (err) {
-      setAddError(err instanceof Error ? err.message : 'Failed')
+      setAddError(err instanceof Error ? err.message : t('errors.generic'))
     }
   }
 
@@ -70,7 +70,7 @@ export default function AdminDatabases() {
       if (selectedDb?.id === id) setSelectedDb(null)
       load()
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'Failed to delete database')
+      alert(err instanceof Error ? err.message : t('errors.delete_db_failed'))
     }
   }
 
@@ -115,7 +115,7 @@ export default function AdminDatabases() {
             <div>
               <label className="label">{t('admin_db.display_name')}</label>
               <input type="text" className="input" value={newDb.name}
-                onChange={(e) => setNewDb({ ...newDb, name: e.target.value })} placeholder="My Database" />
+                onChange={(e) => setNewDb({ ...newDb, name: e.target.value })} placeholder={t('admin_db.name_placeholder')} />
             </div>
             <div>
               <label className="label">{t('admin_db.binding_name')}</label>
@@ -177,7 +177,7 @@ export default function AdminDatabases() {
                       <button onClick={() => loadPermissions(db)} className="btn-ghost btn-sm gap-1">
                         <Users size={13} /> {t('admin_db.permissions')}
                       </button>
-                      <button onClick={() => toggleActive(db)} className="btn-ghost btn-sm p-1.5" title="Toggle active">
+                      <button onClick={() => toggleActive(db)} className="btn-ghost btn-sm p-1.5" title={t('admin_db.toggle_active')}>
                         <Power size={13} className={db.is_active ? 'text-emerald-400' : 'text-zinc-600'} />
                       </button>
                       <button onClick={() => deleteDb(db.id, db.name)} className="btn-ghost btn-sm p-1.5 text-red-400">

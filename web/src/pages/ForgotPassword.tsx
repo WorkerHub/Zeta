@@ -17,7 +17,7 @@ export default function ForgotPassword() {
       const res = await authApi.forgotPassword({ email })
       setMessage(res.message)
     } catch (err) {
-      setMessage(err instanceof Error ? err.message : 'An error occurred')
+      setMessage(err instanceof Error ? err.message : t('errors.generic'))
     } finally {
       setLoading(false)
     }

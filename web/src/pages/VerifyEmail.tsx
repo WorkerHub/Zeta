@@ -12,11 +12,11 @@ export default function VerifyEmail() {
   const [message, setMessage] = useState('')
 
   useEffect(() => {
-    if (!token) { setStatus('error'); setMessage('No token provided.'); return }
+    if (!token) { setStatus('error'); setMessage(t('errors.no_token')); return }
     authApi.verifyEmail(token)
       .then((res) => { setStatus('success'); setMessage(res.message) })
-      .catch((err) => { setStatus('error'); setMessage(err instanceof Error ? err.message : 'Verification failed') })
-  }, [token])
+      .catch((err) => { setStatus('error'); setMessage(err instanceof Error ? err.message : t('errors.verify_failed')) })
+  }, [token, t])
 
   return (
     <div className="min-h-screen flex items-center justify-center p-4 bg-zinc-50 dark:bg-zinc-950">

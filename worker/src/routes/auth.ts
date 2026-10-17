@@ -9,7 +9,7 @@ import {
   createAccessToken, createRefreshToken, createPending2faToken,
   verifyRefreshToken, verifyPending2faToken,
   revokeRefreshToken, isRefreshTokenRevoked,
-  isLoginBlocked, recordLoginFailure, resetLoginAttempts,
+  beginLoginAttempt, loginAttemptSucceeded,
   check2faRateLimit, reset2faAttempts,
   checkEmailRateLimit, checkRegisterRateLimit,
 } from '../lib/auth'
@@ -46,13 +46,23 @@ function clearRefreshCookie(c: HeaderSetter, secure: boolean): void {
   }
 }
 
-const isSecure = (env: Env) => env.APP_URL?.trim().startsWith('https')
+// Secure whenever the app is configured for HTTPS *or* this request actually arrived over HTTPS,
+// so a mistyped http:// APP_URL behind TLS cannot strip the flag from the refresh cookie.
+type SecureCtx = { env: Env; req: { url: string } }
+const isSecure = (c: SecureCtx) =>
+  Boolean(c.env.APP_URL?.trim().startsWith('https')) || new URL(c.req.url).protocol === 'https:'
 
 // ── POST /api/auth/register ───────────────────────────────────────────────────
 
 auth.post('/register', async (c) => {
+  const T = tables(c.env)
+  // Registration is closed by default, but the very first account (the admin) can always be
+  // created so a fresh deployment can be bootstrapped.
   const regEnabled = await getSetting(c.env, 'registration_enabled')
-  if (regEnabled === 'false') return c.json({ error: 'Registration is disabled' }, 403)
+  if (regEnabled === 'false') {
+    const anyUser = await c.env.DB.prepare(`SELECT 1 FROM ${T.users} LIMIT 1`).first()
+    if (anyUser) return c.json({ error: 'Registration is disabled' }, 403)
+  }
 
   if (!(await checkRegisterRateLimit(c.env, clientIp(c)))) {
     return c.json({ error: 'Too many registration attempts. Try again later.' }, 429)
@@ -72,7 +82,6 @@ auth.post('/register', async (c) => {
   if (body.password.length < 8) return c.json({ error: 'Password must be at least 8 characters' }, 400)
   if (body.name.trim().length < 1) return c.json({ error: 'Name is required' }, 400)
 
-  const T = tables(c.env)
   const existing = await c.env.DB.prepare(`SELECT id FROM ${T.users} WHERE email = ?1`).bind(email).first()
   if (existing) return c.json({ error: 'Email already registered' }, 409)
 
@@ -158,7 +167,7 @@ auth.post('/login', async (c) => {
   }
 
   const email = body.email.toLowerCase().trim()
-  if (await isLoginBlocked(c.env, ip, email)) {
+  if (!(await beginLoginAttempt(c.env, ip, email))) {
     return c.json({ error: 'Too many login attempts. Try again later.' }, 429)
   }
   const T = tables(c.env)
@@ -168,17 +177,14 @@ auth.post('/login', async (c) => {
   const hashToCheck = user?.password_hash ?? 'pbkdf2:100000:0000000000000000000000000000000000000000000000000000000000000000:0000000000000000000000000000000000000000000000000000000000000000'
   const valid = await verifyPassword(body.password, hashToCheck)
 
-  if (!user || !valid) {
-    await recordLoginFailure(c.env, ip, email)
-    return c.json({ error: 'Invalid email or password' }, 401)
-  }
+  // The attempt reserved above stays counted as a failure
+  if (!user || !valid) return c.json({ error: 'Invalid email or password' }, 401)
+  await loginAttemptSucceeded(c.env, ip, email)
 
   const requireVerify = await getSetting(c.env, 'require_email_verification')
   if (requireVerify !== 'false' && user.email_verified === 0) {
     return c.json({ error: 'Please verify your email before logging in.' }, 403)
   }
-
-  await resetLoginAttempts(c.env, email)
 
   // Check if 2FA is required
   const enforce2fa = await getSetting(c.env, 'enforce_2fa')
@@ -198,7 +204,7 @@ auth.post('/login', async (c) => {
 
   const accessToken = await createAccessToken(user.id, user.role, c.env.JWT_SECRET)
   const refreshToken = await createRefreshToken(user.id, c.env.JWT_SECRET)
-  setRefreshCookie(c, refreshToken, isSecure(c.env))
+  setRefreshCookie(c, refreshToken, isSecure(c))
 
   c.executionCtx.waitUntil(audit(c.env, { userId: user.id, action: 'login', ip }))
   return c.json({ accessToken, user: { id: user.id, email: user.email, name: user.name, role: user.role } })
@@ -241,7 +247,7 @@ auth.post('/2fa/totp', async (c) => {
 
   const accessToken = await createAccessToken(user.id, user.role, c.env.JWT_SECRET)
   const refreshToken = await createRefreshToken(user.id, c.env.JWT_SECRET)
-  setRefreshCookie(c, refreshToken, isSecure(c.env))
+  setRefreshCookie(c, refreshToken, isSecure(c))
 
   c.executionCtx.waitUntil(audit(c.env, { userId: user.id, action: 'login_2fa_totp', ip: clientIp(c) }))
   return c.json({ accessToken, user: { id: user.id, email: user.email, name: user.name, role: user.role } })
@@ -309,7 +315,7 @@ auth.post('/2fa/email-otp/verify', async (c) => {
 
   const accessToken = await createAccessToken(user.id, user.role, c.env.JWT_SECRET)
   const refreshToken = await createRefreshToken(user.id, c.env.JWT_SECRET)
-  setRefreshCookie(c, refreshToken, isSecure(c.env))
+  setRefreshCookie(c, refreshToken, isSecure(c))
 
   c.executionCtx.waitUntil(audit(c.env, { userId: user.id, action: 'login_2fa_email_otp', ip: clientIp(c) }))
   return c.json({ accessToken, user: { id: user.id, email: user.email, name: user.name, role: user.role } })
@@ -341,7 +347,7 @@ auth.post('/refresh', async (c) => {
   await revokeRefreshToken(c.env, payload.jti)
   const accessToken = await createAccessToken(user.id, user.role, c.env.JWT_SECRET)
   const refreshToken = await createRefreshToken(user.id, c.env.JWT_SECRET)
-  setRefreshCookie(c, refreshToken, isSecure(c.env))
+  setRefreshCookie(c, refreshToken, isSecure(c))
 
   return c.json({ accessToken })
 })
@@ -354,7 +360,7 @@ auth.post('/logout', async (c) => {
     const payload = await verifyRefreshToken(cookieToken, c.env.JWT_SECRET)
     if (payload) await revokeRefreshToken(c.env, payload.jti)
   }
-  clearRefreshCookie(c, isSecure(c.env))
+  clearRefreshCookie(c, isSecure(c))
   return c.json({ message: 'Logged out' })
 })
 
@@ -491,7 +497,7 @@ auth.post('/2fa/passkey/verify', async (c) => {
 
   const accessToken = await createAccessToken(user.id, user.role, c.env.JWT_SECRET)
   const refreshToken = await createRefreshToken(user.id, c.env.JWT_SECRET)
-  setRefreshCookie(c, refreshToken, isSecure(c.env))
+  setRefreshCookie(c, refreshToken, isSecure(c))
 
   c.executionCtx.waitUntil(audit(c.env, { userId: user.id, action: 'login_2fa_passkey', ip: clientIp(c) }))
   return c.json({ accessToken, user: { id: user.id, email: user.email, name: user.name, role: user.role } })

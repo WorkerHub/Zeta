@@ -125,7 +125,7 @@ export default function QueryPage() {
           if (err instanceof ApiError) {
             setStatementResults([{ sql: stmt, results: [], duration_ms: 0, error: err.message }])
           } else {
-            setStatementResults([{ sql: stmt, results: [], duration_ms: 0, error: err instanceof Error ? err.message : 'Query failed' }])
+            setStatementResults([{ sql: stmt, results: [], duration_ms: 0, error: err instanceof Error ? err.message : t('errors.query_failed') }])
           }
         }
       } else {
@@ -134,7 +134,7 @@ export default function QueryPage() {
         setStatementResults(res.results)
       }
     } catch (err) {
-      setRunError(err instanceof Error ? err.message : 'Query failed')
+      setRunError(err instanceof Error ? err.message : t('errors.query_failed'))
     } finally {
       setRunning(false)
     }
@@ -271,7 +271,7 @@ export default function QueryPage() {
         <button
           onClick={cycleTheme}
           className="btn-ghost btn-sm p-2"
-          title={`Theme: ${theme}`}
+          title={`${t('theme.label')}: ${t(`theme.${theme}`)}`}
         >
           <ThemeIcon size={15} />
         </button>
@@ -401,21 +401,21 @@ export default function QueryPage() {
                   <button
                     onClick={() => changeLayout('vertical')}
                     className={`p-1 rounded transition-colors ${layout === 'vertical' ? 'bg-zinc-200 dark:bg-zinc-700 text-zinc-800 dark:text-zinc-200' : 'text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300'}`}
-                    title="Top / Bottom"
+                    title={t('query.layout_vertical')}
                   >
                     <LayoutPanelTop size={13} />
                   </button>
                   <button
                     onClick={() => changeLayout('horizontal')}
                     className={`p-1 rounded transition-colors ${layout === 'horizontal' ? 'bg-zinc-200 dark:bg-zinc-700 text-zinc-800 dark:text-zinc-200' : 'text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300'}`}
-                    title="Left / Right"
+                    title={t('query.layout_horizontal')}
                   >
                     <Columns2 size={13} />
                   </button>
                 </div>
                 {saveError && (
-                  <span className="text-xs text-amber-500" title="Your latest edits could not be saved. They will be retried on the next change.">
-                    Autosave failed
+                  <span className="text-xs text-amber-500" title={t('query.autosave_failed_desc')}>
+                    {t('query.autosave_failed')}
                   </span>
                 )}
                 <span className="text-xs text-zinc-400 dark:text-zinc-600 hidden sm:block">{t('query.shortcut')}</span>

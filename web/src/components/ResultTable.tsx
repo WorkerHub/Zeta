@@ -1,10 +1,13 @@
+import { useLocale } from '../hooks/useLocale'
+
 interface Props {
   rows: Record<string, unknown>[]
 }
 
 export default function ResultTable({ rows }: Props) {
+  const { t } = useLocale()
   if (rows.length === 0) {
-    return <p className="text-sm text-zinc-500 py-4 text-center">No rows returned</p>
+    return <p className="text-sm text-zinc-500 py-4 text-center">{t('results.no_rows')}</p>
   }
 
   const columns = Array.from(new Set(rows.flatMap((r) => Object.keys(r))))

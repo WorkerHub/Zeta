@@ -88,7 +88,7 @@ export default function AdminLayout() {
           <button
             onClick={cycleTheme}
             className="btn-ghost btn-sm p-2"
-            title={`Theme: ${theme}`}
+            title={`${t('theme.label')}: ${t(`theme.${theme}`)}`}
           >
             <ThemeIcon size={15} />
           </button>

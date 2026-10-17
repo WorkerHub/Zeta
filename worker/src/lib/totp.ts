@@ -3,7 +3,18 @@ import type { Env } from '../types'
 
 // ── Encryption helpers (AES-GCM via WebCrypto) ────────────────────────────────
 
+// hexToBuf silently turns non-hex input into zero bytes, so a mistyped key (a passphrase, a
+// truncated value) would otherwise yield a weak or even all-zero AES key.
+const ENCRYPTION_KEY_RE = /^[0-9a-fA-F]{64}$/
+
+function assertEncryptionKey(key: string | undefined): void {
+  if (!key || !ENCRYPTION_KEY_RE.test(key)) {
+    throw new Error('ENCRYPTION_KEY must be a 64-character hex string (32 bytes), e.g. from `openssl rand -hex 32`')
+  }
+}
+
 async function getDerivedKey(env: Env): Promise<CryptoKey> {
+  assertEncryptionKey(env.ENCRYPTION_KEY)
   const raw = hexToBuf(env.ENCRYPTION_KEY)
   return crypto.subtle.importKey('raw', raw, 'AES-GCM', false, ['encrypt', 'decrypt'])
 }

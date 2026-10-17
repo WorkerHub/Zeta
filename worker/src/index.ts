@@ -15,9 +15,12 @@ const app = new Hono<{ Bindings: Env; Variables: Variables }>()
 // ── Global middleware ─────────────────────────────────────────────────────────
 
 app.use('/api/*', cors({
+  // Only the configured APP_URL is allowed. Requests without an Origin (same-origin GETs, curl)
+  // need no CORS headers, and opaque origins (data:, sandboxed frames) send "null", which never
+  // matches.
   origin: (origin, c) => {
     const allowed = c.env.APP_URL?.trim().replace(/\/$/, '')
-    if (!origin || !allowed) return allowed ?? null
+    if (!origin || !allowed) return null
     return origin.replace(/\/$/, '') === allowed ? origin : null
   },
   credentials: true,

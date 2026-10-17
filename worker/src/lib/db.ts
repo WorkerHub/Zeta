@@ -14,6 +14,7 @@ export function tables(env: Pick<Env, 'TABLE_PREFIX'>) {
     settings:                  `${p}settings`,
     audit_logs:                `${p}audit_logs`,
     notebooks:                 `${p}notebooks`,
+    rate_limits:               `${p}rate_limits`,
   }
 }
 

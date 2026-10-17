@@ -28,7 +28,7 @@ export default function TwoFactorModal({ pendingToken, onSuccess, onCancel }: Pr
       await authApi.sendEmailOtp({ pendingToken })
       setOtpSent(true)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to send OTP')
+      setError(err instanceof Error ? err.message : t('errors.send_otp_failed'))
     } finally {
       setLoading(false)
     }
@@ -47,7 +47,7 @@ export default function TwoFactorModal({ pendingToken, onSuccess, onCancel }: Pr
       }
       onSuccess(res.accessToken, res.user)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Verification failed')
+      setError(err instanceof Error ? err.message : t('errors.verify_failed'))
     } finally {
       setLoading(false)
     }
@@ -65,9 +65,9 @@ export default function TwoFactorModal({ pendingToken, onSuccess, onCancel }: Pr
       onSuccess(res.accessToken, res.user)
     } catch (err) {
       if (err instanceof Error && err.name === 'NotAllowedError') {
-        setError('Passkey authentication was cancelled.')
+        setError(t('errors.passkey_cancelled'))
       } else {
-        setError(err instanceof Error ? err.message : 'Passkey verification failed')
+        setError(err instanceof Error ? err.message : t('errors.passkey_failed'))
       }
     } finally {
       setLoading(false)
