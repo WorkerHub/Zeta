@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useState, useCallback, type ReactNode } from 'react'
 import type { User } from '../types'
-import { getAccessToken, setSession, clearSession, getCurrentUser } from '../lib/auth'
+import { setSession, clearSession, getCurrentUser } from '../lib/auth'
 import { profileApi, authApi } from '../lib/api'
 
 interface AuthContext {

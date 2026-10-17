@@ -26,7 +26,7 @@ export async function verifyPassword(password: string, stored: string): Promise<
   if (parts.length !== 4 || parts[0] !== 'pbkdf2') return false
   const [, iterStr, saltHex, hashHex] = parts
   const iterations = parseInt(iterStr ?? '0', 10)
-  if (isNaN(iterations) || iterations <= 0 || iterations > 600_000) return false
+  if (Number.isNaN(iterations) || iterations <= 0 || iterations > 600_000) return false
   const salt = hexToBuf(saltHex ?? '')
   const expected = hexToBuf(hashHex ?? '')
   const keyMaterial = await crypto.subtle.importKey(
@@ -154,7 +154,7 @@ export async function verifyAccessToken(
 ): Promise<AccessTokenPayload | null> {
   if (!token) return null
   const payload = await verifyJwt<AccessTokenPayload>(token, secret)
-  if (!payload || payload.type !== 'access') return null
+  if (payload?.type !== 'access') return null
   return payload
 }
 
@@ -163,7 +163,7 @@ export async function verifyRefreshToken(
 ): Promise<RefreshTokenPayload | null> {
   if (!token) return null
   const payload = await verifyJwt<RefreshTokenPayload>(token, secret)
-  if (!payload || payload.type !== 'refresh') return null
+  if (payload?.type !== 'refresh') return null
   return payload
 }
 
@@ -172,7 +172,7 @@ export async function verifyPending2faToken(
 ): Promise<Pending2faTokenPayload | null> {
   if (!token) return null
   const payload = await verifyJwt<Pending2faTokenPayload>(token, secret)
-  if (!payload || payload.type !== 'pending_2fa') return null
+  if (payload?.type !== 'pending_2fa') return null
   return payload
 }
 

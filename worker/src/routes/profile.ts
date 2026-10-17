@@ -6,12 +6,11 @@ import { uuid } from '../lib/id'
 import { now, audit, tables, getSetting } from '../lib/db'
 import { hashPassword, verifyPassword, beginLoginAttempt, loginAttemptSucceeded } from '../lib/auth'
 import {
-  generateTotpSecret, encryptTotpSecret, decryptTotpSecret,
+  generateTotpSecret, encryptTotpSecret,
   getTotpUri, verifyTotpCode,
 } from '../lib/totp'
 import {
   generateRegistrationOptions, verifyRegistrationResponse,
-  generateAuthenticationOptions, verifyAuthenticationResponse,
 } from '@simplewebauthn/server'
 import { isoBase64URL } from '@simplewebauthn/server/helpers'
 import { KV } from '../lib/kv'

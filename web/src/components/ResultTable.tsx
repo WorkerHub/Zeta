@@ -26,6 +26,7 @@ export default function ResultTable({ rows }: Props) {
         </thead>
         <tbody>
           {rows.map((row, i) => (
+            // biome-ignore lint/suspicious/noArrayIndexKey: result rows have no stable id; position is their identity
             <tr key={i} className="border-b border-zinc-100 hover:bg-zinc-50 dark:border-zinc-800/50 dark:hover:bg-zinc-800/30 transition-colors">
               {columns.map((col) => {
                 const val = row[col]

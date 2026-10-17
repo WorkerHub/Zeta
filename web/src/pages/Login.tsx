@@ -45,6 +45,7 @@ export default function Login() {
   return (
     <div className="relative min-h-screen flex items-center justify-center p-4 bg-zinc-50 dark:bg-zinc-950">
       <button
+        type="button"
         onClick={() => changeLocale(locale === 'en' ? 'zh' : 'en')}
         className="absolute top-4 right-4 btn-ghost p-2"
         title={t('lang.label')}
@@ -65,16 +66,19 @@ export default function Login() {
 
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
-              <label className="label">{t('auth.email')}</label>
+              <label htmlFor="login-email" className="label">{t('auth.email')}</label>
               <input
+                id="login-email"
                 type="email" value={email} onChange={(e) => setEmail(e.target.value)}
+                // biome-ignore lint/a11y/noAutofocus: single-purpose auth form; focusing its first field is the expected entry point
                 className="input" placeholder={t('auth.placeholder_email')} required autoFocus
               />
             </div>
             <div>
-              <label className="label">{t('auth.password')}</label>
+              <label htmlFor="login-password" className="label">{t('auth.password')}</label>
               <div className="relative">
                 <input
+                  id="login-password"
                   type={showPw ? 'text' : 'password'} value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   className="input pr-10" placeholder="••••••••" required

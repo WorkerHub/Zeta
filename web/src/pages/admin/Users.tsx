@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { Search, Trash2, CheckCircle, XCircle, X, Pencil, UserPlus } from 'lucide-react'
 import { adminApi } from '../../lib/api'
 import { useAuthContext } from '../../hooks/useAuth'
@@ -30,7 +30,7 @@ export default function AdminUsers() {
   const [deleteTarget, setDeleteTarget] = useState<User | null>(null)
   const [deleteLoading, setDeleteLoading] = useState(false)
 
-  async function load() {
+  const load = useCallback(async () => {
     setLoading(true)
     try {
       const res = await adminApi.users({ search, limit, offset: page * limit })
@@ -39,9 +39,9 @@ export default function AdminUsers() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [search, page])
 
-  useEffect(() => { load() }, [search, page])
+  useEffect(() => { load() }, [load])
 
   async function changeRole(id: string, role: string) {
     await adminApi.updateUser(id, { role })
@@ -106,7 +106,7 @@ export default function AdminUsers() {
         <h1 className="text-lg font-semibold text-zinc-900 dark:text-zinc-100">{t('admin.users')}</h1>
         <div className="flex items-center gap-2">
           <span className="badge badge-zinc">{total} {t('admin_users.total')}</span>
-          <button onClick={openCreate} className="btn-primary btn-sm flex items-center gap-1.5">
+          <button type="button" onClick={openCreate} className="btn-primary btn-sm flex items-center gap-1.5">
             <UserPlus size={13} />
             {t('admin_users.add_user')}
           </button>
@@ -173,10 +173,10 @@ export default function AdminUsers() {
                 <td className="px-4 py-3 text-right">
                   {u.id !== me?.id && (
                     <div className="flex items-center justify-end gap-0.5">
-                      <button onClick={() => openEdit(u)} className="btn-ghost p-1.5 btn-sm text-zinc-400">
+                      <button type="button" onClick={() => openEdit(u)} className="btn-ghost p-1.5 btn-sm text-zinc-400">
                         <Pencil size={13} />
                       </button>
-                      <button onClick={() => setDeleteTarget(u)} className="btn-ghost p-1.5 text-red-400 btn-sm">
+                      <button type="button" onClick={() => setDeleteTarget(u)} className="btn-ghost p-1.5 text-red-400 btn-sm">
                         <Trash2 size={13} />
                       </button>
                     </div>
@@ -195,8 +195,8 @@ export default function AdminUsers() {
             {page * limit + 1}–{Math.min((page + 1) * limit, total)} / {total}
           </span>
           <div className="flex gap-2">
-            <button onClick={() => setPage(p => p - 1)} disabled={page === 0} className="btn-secondary btn-sm">{t('admin_users.prev')}</button>
-            <button onClick={() => setPage(p => p + 1)} disabled={(page + 1) * limit >= total} className="btn-secondary btn-sm">{t('admin_users.next')}</button>
+            <button type="button" onClick={() => setPage(p => p - 1)} disabled={page === 0} className="btn-secondary btn-sm">{t('admin_users.prev')}</button>
+            <button type="button" onClick={() => setPage(p => p + 1)} disabled={(page + 1) * limit >= total} className="btn-secondary btn-sm">{t('admin_users.next')}</button>
           </div>
         </div>
       )}
@@ -207,7 +207,7 @@ export default function AdminUsers() {
           <div className="card w-full max-w-sm p-6 shadow-2xl">
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-base font-semibold text-zinc-900 dark:text-zinc-100">{t('admin_users.confirm_delete')}</h2>
-              <button onClick={() => setDeleteTarget(null)} className="btn-ghost p-1.5 rounded-lg"><X size={16} /></button>
+              <button type="button" onClick={() => setDeleteTarget(null)} className="btn-ghost p-1.5 rounded-lg"><X size={16} /></button>
             </div>
             <p className="text-sm text-zinc-500 dark:text-zinc-400">
               {t('admin_users.confirm_delete_desc')}{' '}
@@ -216,8 +216,8 @@ export default function AdminUsers() {
             </p>
             <p className="text-sm text-zinc-500 dark:text-zinc-400 mt-1">{t('admin_users.confirm_delete_warn')}</p>
             <div className="mt-6 flex gap-3">
-              <button onClick={() => setDeleteTarget(null)} className="btn-secondary flex-1">{t('admin_users.cancel')}</button>
-              <button onClick={() => deleteUser(deleteTarget.id)} disabled={deleteLoading} className="btn-danger flex-1">
+              <button type="button" onClick={() => setDeleteTarget(null)} className="btn-secondary flex-1">{t('admin_users.cancel')}</button>
+              <button type="button" onClick={() => deleteUser(deleteTarget.id)} disabled={deleteLoading} className="btn-danger flex-1">
                 {deleteLoading ? '…' : t('admin_users.confirm')}
               </button>
             </div>
@@ -233,35 +233,40 @@ export default function AdminUsers() {
               <h2 className="text-lg font-semibold text-zinc-900 dark:text-zinc-100">
                 {modal.mode === 'create' ? t('admin_users.new_user') : t('admin_users.edit_user')}
               </h2>
-              <button onClick={closeModal} className="btn-ghost p-1.5 rounded-lg"><X size={16} /></button>
+              <button type="button" onClick={closeModal} className="btn-ghost p-1.5 rounded-lg"><X size={16} /></button>
             </div>
 
             <div className="space-y-4">
               <div>
-                <label className="label">{t('admin_users.name')}</label>
+                <label htmlFor="user-name" className="label">{t('admin_users.name')}</label>
                 <input
+                  id="user-name"
                   type="text" value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
+                  // biome-ignore lint/a11y/noAutofocus: focus moves into the dialog that just opened
                   className="input" required autoFocus
                 />
               </div>
               <div>
-                <label className="label">{t('admin_users.email')}</label>
+                <label htmlFor="user-email" className="label">{t('admin_users.email')}</label>
                 <input
+                  id="user-email"
                   type="email" value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))}
                   className="input" required
                 />
               </div>
               <div>
-                <label className="label">{t('admin_users.password')}</label>
+                <label htmlFor="user-password" className="label">{t('admin_users.password')}</label>
                 <input
+                  id="user-password"
                   type="password" value={form.password} onChange={e => setForm(f => ({ ...f, password: e.target.value }))}
                   className="input" placeholder={modal.mode === 'edit' ? t('admin_users.password_hint') : ''}
                   required={modal.mode === 'create'}
                 />
               </div>
               <div>
-                <label className="label">{t('admin_users.role')}</label>
+                <label htmlFor="user-role" className="label">{t('admin_users.role')}</label>
                 <select
+                  id="user-role"
                   value={form.role} onChange={e => setForm(f => ({ ...f, role: e.target.value }))}
                   className="input"
                 >
@@ -274,8 +279,8 @@ export default function AdminUsers() {
             {formError && <p className="text-sm text-red-400 mt-3">{formError}</p>}
 
             <div className="mt-6 flex gap-3">
-              <button onClick={closeModal} className="btn-secondary flex-1">{t('admin_users.cancel')}</button>
-              <button onClick={submitModal} disabled={formLoading} className="btn-primary flex-1">
+              <button type="button" onClick={closeModal} className="btn-secondary flex-1">{t('admin_users.cancel')}</button>
+              <button type="button" onClick={submitModal} disabled={formLoading} className="btn-primary flex-1">
                 {formLoading ? '…' : modal.mode === 'create' ? t('admin_users.create') : t('admin_users.save')}
               </button>
             </div>

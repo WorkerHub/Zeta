@@ -58,7 +58,7 @@ const CTE_WRITE_KEYWORDS = new Set(['insert', 'update', 'delete', 'replace'])
 
 function classifyStatement(tokens: Token[]): SqlClass {
   const first = tokens[0]
-  if (!first || first.type !== 'word') return 'write'
+  if (first?.type !== 'word') return 'write'
 
   switch (first.value) {
     case 'select':

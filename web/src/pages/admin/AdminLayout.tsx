@@ -77,6 +77,7 @@ export default function AdminLayout() {
 
           {/* Language toggle */}
           <button
+            type="button"
             onClick={() => changeLocale(locale === 'en' ? 'zh' : 'en')}
             className="btn-ghost btn-sm p-2"
             title={t('lang.label')}
@@ -86,6 +87,7 @@ export default function AdminLayout() {
 
           {/* Theme toggle */}
           <button
+            type="button"
             onClick={cycleTheme}
             className="btn-ghost btn-sm p-2"
             title={`${t('theme.label')}: ${t(`theme.${theme}`)}`}
@@ -96,6 +98,7 @@ export default function AdminLayout() {
           {/* User menu */}
           <div className="relative" ref={userMenuRef}>
             <button
+              type="button"
               onClick={() => setShowUserMenu(!showUserMenu)}
               className="w-8 h-8 rounded-full bg-zinc-100 border border-zinc-200 flex items-center justify-center text-zinc-500 hover:text-zinc-800 hover:bg-zinc-200 dark:bg-zinc-800 dark:border-zinc-700 dark:text-zinc-400 dark:hover:text-zinc-200 dark:hover:bg-zinc-700 transition-colors text-xs font-semibold"
             >
@@ -116,7 +119,7 @@ export default function AdminLayout() {
                 <Link to="/about" onClick={() => setShowUserMenu(false)} className={menuItemClass}>
                   <Info size={14} /> {t('user.about')}
                 </Link>
-                <button onClick={logout}
+                <button type="button" onClick={logout}
                   className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-red-400 hover:bg-zinc-50 dark:hover:bg-zinc-800 transition-colors border-t border-zinc-100 dark:border-zinc-800">
                   <LogOut size={14} /> {t('user.sign_out')}
                 </button>

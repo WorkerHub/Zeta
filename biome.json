@@ -1,5 +1,5 @@
 {
-  "$schema": "https://biomejs.dev/schemas/2.5.0/schema.json",
+  "$schema": "https://biomejs.dev/schemas/2.5.15/schema.json",
   "vcs": {
     "enabled": true,
     "clientKind": "git",
@@ -7,7 +7,14 @@
   },
   "files": {
     "ignoreUnknown": true,
-    "includes": ["web", "worker", ".github"]
+    "includes": [
+      "web/**",
+      "worker/**",
+      ".github/**",
+      "!**/node_modules",
+      "!**/dist",
+      "!**/.wrangler"
+    ]
   },
   "formatter": {
     "enabled": true,
@@ -30,7 +37,8 @@
         "noUnusedVariables": "warn"
       },
       "style": {
-        "useConst": "error"
+        "useConst": "error",
+        "noNonNullAssertion": "off"
       }
     }
   },
@@ -43,6 +51,11 @@
       "quoteProperties": "asNeeded",
       "semicolons": "asNeeded",
       "trailingCommas": "es5"
+    }
+  },
+  "css": {
+    "parser": {
+      "tailwindDirectives": true
     }
   },
   "json": {

@@ -34,6 +34,8 @@ export default function ResultsPanel({ results, activeIndex, onSelectIndex }: Pr
               : '0r'
             return (
               <button
+                type="button"
+                // biome-ignore lint/suspicious/noArrayIndexKey: one entry per executed statement; its position is its identity
                 key={i}
                 onClick={() => onSelectIndex(i)}
                 className={`w-full text-left px-2.5 py-2 border-b border-zinc-100 dark:border-zinc-800/50 transition-colors ${

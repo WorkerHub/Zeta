@@ -540,7 +540,9 @@ const listeners = new Set<() => void>()
 
 export function setLocale(locale: Locale) {
   currentLocale = locale
-  listeners.forEach((fn) => fn())
+  listeners.forEach((fn) => {
+    fn()
+  })
 }
 
 export function getLocale(): Locale {
