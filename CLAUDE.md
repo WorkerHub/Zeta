@@ -16,7 +16,19 @@ cd web && pnpm type-check
 
 # Deploy (from root)
 pnpm run deploy   # builds web then deploys worker (which embeds the SPA)
+
+# Formatting (from root)
+pnpm format        # format the codebase with biome
+pnpm format:check  # verify formatting without writing (also enforced in CI)
 ```
+
+The repo keeps a `.git-blame-ignore-revs` file listing pure-formatting commits. Opt in locally so `git blame` skips them:
+
+```bash
+git config blame.ignoreRevsFile .git-blame-ignore-revs
+```
+
+GitHub's blame view reads the file automatically.
 
 ## Key Files
 

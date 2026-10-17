@@ -223,6 +223,21 @@ curl -X POST http://localhost:8787/api/setup \
 
 Then open `http://localhost:5173` in your browser.
 
+### Formatting
+
+From the repo root:
+
+```bash
+pnpm format        # format the codebase with biome
+pnpm format:check  # verify formatting without writing (also enforced in CI)
+```
+
+Pure-formatting commits are listed in `.git-blame-ignore-revs`, which GitHub's blame view reads automatically. To get the same behaviour locally, run once per clone:
+
+```bash
+git config blame.ignoreRevsFile .git-blame-ignore-revs
+```
+
 ---
 
 ## Configuration Reference
