@@ -83,6 +83,9 @@ export default function ResultsPanel({ results, activeIndex, onSelectIndex }: Pr
                   ? `${active.changes} ${active.changes === 1 ? 'change' : 'changes'}`
                   : '0 rows'}
               </span>
+              {active.truncated && (
+                <span className="text-xs text-amber-500">(truncated — add a LIMIT or narrow the query)</span>
+              )}
               <span className="text-zinc-300 dark:text-zinc-600 text-xs">·</span>
               <span className="text-xs text-zinc-500">{active.duration_ms}ms</span>
             </>

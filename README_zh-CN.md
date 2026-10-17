@@ -116,7 +116,7 @@
 | 名称 | 值 |
 |------|----|
 | `APP_URL` | 你的 Worker 地址，例如 `https://zeta.yourname.workers.dev` 或自定义域名 |
-| `TABLE_PREFIX` | *（可选）* 所有内部 D1 表的前缀，例如 `kp` → 表名变为 `kp_users`、`kp_settings` 等。必须在**访问 setup URL 之前**设置，初始化后不可更改。 |
+| `TABLE_PREFIX` | *（可选）* 所有内部 D1 表的前缀，例如 `kp` → 表名变为 `kp_users`、`kp_settings` 等。必须在**调用 setup 接口之前**设置，初始化后不可更改。 |
 
 > 以上配置完全隔离于 GitHub。`wrangler.toml` 中的 `keep_vars = true` 确保每次部署不会覆盖你在此处设置的值。
 
@@ -140,10 +140,12 @@ git push origin main
 
 ### 第五步 — 初始化数据库
 
-首次部署成功后，**访问一次**以下 URL 来创建所有数据表并写入默认配置：
+首次部署成功后，**发送一次**以下请求来创建所有数据表并写入默认配置（secret 放在请求体中，不会出现在浏览器历史、访问日志或 `Referer` 请求头里）：
 
-```
-https://<你的域名>/api/setup/<SETUP_SECRET>
+```bash
+curl -X POST https://<你的域名>/api/setup \
+  -H 'Content-Type: application/json' \
+  -d '{"secret":"<SETUP_SECRET>"}'
 ```
 
 成功后返回：
@@ -152,7 +154,9 @@ https://<你的域名>/api/setup/<SETUP_SECRET>
 { "ok": true, "message": "Database initialised successfully. You can now register at /register — the first user becomes admin." }
 ```
 
-> 该接口是幂等的，重复访问不会造成任何破坏，可安全地多次调用。
+> 该接口是幂等的，重复调用不会造成任何破坏，可安全地多次调用。**每次升级部署后请再调用一次**：它还会对旧版本创建的数据库执行 Schema 升级（例如让 `query_history` 在删除用户或数据库时保留记录——升级前删除用户或数据库会失败）。
+>
+> 旧版本使用的 `GET /api/setup/<SETUP_SECRET>` 已废弃：现在会返回 `405` 且不执行任何操作。如果曾经访问过旧 URL，建议轮换 `SETUP_SECRET`。
 
 ---
 
@@ -209,10 +213,12 @@ SETUP_SECRET=dev-setup-secret
 APP_URL=http://localhost:8787
 ```
 
-访问以下地址完成本地数据库初始化：
+执行以下命令完成本地数据库初始化：
 
-```
-http://localhost:8787/api/setup/dev-setup-secret
+```bash
+curl -X POST http://localhost:8787/api/setup \
+  -H 'Content-Type: application/json' \
+  -d '{"secret":"dev-setup-secret"}'
 ```
 
 然后在浏览器中打开 `http://localhost:5173`。
@@ -239,7 +245,7 @@ http://localhost:8787/api/setup/dev-setup-secret
 |------|------|------|
 | `JWT_SECRET` | 密钥 | 签发访问令牌和刷新令牌（HS256） |
 | `ENCRYPTION_KEY` | 密钥 | 64 位十六进制 — TOTP 密钥的 AES-GCM 加密密钥 |
-| `SETUP_SECRET` | 密钥 | 保护 `GET /api/setup/:secret` 初始化端点 |
+| `SETUP_SECRET` | 密钥 | 保护 `POST /api/setup` 初始化端点 |
 | `APP_URL` | 变量 | 部署的完整 URL，例如 `https://zeta.example.com` |
 | `TABLE_PREFIX` | 变量 | *（可选）* 内部表名前缀（例如 `kp`）。首次 setup 前设置，初始化后不可更改。 |
 
@@ -258,7 +264,7 @@ http://localhost:8787/api/setup/dev-setup-secret
 | `GET /api/query/history` | 查询执行历史（可按数据库过滤） |
 | `GET/POST/PATCH/DELETE /api/notebooks` | SQL Notebook 的增删改查（每用户，最多 20 个） |
 | `GET/POST/PATCH/DELETE /api/admin/*` | 仅管理员：用户、数据库、权限、设置 |
-| `GET /api/setup/:secret` | 幂等的数据库 Schema 初始化 |
+| `POST /api/setup` | 幂等的数据库 Schema 初始化（JSON 请求体 `{"secret": "<SETUP_SECRET>"}`） |
 | `GET /api/health` | 健康检查 |
 
 ---

@@ -116,7 +116,7 @@ Go to **Workers & Pages → zeta → Settings → Variables and Secrets**:
 | Name | Value |
 |------|-------|
 | `APP_URL` | Your Worker URL, e.g. `https://zeta.yourname.workers.dev` or your custom domain |
-| `TABLE_PREFIX` | *(Optional)* Prefix for all internal D1 tables, e.g. `kp` → tables become `kp_users`, `kp_settings`, etc. Must be set **before** visiting the setup URL. Cannot be changed after initialisation. |
+| `TABLE_PREFIX` | *(Optional)* Prefix for all internal D1 tables, e.g. `kp` → tables become `kp_users`, `kp_settings`, etc. Must be set **before** calling the setup endpoint. Cannot be changed after initialisation. |
 
 > These are kept out of GitHub entirely. The `keep_vars = true` setting in `wrangler.toml` ensures each deployment never overwrites values you set here.
 
@@ -140,10 +140,12 @@ Watch progress under the **Actions** tab in your repository.
 
 ### Step 5 — Initialise the database
 
-After the first successful deployment, visit this URL **once**:
+After the first successful deployment, send this request **once** (the secret travels in the request body, so it never ends up in browser history, access logs or `Referer` headers):
 
-```
-https://<your-domain>/api/setup/<SETUP_SECRET>
+```bash
+curl -X POST https://<your-domain>/api/setup \
+  -H 'Content-Type: application/json' \
+  -d '{"secret":"<SETUP_SECRET>"}'
 ```
 
 Expected response:
@@ -152,7 +154,9 @@ Expected response:
 { "ok": true, "message": "Database initialised successfully. You can now register at /register — the first user becomes admin." }
 ```
 
-> The endpoint is idempotent — safe to call multiple times.
+> The endpoint is idempotent — safe to call multiple times. **Re-run it after every upgrade**: it also applies schema upgrades to databases created by earlier versions (e.g. making `query_history` keep rows when a user or database is deleted — until then, deleting users or databases fails).
+>
+> Earlier versions used `GET /api/setup/<SETUP_SECRET>`. That form is gone: it now returns `405` and does nothing. If you ever opened the old URL, consider rotating `SETUP_SECRET`.
 
 ---
 
@@ -209,10 +213,12 @@ SETUP_SECRET=dev-setup-secret
 APP_URL=http://localhost:8787
 ```
 
-Initialise the local database by visiting:
+Initialise the local database:
 
-```
-http://localhost:8787/api/setup/dev-setup-secret
+```bash
+curl -X POST http://localhost:8787/api/setup \
+  -H 'Content-Type: application/json' \
+  -d '{"secret":"dev-setup-secret"}'
 ```
 
 Then open `http://localhost:5173` in your browser.
@@ -239,7 +245,7 @@ Then open `http://localhost:5173` in your browser.
 |------|------|-------------|
 | `JWT_SECRET` | Secret | Signs access + refresh JWTs (HS256) |
 | `ENCRYPTION_KEY` | Secret | 64-char hex — AES-GCM key for TOTP secrets |
-| `SETUP_SECRET` | Secret | Protects `GET /api/setup/:secret` |
+| `SETUP_SECRET` | Secret | Protects `POST /api/setup` |
 | `APP_URL` | Variable | Full URL of your deployment |
 | `TABLE_PREFIX` | Variable | *(Optional)* Prefix for internal tables (e.g. `kp`). Set before first setup run. Immutable after initialisation. |
 
@@ -258,7 +264,7 @@ All endpoints live under `/api/`. Authentication uses short-lived JWT access tok
 | `GET /api/query/history` | Query execution history (filterable by database) |
 | `GET/POST/PATCH/DELETE /api/notebooks` | CRUD for SQL notebooks (per-user, max 20) |
 | `GET/POST/PATCH/DELETE /api/admin/*` | Admin-only: users, databases, permissions, settings |
-| `GET /api/setup/:secret` | Idempotent schema initialisation |
+| `POST /api/setup` | Idempotent schema initialisation (JSON body `{"secret": "<SETUP_SECRET>"}`) |
 | `GET /api/health` | Health check |
 
 ---

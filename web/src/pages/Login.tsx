@@ -16,7 +16,7 @@ export default function Login() {
   const [showPw, setShowPw] = useState(false)
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
-  const [pending, setPending] = useState<{ pendingToken: string; userId: string } | null>(null)
+  const [pending, setPending] = useState<{ pendingToken: string } | null>(null)
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -24,8 +24,8 @@ export default function Login() {
     setLoading(true)
     try {
       const res = await authApi.login({ email, password })
-      if (res.requires2fa && res.pendingToken && res.userId) {
-        setPending({ pendingToken: res.pendingToken, userId: res.userId })
+      if (res.requires2fa && res.pendingToken) {
+        setPending({ pendingToken: res.pendingToken })
       } else if (res.accessToken && res.user) {
         login(res.accessToken, res.user)
         navigate('/query')

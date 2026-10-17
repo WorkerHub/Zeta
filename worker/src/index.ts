@@ -25,7 +25,7 @@ app.use('/api/*', cors({
   allowHeaders: ['Content-Type', 'Authorization'],
 }))
 
-app.use('/api/*', securityHeaders)
+app.use('*', securityHeaders)
 
 // ── API routes ────────────────────────────────────────────────────────────────
 
@@ -41,9 +41,14 @@ app.route('/api/setup', setup)
 
 app.get('/api/health', (c) => c.json({ ok: true }))
 
+app.all('/api/*', (c) => c.json({ error: 'Not found' }, 404))
+
 // ── Serve SPA (Workers Assets fallback) ──────────────────────────────────────
 
-app.all('*', (c) => c.env.ASSETS.fetch(c.req.raw) as unknown as Response)
+app.all('*', async (c) => {
+  const res = (await c.env.ASSETS.fetch(c.req.raw)) as unknown as Response
+  return new Response(res.body, res) // copy so security headers can be added
+})
 
 export default {
   fetch: app.fetch,

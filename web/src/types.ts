@@ -34,6 +34,7 @@ export interface StatementResult {
   results: Record<string, unknown>[]
   duration_ms: number
   changes?: number   // present for INSERT/UPDATE/DELETE
+  truncated?: boolean // server capped the returned rows
   error?: string
 }
 

@@ -14,8 +14,9 @@ jobs:
     
     steps:
       - name: Validate tag format
+        env:
+          TAG: ${{ inputs.tag }}
         run: |
-          TAG="${{ inputs.tag }}"
           if ! [[ "$TAG" =~ ^v([0-9]+)\.([0-9]+)\.([0-9]+)$ ]]; then
             echo "❌ Error: Tag format is invalid. Must be semantic version like v1.0.0"
             echo "Provided: $TAG"
@@ -31,8 +32,9 @@ jobs:
           token: ${{ secrets.PAT_TOKEN }}
       
       - name: Check if tag already exists
+        env:
+          TAG: ${{ inputs.tag }}
         run: |
-          TAG="${{ inputs.tag }}"
           git fetch --tags
           if git tag -l | grep -q "^${TAG}$"; then
             echo "❌ Error: Tag '$TAG' already exists"
@@ -48,8 +50,9 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
       
       - name: Create and push tag
+        env:
+          TAG: ${{ inputs.tag }}
         run: |
-          TAG="${{ inputs.tag }}"
           echo "Creating tag: $TAG"
           git tag "$TAG"
           echo "Pushing tag to remote..."

@@ -1,10 +1,56 @@
 import { Hono } from 'hono'
+import type { D1Database } from '@cloudflare/workers-types'
 import type { Env, Variables } from '../types'
 import { now, tables } from '../lib/db'
 
 const setup = new Hono<{ Bindings: Env; Variables: Variables }>()
 
 // ── DDL builder (idempotent – all use IF NOT EXISTS) ──────────────────────────
+
+// user_id / database_id are nullable so history survives deleting a user or database.
+function historyTableDDL(T: ReturnType<typeof tables>, name: string): string {
+  return `CREATE TABLE IF NOT EXISTS ${name} (
+      id TEXT PRIMARY KEY,
+      user_id TEXT REFERENCES ${T.users}(id),
+      database_id TEXT REFERENCES ${T.d1_databases}(id),
+      sql TEXT NOT NULL,
+      duration_ms INTEGER,
+      row_count INTEGER,
+      error TEXT,
+      executed_at INTEGER NOT NULL
+    )`
+}
+
+function historyIndexDDL(T: ReturnType<typeof tables>): string[] {
+  return [
+    `CREATE INDEX IF NOT EXISTS idx_${T.query_history}_user ON ${T.query_history}(user_id)`,
+    `CREATE INDEX IF NOT EXISTS idx_${T.query_history}_db   ON ${T.query_history}(database_id)`,
+    `CREATE INDEX IF NOT EXISTS idx_${T.query_history}_executed ON ${T.query_history}(executed_at)`,
+  ]
+}
+
+// Databases initialised by older versions have NOT NULL history refs, which makes deleting a
+// user or database fail now that their history rows are kept with NULL refs. SQLite cannot
+// relax NOT NULL in place, so rebuild the table once (same change as migrations/0002, but
+// prefix-aware and usable on deployments that were set up through this endpoint).
+async function relaxHistoryRefs(db: D1Database, T: ReturnType<typeof tables>): Promise<boolean> {
+  const cols = await db.prepare(`PRAGMA table_info(${T.query_history})`)
+    .all<{ name: string; notnull: number }>()
+  const strict = cols.results.some((col) => (col.name === 'user_id' || col.name === 'database_id') && col.notnull)
+  if (!strict) return false
+
+  const tmp = `${T.query_history}_new`
+  const columns = 'id, user_id, database_id, sql, duration_ms, row_count, error, executed_at'
+  await db.batch([
+    `DROP TABLE IF EXISTS ${tmp}`,
+    historyTableDDL(T, tmp),
+    `INSERT INTO ${tmp} (${columns}) SELECT ${columns} FROM ${T.query_history}`,
+    `DROP TABLE ${T.query_history}`,
+    `ALTER TABLE ${tmp} RENAME TO ${T.query_history}`,
+    ...historyIndexDDL(T),
+  ].map((stmt) => db.prepare(stmt)))
+  return true
+}
 
 function buildDDL(T: ReturnType<typeof tables>): string[] {
   return [
@@ -63,18 +109,8 @@ function buildDDL(T: ReturnType<typeof tables>): string[] {
     `CREATE INDEX IF NOT EXISTS idx_${T.user_database_permissions}_user ON ${T.user_database_permissions}(user_id)`,
     `CREATE INDEX IF NOT EXISTS idx_${T.user_database_permissions}_db   ON ${T.user_database_permissions}(database_id)`,
 
-    `CREATE TABLE IF NOT EXISTS ${T.query_history} (
-      id TEXT PRIMARY KEY,
-      user_id TEXT NOT NULL REFERENCES ${T.users}(id),
-      database_id TEXT NOT NULL REFERENCES ${T.d1_databases}(id),
-      sql TEXT NOT NULL,
-      duration_ms INTEGER,
-      row_count INTEGER,
-      error TEXT,
-      executed_at INTEGER NOT NULL
-    )`,
-    `CREATE INDEX IF NOT EXISTS idx_${T.query_history}_user ON ${T.query_history}(user_id)`,
-    `CREATE INDEX IF NOT EXISTS idx_${T.query_history}_db   ON ${T.query_history}(database_id)`,
+    historyTableDDL(T, T.query_history),
+    ...historyIndexDDL(T),
 
     `CREATE TABLE IF NOT EXISTS ${T.settings} (
       key TEXT PRIMARY KEY,
@@ -115,31 +151,45 @@ const DEFAULT_SETTINGS: Array<[string, string]> = [
   ['require_email_verification', 'false'],
   ['enforce_2fa', 'false'],
   ['email_provider', 'resend'],
-  ['resend_api_key', ''],
-  ['smtp_host', ''],
-  ['smtp_port', '587'],
-  ['smtp_user', ''],
-  ['smtp_pass', ''],
-  ['smtp_from', ''],
   ['app_name', 'Zeta'],
-  ['setup_completed', 'true'],
 ]
 
-// ── GET /api/setup/:secret ────────────────────────────────────────────────────
+// Compares SHA-256 digests so neither the content nor the length of the secret leaks via timing.
+async function secretsMatch(a: string, b: string): Promise<boolean> {
+  const enc = new TextEncoder()
+  const [da, db] = await Promise.all([
+    crypto.subtle.digest('SHA-256', enc.encode(a)),
+    crypto.subtle.digest('SHA-256', enc.encode(b)),
+  ])
+  const va = new Uint8Array(da)
+  const vb = new Uint8Array(db)
+  let diff = 0
+  for (let i = 0; i < va.length; i++) diff |= va[i]! ^ vb[i]!
+  return diff === 0
+}
 
-setup.get('/:secret', async (c) => {
-  const secret = c.req.param('secret')
+// ── GET /api/setup/* (legacy) ─────────────────────────────────────────────────
+
+// The old GET /api/setup/:secret form put the secret in the URL (history, logs, Referer).
+// It never initialises anything now; it only points callers at the POST form.
+setup.get('/*', (c) =>
+  c.json({ error: 'Use POST /api/setup with a JSON body {"secret": "<SETUP_SECRET>"}.' }, 405, { Allow: 'POST' })
+)
+
+// ── POST /api/setup ───────────────────────────────────────────────────────────
+
+setup.post('/', async (c) => {
   const expected = c.env.SETUP_SECRET
 
   // SETUP_SECRET must be set; reject if missing or mismatched
   if (!expected || expected.trim() === '') {
     return c.json({ error: 'SETUP_SECRET is not configured on this Worker.' }, 500)
   }
-  let diff = secret.length ^ expected.length
-  for (let i = 0; i < expected.length; i++) {
-    diff |= (secret.charCodeAt(i) || 0) ^ expected.charCodeAt(i)
+  const body = await c.req.json<{ secret?: unknown }>().catch(() => null)
+  if (typeof body?.secret !== 'string' || !body.secret) {
+    return c.json({ error: 'A JSON body {"secret": "<SETUP_SECRET>"} is required.' }, 400)
   }
-  if (diff !== 0) {
+  if (!(await secretsMatch(body.secret, expected))) {
     return c.json({ error: 'Invalid setup secret.' }, 403)
   }
 
@@ -152,6 +202,16 @@ setup.get('/:secret', async (c) => {
     await c.env.DB.batch(buildDDL(T).map((stmt) => c.env.DB.prepare(stmt)))
   } catch (err) {
     errors.push(`DDL error: ${err instanceof Error ? err.message : String(err)}`)
+  }
+
+  // Schema upgrades for databases created by older versions
+  const upgraded: string[] = []
+  if (errors.length === 0) {
+    try {
+      if (await relaxHistoryRefs(c.env.DB, T)) upgraded.push(`${T.query_history}: nullable user_id/database_id`)
+    } catch (err) {
+      errors.push(`Upgrade error: ${err instanceof Error ? err.message : String(err)}`)
+    }
   }
 
   // Seed default settings (INSERT OR IGNORE)
@@ -176,6 +236,7 @@ setup.get('/:secret', async (c) => {
   return c.json({
     ok: true,
     message: 'Database initialised successfully. You can now register at /register — the first user becomes admin.',
+    ...(upgraded.length > 0 && { upgraded }),
   })
 })
 
