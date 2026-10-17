@@ -148,7 +148,7 @@ export default function QueryPage() {
             database_name: db.name,
             sql: sqlToRun,
             statement_count: results.length,
-            row_count: results.reduce((n, r) => n + r.results.length, 0),
+            row_count: results.reduce((n, r) => n + (r.changes ?? r.results.length), 0),
             error_count: results.filter((r) => r.error).length,
             duration_ms: results.reduce((n, r) => n + r.duration_ms, 0),
             storage_truncated: 0,

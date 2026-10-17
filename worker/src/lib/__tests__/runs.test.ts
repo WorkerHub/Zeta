@@ -14,7 +14,8 @@ describe('packRunResults', () => {
     const packed = packRunResults(statements)
     expect(JSON.parse(packed.json)).toEqual(statements)
     expect(packed.bytes).toBe(bytes(packed.json))
-    expect(packed).toMatchObject({ rowCount: 3, errorCount: 1, storageTruncated: false })
+    // 3 rows read + 4 rows changed
+    expect(packed).toMatchObject({ rowCount: 7, errorCount: 1, storageTruncated: false })
   })
 
   it('keeps rows in order until the byte budget runs out and marks what was cut', () => {

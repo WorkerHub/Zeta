@@ -87,7 +87,8 @@ export function packRunResults(statements: RunStatement[], budget = MAX_STORED_R
   return {
     json,
     bytes: byteLength(json),
-    rowCount: statements.reduce((n, s) => n + s.results.length, 0),
+    // Rows returned by reads, rows changed by writes
+    rowCount: statements.reduce((n, s) => n + (s.changes ?? s.results.length), 0),
     errorCount: statements.filter((s) => s.error !== undefined).length,
     storageTruncated,
   }

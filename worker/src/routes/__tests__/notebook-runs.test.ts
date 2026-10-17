@@ -201,6 +201,23 @@ describe('saving runs', () => {
     expect(rows(app, 'SELECT error_count FROM notebook_runs')).toEqual([{ error_count: 1 }])
   })
 
+  it('does not save a batch whose statements were all rejected before running', async () => {
+    const { env, app, executed } = setup()
+    const { status, body } = await batch(env, { statements: ['DELETE FROM t', 'DROP TABLE t'], notebookId: 'nb-1' })
+    expect(status).toBe(200)
+    expect(body.run_id).toBeUndefined()
+    expect(executed).toEqual([])
+    expect(count(app, 'SELECT COUNT(*) AS n FROM notebook_runs')).toBe(0)
+  })
+
+  it('counts the rows a write changed', async () => {
+    const { env, app } = setup()
+    app.exec(`UPDATE user_database_permissions SET permission = 'write' WHERE id = 'p1'`)
+    const res = await query(env, { sql: 'UPDATE t SET x = x WHERE x <= 3', notebookId: 'nb-1' })
+    expect(res.status).toBe(200)
+    expect(rows(app, 'SELECT row_count FROM notebook_runs')).toEqual([{ row_count: 3 }])
+  })
+
   it("refuses another user's notebook without running anything", async () => {
     const { env, app, executed } = setup()
     expect((await query(env, { sql: 'SELECT 1', notebookId: 'nb-other' })).status).toBe(404)

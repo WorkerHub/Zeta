@@ -60,8 +60,6 @@ async function executeStatement(d1: D1Database, sql: string, kind: SqlClass): Pr
     return { results: [], meta: res.meta as Record<string, unknown>, changes: res.meta.changes ?? 0, truncated: false }
   }
   const limited = limitReadSql(sql, MAX_RESULT_ROWS)
-  // Defence in depth: the wrapper must still be one read statement
-  if (limited !== null && classifySql(limited) !== 'read') throw new Error('This SQL statement is not allowed.')
   const res = await d1.prepare(limited ?? sql).all()
   const rows = res.results as Record<string, unknown>[]
   const truncated = rows.length > MAX_RESULT_ROWS
@@ -225,6 +223,8 @@ query.post('/batch', async (c) => {
 
   // Run each statement sequentially, continue on error
   const results: RunStatement[] = []
+  // A batch whose statements were all rejected before running is not saved, like a rejected single one
+  let executedAny = false
 
   for (const rawSql of body.statements) {
     const sql = rawSql.trim()
@@ -237,6 +237,7 @@ query.post('/batch', async (c) => {
       continue
     }
 
+    executedAny = true
     const start = Date.now()
     let stmtResult: Record<string, unknown>[] = []
     let changes: number | undefined
@@ -273,7 +274,7 @@ query.post('/batch', async (c) => {
   }
 
   // Save the run under its notebook (non-blocking)
-  if (notebookId && results.length > 0) {
+  if (notebookId && executedAny) {
     const runId = uuid()
     c.executionCtx.waitUntil(
       saveRun(c.env, {
