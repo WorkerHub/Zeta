@@ -61,6 +61,80 @@ async function upgradeHistoryTable(db: D1Database, T: ReturnType<typeof tables>)
   return true
 }
 
+function permissionsTableDDL(T: ReturnType<typeof tables>, name: string): string {
+  return `CREATE TABLE IF NOT EXISTS ${name} (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL REFERENCES ${T.users}(id) ON DELETE CASCADE,
+      database_id TEXT NOT NULL REFERENCES ${T.d1_databases}(id) ON DELETE CASCADE,
+      permission TEXT NOT NULL DEFAULT 'read' CHECK (permission IN ('read', 'write', 'write_drop')),
+      granted_by TEXT REFERENCES ${T.users}(id),
+      granted_at INTEGER NOT NULL,
+      UNIQUE (user_id, database_id)
+    )`
+}
+
+function permissionsIndexDDL(T: ReturnType<typeof tables>): string[] {
+  return [
+    `CREATE INDEX IF NOT EXISTS idx_${T.user_database_permissions}_user ON ${T.user_database_permissions}(user_id)`,
+    `CREATE INDEX IF NOT EXISTS idx_${T.user_database_permissions}_db   ON ${T.user_database_permissions}(database_id)`,
+  ]
+}
+
+// Indexes migrations/0001 put on the permissions table. They are dropped only when they belong to
+// that table: in a database shared with other projects the same names may index something else.
+const LEGACY_PERMISSION_INDEXES = ['idx_perm_user', 'idx_perm_db']
+
+// Some prefixed deployments ended up with a permissions table whose foreign keys still point at
+// the unprefixed `users` / `d1_databases` tables. With foreign keys enforced, every INSERT or
+// DELETE on it then fails ("no such table: main.d1_databases") and nothing cascades from the real
+// tables. SQLite cannot repoint a foreign key in place, so rebuild the table in one batch (all or
+// nothing), keeping only rows whose user and database still exist. Returns null when the foreign
+// keys are already right, otherwise how many rows were dropped / lost their granted_by.
+async function repairPermissionRefs(
+  db: D1Database,
+  T: ReturnType<typeof tables>
+): Promise<{ dropped: number; clearedGrantedBy: number } | null> {
+  const expected: Record<string, string> = { user_id: T.users, database_id: T.d1_databases, granted_by: T.users }
+  const fks = await db
+    .prepare(`PRAGMA foreign_key_list(${T.user_database_permissions})`)
+    .all<{ from: string; table: string }>()
+  const misdirected = fks.results.some((fk) => {
+    const target = expected[fk.from]
+    return target !== undefined && fk.table.toLowerCase() !== target.toLowerCase()
+  })
+  if (!misdirected) return null
+
+  const legacyIndexes = await db
+    .prepare(
+      `SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name = ?1 COLLATE NOCASE
+       AND name IN (${LEGACY_PERMISSION_INDEXES.map((_, i) => `?${i + 2}`).join(', ')})`
+    )
+    .bind(T.user_database_permissions, ...LEGACY_PERMISSION_INDEXES)
+    .all<{ name: string }>()
+
+  const old = T.user_database_permissions
+  const tmp = `${old}_new`
+  const userExists = (col: string) => `EXISTS (SELECT 1 FROM ${T.users} u WHERE u.id = p.${col})`
+  const kept = `${userExists('user_id')} AND EXISTS (SELECT 1 FROM ${T.d1_databases} d WHERE d.id = p.database_id)`
+  const results = await db.batch<{ n: number }>(
+    [
+      `SELECT COUNT(*) AS n FROM ${old} p WHERE NOT (${kept})`,
+      `SELECT COUNT(*) AS n FROM ${old} p WHERE ${kept} AND p.granted_by IS NOT NULL AND NOT ${userExists('granted_by')}`,
+      ...legacyIndexes.results.map((idx) => `DROP INDEX IF EXISTS ${idx.name}`),
+      `DROP TABLE IF EXISTS ${tmp}`,
+      permissionsTableDDL(T, tmp),
+      `INSERT INTO ${tmp} (id, user_id, database_id, permission, granted_by, granted_at)
+       SELECT p.id, p.user_id, p.database_id, p.permission,
+              CASE WHEN ${userExists('granted_by')} THEN p.granted_by END, p.granted_at
+       FROM ${old} p WHERE ${kept}`,
+      `DROP TABLE ${old}`,
+      `ALTER TABLE ${tmp} RENAME TO ${old}`,
+      ...permissionsIndexDDL(T),
+    ].map((stmt) => db.prepare(stmt))
+  )
+  return { dropped: results[0]?.results[0]?.n ?? 0, clearedGrantedBy: results[1]?.results[0]?.n ?? 0 }
+}
+
 function buildDDL(T: ReturnType<typeof tables>): string[] {
   return [
     `CREATE TABLE IF NOT EXISTS ${T.users} (
@@ -106,17 +180,8 @@ function buildDDL(T: ReturnType<typeof tables>): string[] {
       created_by TEXT REFERENCES ${T.users}(id)
     )`,
 
-    `CREATE TABLE IF NOT EXISTS ${T.user_database_permissions} (
-      id TEXT PRIMARY KEY,
-      user_id TEXT NOT NULL REFERENCES ${T.users}(id) ON DELETE CASCADE,
-      database_id TEXT NOT NULL REFERENCES ${T.d1_databases}(id) ON DELETE CASCADE,
-      permission TEXT NOT NULL DEFAULT 'read' CHECK (permission IN ('read', 'write', 'write_drop')),
-      granted_by TEXT REFERENCES ${T.users}(id),
-      granted_at INTEGER NOT NULL,
-      UNIQUE (user_id, database_id)
-    )`,
-    `CREATE INDEX IF NOT EXISTS idx_${T.user_database_permissions}_user ON ${T.user_database_permissions}(user_id)`,
-    `CREATE INDEX IF NOT EXISTS idx_${T.user_database_permissions}_db   ON ${T.user_database_permissions}(database_id)`,
+    permissionsTableDDL(T, T.user_database_permissions),
+    ...permissionsIndexDDL(T),
 
     historyTableDDL(T, T.query_history),
     ...historyIndexDDL(T),
@@ -226,10 +291,19 @@ setup.post('/', async (c) => {
 
   // Schema upgrades for databases created by older versions
   const upgraded: string[] = []
+  let permissionsRepair: { dropped: number; clearedGrantedBy: number } | null = null
   if (errors.length === 0) {
     try {
       if (await upgradeHistoryTable(c.env.DB, T)) {
         upgraded.push(`${T.query_history}: nullable user_id/database_id with ON DELETE SET NULL`)
+      }
+      permissionsRepair = await repairPermissionRefs(c.env.DB, T)
+      if (permissionsRepair) {
+        upgraded.push(
+          `${T.user_database_permissions}: foreign keys now reference ${T.users}/${T.d1_databases} ` +
+            `(dropped ${permissionsRepair.dropped} orphaned row(s), ` +
+            `cleared granted_by on ${permissionsRepair.clearedGrantedBy} row(s))`
+        )
       }
     } catch (err) {
       errors.push(`Upgrade error: ${err instanceof Error ? err.message : String(err)}`)
@@ -263,6 +337,7 @@ setup.post('/', async (c) => {
       'Database initialised successfully. You can now register at /register — the first user becomes admin. ' +
       'On new installs registration then stays closed until an admin opens it in Admin → Settings.',
     ...(upgraded.length > 0 && { upgraded }),
+    ...(permissionsRepair && { permissionsRepair }),
   })
 })
 

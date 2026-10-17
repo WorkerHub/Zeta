@@ -154,7 +154,7 @@ Expected response:
 { "ok": true, "message": "Database initialised successfully. You can now register at /register — the first user becomes admin. On new installs registration then stays closed until an admin opens it in Admin → Settings." }
 ```
 
-> The endpoint is idempotent — safe to call multiple times. **Re-run it after every upgrade**: it also applies schema upgrades to databases created by earlier versions (e.g. making `query_history` keep rows when a user or database is deleted — until then, deleting users or databases fails — and creating the `rate_limits` table that makes login / 2FA / email rate limits exact; until it exists they fall back to approximate KV counters).
+> The endpoint is idempotent — safe to call multiple times. **Re-run it after every upgrade**: it also applies schema upgrades to databases created by earlier versions (e.g. making `query_history` keep rows when a user or database is deleted — until then, deleting users or databases fails — and creating the `rate_limits` table that makes login / 2FA / email rate limits exact; until it exists they fall back to approximate KV counters; and rebuilding a `user_database_permissions` table whose foreign keys still point at unprefixed `users` / `d1_databases` tables — until then, granting or revoking database access and deleting users or databases fail with `no such table`. Permission rows whose user or database no longer exists are dropped; the response reports how many under `permissionsRepair`).
 >
 > Earlier versions used `GET /api/setup/<SETUP_SECRET>`. That form is gone: it now returns `405` and does nothing. If you ever opened the old URL, consider rotating `SETUP_SECRET`.
 
