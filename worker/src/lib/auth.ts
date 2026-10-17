@@ -4,6 +4,10 @@ import { tables } from './db'
 
 // ── Password (PBKDF2 via WebCrypto) ─────────────────────────────────────────
 
+// OWASP recommends 600k iterations for PBKDF2-SHA256, but the Workers runtime rejects
+// deriveBits() with more than 100k ("iteration counts above 100000 are not supported"), so this
+// is the highest count that works here. Moving past it means a different KDF (e.g. scrypt or
+// Argon2 compiled to Wasm), which the Workers CPU limits make costly.
 const PBKDF2_ITERATIONS = 100_000
 const SALT_LEN = 32
 
@@ -27,7 +31,7 @@ export async function verifyPassword(password: string, stored: string): Promise<
   if (parts.length !== 4 || parts[0] !== 'pbkdf2') return false
   const [, iterStr, saltHex, hashHex] = parts
   const iterations = parseInt(iterStr ?? '0', 10)
-  if (Number.isNaN(iterations) || iterations <= 0 || iterations > 600_000) return false
+  if (Number.isNaN(iterations) || iterations <= 0 || iterations > PBKDF2_ITERATIONS) return false
   const salt = hexToBuf(saltHex ?? '')
   const expected = hexToBuf(hashHex ?? '')
   const keyMaterial = await crypto.subtle.importKey('raw', new TextEncoder().encode(password), 'PBKDF2', false, [
@@ -44,7 +48,27 @@ export async function verifyPassword(password: string, stored: string): Promise<
 
 // ── JWT (HS256) ──────────────────────────────────────────────────────────────
 
-export interface AccessTokenPayload {
+// Tokens are bound to the deployment that minted them: `iss` and `aud` both carry its APP_URL,
+// so a token from another deployment that happens to share JWT_SECRET (staging vs. production)
+// is rejected. Changing APP_URL therefore signs everybody out.
+export type JwtEnv = Pick<Env, 'JWT_SECRET' | 'APP_URL'>
+
+interface RegisteredClaims {
+  iss?: string
+  aud?: string
+}
+
+function jwtAudience(env: JwtEnv): string {
+  return env.APP_URL?.trim().replace(/\/+$/, '') || 'zeta'
+}
+
+// Refresh tokens issued before tokens carried iss/aud (up to 7 days old) stay valid so upgrading
+// does not sign everybody out; ones minted later without the claims come from an outdated
+// deployment and are refused. Once this date is more than REFRESH_TTL past, the exception
+// matches nothing and can be removed.
+const LEGACY_REFRESH_CUTOFF = Date.UTC(2026, 10, 1) / 1000
+
+export interface AccessTokenPayload extends RegisteredClaims {
   sub: string
   role: 'admin' | 'member'
   jti: string
@@ -53,7 +77,7 @@ export interface AccessTokenPayload {
   type: 'access'
 }
 
-export interface RefreshTokenPayload {
+export interface RefreshTokenPayload extends RegisteredClaims {
   sub: string
   jti: string
   iat: number
@@ -61,7 +85,7 @@ export interface RefreshTokenPayload {
   type: 'refresh'
 }
 
-export interface Pending2faTokenPayload {
+export interface Pending2faTokenPayload extends RegisteredClaims {
   sub: string
   jti: string
   iat: number
@@ -96,15 +120,17 @@ function b64urlDecode(s: string): Uint8Array {
   return Uint8Array.from(bin, (c) => c.charCodeAt(0))
 }
 
-async function signJwt(payload: Record<string, unknown>, secret: string): Promise<string> {
+async function signJwt(payload: Record<string, unknown>, env: JwtEnv): Promise<string> {
+  const audience = jwtAudience(env)
   const header = b64url(new TextEncoder().encode(JSON.stringify({ alg: 'HS256', typ: 'JWT' })))
-  const body = b64url(new TextEncoder().encode(JSON.stringify(payload)))
-  const key = await hmacKey(secret)
+  const body = b64url(new TextEncoder().encode(JSON.stringify({ ...payload, iss: audience, aud: audience })))
+  const key = await hmacKey(env.JWT_SECRET)
   const sig = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(`${header}.${body}`))
   return `${header}.${body}.${b64url(sig)}`
 }
 
-async function verifyJwt<T>(token: string, secret: string): Promise<T | null> {
+// `legacyBefore`: also accept tokens without iss/aud whose iat lies before this timestamp.
+async function verifyJwt<T extends RegisteredClaims>(token: string, env: JwtEnv, legacyBefore = 0): Promise<T | null> {
   const parts = token.split('.')
   if (parts.length !== 3) return null
   const [header, body, sig] = parts as [string, string, string]
@@ -114,7 +140,7 @@ async function verifyJwt<T>(token: string, secret: string): Promise<T | null> {
   } catch {
     return null
   }
-  const key = await hmacKey(secret)
+  const key = await hmacKey(env.JWT_SECRET)
   const valid = await crypto.subtle.verify(
     'HMAC',
     key,
@@ -122,12 +148,21 @@ async function verifyJwt<T>(token: string, secret: string): Promise<T | null> {
     new TextEncoder().encode(`${header}.${body}`)
   )
   if (!valid) return null
-  const payload = JSON.parse(new TextDecoder().decode(b64urlDecode(body))) as T & { exp?: number }
+  const payload = JSON.parse(new TextDecoder().decode(b64urlDecode(body))) as T & { exp?: number; iat?: number }
   if (payload.exp && payload.exp < Math.floor(Date.now() / 1000)) return null
+  const audience = jwtAudience(env)
+  if (payload.iss !== audience || payload.aud !== audience) {
+    const legacy =
+      payload.iss === undefined &&
+      payload.aud === undefined &&
+      typeof payload.iat === 'number' &&
+      payload.iat < legacyBefore
+    if (!legacy) return null
+  }
   return payload
 }
 
-export async function createAccessToken(userId: string, role: 'admin' | 'member', secret: string): Promise<string> {
+export async function createAccessToken(userId: string, role: 'admin' | 'member', env: JwtEnv): Promise<string> {
   const now = Math.floor(Date.now() / 1000)
   return signJwt(
     {
@@ -138,11 +173,11 @@ export async function createAccessToken(userId: string, role: 'admin' | 'member'
       exp: now + ACCESS_TTL,
       type: 'access',
     },
-    secret
+    env
   )
 }
 
-export async function createRefreshToken(userId: string, secret: string): Promise<string> {
+export async function createRefreshToken(userId: string, env: JwtEnv): Promise<string> {
   const now = Math.floor(Date.now() / 1000)
   return signJwt(
     {
@@ -152,11 +187,11 @@ export async function createRefreshToken(userId: string, secret: string): Promis
       exp: now + REFRESH_TTL,
       type: 'refresh',
     },
-    secret
+    env
   )
 }
 
-export async function createPending2faToken(userId: string, secret: string): Promise<string> {
+export async function createPending2faToken(userId: string, env: JwtEnv): Promise<string> {
   const now = Math.floor(Date.now() / 1000)
   return signJwt(
     {
@@ -166,33 +201,30 @@ export async function createPending2faToken(userId: string, secret: string): Pro
       exp: now + PENDING_TTL,
       type: 'pending_2fa',
     },
-    secret
+    env
   )
 }
 
-export async function verifyAccessToken(token: string | undefined, secret: string): Promise<AccessTokenPayload | null> {
+export async function verifyAccessToken(token: string | undefined, env: JwtEnv): Promise<AccessTokenPayload | null> {
   if (!token) return null
-  const payload = await verifyJwt<AccessTokenPayload>(token, secret)
+  const payload = await verifyJwt<AccessTokenPayload>(token, env)
   if (payload?.type !== 'access') return null
   return payload
 }
 
-export async function verifyRefreshToken(
-  token: string | undefined,
-  secret: string
-): Promise<RefreshTokenPayload | null> {
+export async function verifyRefreshToken(token: string | undefined, env: JwtEnv): Promise<RefreshTokenPayload | null> {
   if (!token) return null
-  const payload = await verifyJwt<RefreshTokenPayload>(token, secret)
+  const payload = await verifyJwt<RefreshTokenPayload>(token, env, LEGACY_REFRESH_CUTOFF)
   if (payload?.type !== 'refresh') return null
   return payload
 }
 
 export async function verifyPending2faToken(
   token: string | undefined,
-  secret: string
+  env: JwtEnv
 ): Promise<Pending2faTokenPayload | null> {
   if (!token) return null
-  const payload = await verifyJwt<Pending2faTokenPayload>(token, secret)
+  const payload = await verifyJwt<Pending2faTokenPayload>(token, env)
   if (payload?.type !== 'pending_2fa') return null
   return payload
 }

@@ -1,5 +1,13 @@
 import { getAccessToken, clearSession, setSession, getCurrentUser } from './auth'
-import type { User, Notebook, StatementResult } from '../types'
+import type {
+  AdminDatabase,
+  Database,
+  DatabaseGrant,
+  Notebook,
+  QueryHistoryItem,
+  StatementResult,
+  User,
+} from '../types'
 
 // ── Base fetch wrapper ─────────────────────────────────────────────────────────
 
@@ -197,26 +205,20 @@ export const profileApi = {
 // ── Databases endpoints ───────────────────────────────────────────────────────
 
 export const databasesApi = {
-  list: () =>
-    apiFetch<
-      Array<{
-        id: string
-        name: string
-        description: string | null
-        binding_name?: string
-        permission: 'read' | 'write' | 'write_drop'
-      }>
-    >('/databases'),
+  list: () => apiFetch<Database[]>('/databases'),
 }
 
 // ── Query endpoints ───────────────────────────────────────────────────────────
 
 export const queryApi = {
   execute: (body: { databaseId: string; sql: string }) =>
-    apiFetch<{ results?: unknown[]; meta?: unknown; duration_ms?: number; truncated?: boolean; error?: string }>(
-      '/query',
-      { method: 'POST', body: JSON.stringify(body) }
-    ),
+    apiFetch<{
+      results?: Record<string, unknown>[]
+      meta?: { changes?: number }
+      duration_ms?: number
+      truncated?: boolean
+      error?: string
+    }>('/query', { method: 'POST', body: JSON.stringify(body) }),
   executeBatch: (body: { databaseId: string; statements: string[] }) =>
     apiFetch<{ results: StatementResult[] }>('/query/batch', { method: 'POST', body: JSON.stringify(body) }),
   history: (params?: { databaseId?: string; limit?: number; offset?: number }) => {
@@ -224,7 +226,7 @@ export const queryApi = {
     if (params?.databaseId) q.set('databaseId', params.databaseId)
     if (params?.limit) q.set('limit', String(params.limit))
     if (params?.offset) q.set('offset', String(params.offset))
-    return apiFetch<{ results: unknown[] }>(`/query/history?${q}`)
+    return apiFetch<{ results: QueryHistoryItem[] }>(`/query/history?${q}`)
   },
 }
 
@@ -247,14 +249,14 @@ export const adminApi = {
   ) => apiFetch<{ message: string }>(`/admin/users/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
   deleteUser: (id: string) => apiFetch<{ message: string }>(`/admin/users/${id}`, { method: 'DELETE' }),
 
-  databases: () => apiFetch<{ results: unknown[] }>('/admin/databases'),
+  databases: () => apiFetch<{ results: AdminDatabase[] }>('/admin/databases'),
   createDatabase: (body: { name: string; description?: string; binding_name: string }) =>
     apiFetch<{ id: string }>('/admin/databases', { method: 'POST', body: JSON.stringify(body) }),
   updateDatabase: (id: string, body: { name?: string; description?: string; is_active?: boolean }) =>
     apiFetch<{ message: string }>(`/admin/databases/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
   deleteDatabase: (id: string) => apiFetch<{ message: string }>(`/admin/databases/${id}`, { method: 'DELETE' }),
 
-  getPermissions: (dbId: string) => apiFetch<{ results: unknown[] }>(`/admin/databases/${dbId}/permissions`),
+  getPermissions: (dbId: string) => apiFetch<{ results: DatabaseGrant[] }>(`/admin/databases/${dbId}/permissions`),
   setPermission: (dbId: string, userId: string, permission: string) =>
     apiFetch<{ message: string }>(`/admin/databases/${dbId}/permissions/${userId}`, {
       method: 'PUT',

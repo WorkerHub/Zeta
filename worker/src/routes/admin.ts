@@ -489,8 +489,10 @@ admin.patch('/settings', async (c) => {
         continue
       }
       if (typeof newConfig !== 'object' || newConfig === null || Array.isArray(newConfig)) continue
-      // Empty or masked secret means "keep the stored one"; never persist the placeholder.
-      if (!newConfig[secretField] || newConfig[secretField] === SECRET_MASK) {
+      // An omitted or masked secret means "keep the stored one" (never persist the placeholder);
+      // an explicit empty string clears it.
+      const secret = newConfig[secretField]
+      if (secret === undefined || secret === null || secret === SECRET_MASK) {
         let existing: Record<string, unknown> = {}
         try {
           existing = existingSettings[key] ? JSON.parse(existingSettings[key]) : {}
@@ -498,6 +500,8 @@ admin.patch('/settings', async (c) => {
           /* */
         }
         newConfig[secretField] = existing[secretField] || ''
+      } else if (typeof secret !== 'string') {
+        continue
       }
       // Encrypt at rest; also upgrades legacy plaintext values the next time settings are saved.
       if (typeof newConfig[secretField] === 'string') {

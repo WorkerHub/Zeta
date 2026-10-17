@@ -16,7 +16,8 @@ export default function AdminUsers() {
   const [total, setTotal] = useState(0)
   const [search, setSearch] = useState('')
   const [loading, setLoading] = useState(true)
-  const [deleteError, setDeleteError] = useState('')
+  // Errors from loading the list and from row actions (role change, delete)
+  const [error, setError] = useState('')
   const [page, setPage] = useState(0)
   const limit = 20
 
@@ -34,29 +35,36 @@ export default function AdminUsers() {
       const res = await adminApi.users({ search, limit, offset: page * limit })
       setUsers(res.results)
       setTotal(res.total)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : t('errors.generic'))
     } finally {
       setLoading(false)
     }
-  }, [search, page])
+  }, [search, page, t])
 
   useEffect(() => {
     load()
   }, [load])
 
   async function changeRole(id: string, role: string) {
-    await adminApi.updateUser(id, { role })
-    load()
+    setError('')
+    try {
+      await adminApi.updateUser(id, { role })
+      load()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : t('errors.generic'))
+    }
   }
 
   async function deleteUser(id: string) {
     setDeleteLoading(true)
-    setDeleteError('')
+    setError('')
     try {
       await adminApi.deleteUser(id)
       setDeleteTarget(null)
       load()
     } catch (err) {
-      setDeleteError(err instanceof Error ? err.message : t('errors.delete_user_failed'))
+      setError(err instanceof Error ? err.message : t('errors.delete_user_failed'))
       setDeleteTarget(null)
     } finally {
       setDeleteLoading(false)
@@ -115,7 +123,7 @@ export default function AdminUsers() {
         </div>
       </div>
 
-      {deleteError && <p className="mb-3 text-sm text-red-400">{deleteError}</p>}
+      {error && <p className="mb-3 text-sm text-red-400">{error}</p>}
 
       {/* Search */}
       <div className="relative mb-4">

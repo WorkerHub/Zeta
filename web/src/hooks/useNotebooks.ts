@@ -11,6 +11,7 @@ export function useNotebooks() {
   const [activeId, setActiveIdState] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [saveError, setSaveError] = useState(false)
+  const [loadError, setLoadError] = useState(false)
   const debounceTimers = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map())
   const notebooksRef = useRef<Notebook[]>([])
 
@@ -45,7 +46,7 @@ export function useNotebooks() {
         const validId = stored && nbs.some((n) => n.id === stored) ? stored : (nbs[0]?.id ?? null)
         setActiveIdState(validId)
       })
-      .catch(() => {})
+      .catch(() => setLoadError(true))
       .finally(() => setLoading(false))
   }, [])
 
@@ -133,6 +134,7 @@ export function useNotebooks() {
     updateContent,
     updateDatabase,
     saveError,
+    loadError,
     loading,
     canCreate: notebooks.length < MAX_NOTEBOOKS,
   }

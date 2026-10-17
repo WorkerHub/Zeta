@@ -38,7 +38,7 @@ describe('POST /api/auth/login', () => {
     expect(Object.keys(body).sort()).toEqual(['pendingToken', 'requires2fa'])
     expect(JSON.stringify(body)).not.toContain(user.id)
     // The id still reaches the 2FA step through the signed token
-    const pending = await verifyPending2faToken(body.pendingToken as string, env.JWT_SECRET)
+    const pending = await verifyPending2faToken(body.pendingToken as string, env)
     expect(pending?.sub).toBe(user.id)
   })
 
@@ -126,7 +126,7 @@ describe('refresh cookie', () => {
 describe('POST /api/auth/2fa/email-otp/send', () => {
   it('limits how often one account can trigger OTP emails', async () => {
     const env = loginEnv({ has2fa: true })
-    const pendingToken = await createPending2faToken(user.id, env.JWT_SECRET)
+    const pendingToken = await createPending2faToken(user.id, env)
     const statuses: number[] = []
     for (let i = 0; i < 4; i++) {
       statuses.push((await callWorker(env, '/api/auth/2fa/email-otp/send', postJson({ pendingToken }))).status)

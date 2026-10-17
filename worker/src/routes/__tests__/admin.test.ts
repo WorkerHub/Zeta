@@ -61,3 +61,78 @@ describe('PATCH /api/admin/settings', () => {
     expect(calls.filter((c) => c.sql.startsWith('INSERT INTO settings'))).toHaveLength(2)
   })
 })
+
+describe('PATCH /api/admin/settings email secrets', () => {
+  const patch = (body: unknown, headers: Record<string, string>) => postJson(body, { method: 'PATCH', headers })
+  const stored = JSON.stringify({ host: 'smtp.example.com', username: 'u', password: 'old-password' })
+
+  async function save(password: unknown) {
+    const { db, calls } = fakeD1((sql) =>
+      sql.startsWith('SELECT key, value FROM settings') ? [{ key: 'smtp_config', value: stored }] : null
+    )
+    const env = fakeEnv({ DB: db })
+    const config: Record<string, unknown> = { host: 'smtp2.example.com', username: 'u' }
+    if (password !== undefined) config.password = password
+    const res = await callWorker(
+      env,
+      '/api/admin/settings',
+      patch({ smtp_config: JSON.stringify(config) }, await bearer(env, 'admin-1', 'admin'))
+    )
+    const write = calls.find((c) => c.sql.startsWith('INSERT INTO settings'))
+    return { status: res.status, saved: write ? JSON.parse(write.args[1] as string) : null }
+  }
+
+  it('keeps the stored secret when it is omitted or sent back masked', async () => {
+    for (const password of [undefined, '••••••']) {
+      const { saved } = await save(password)
+      expect(saved.host).toBe('smtp2.example.com')
+      expect(saved.password).toMatch(/^enc:/)
+      expect(saved.password).not.toContain('•')
+    }
+  })
+
+  it('clears the stored secret when an empty string is sent', async () => {
+    const { status, saved } = await save('')
+    expect(status).toBe(200)
+    expect(saved.password).toBe('')
+  })
+
+  it('stores a new secret encrypted', async () => {
+    const { saved } = await save('new-password')
+    expect(saved.password).toMatch(/^enc:/)
+  })
+
+  it('ignores a config whose secret is not a string', async () => {
+    const { status, saved } = await save(42)
+    expect(status).toBe(200)
+    expect(saved).toBeNull()
+  })
+})
+
+describe('PATCH /api/admin/settings resend api key', () => {
+  it('clears the stored key on an explicit empty string and keeps it when omitted', async () => {
+    const stored = JSON.stringify({ api_key: 're_old', from: 'noreply@example.com' })
+    for (const [config, expected] of [
+      [{ from: 'noreply@example.com', api_key: '' }, ''],
+      [{ from: 'noreply@example.com' }, /^enc:/],
+    ] as const) {
+      const { db, calls } = fakeD1((sql) =>
+        sql.startsWith('SELECT key, value FROM settings') ? [{ key: 'resend_config', value: stored }] : null
+      )
+      const env = fakeEnv({ DB: db })
+      const res = await callWorker(
+        env,
+        '/api/admin/settings',
+        postJson(
+          { resend_config: JSON.stringify(config) },
+          { method: 'PATCH', headers: await bearer(env, 'admin-1', 'admin') }
+        )
+      )
+      expect(res.status).toBe(200)
+      const write = calls.find((c) => c.sql.startsWith('INSERT INTO settings'))!
+      const saved = JSON.parse(write.args[1] as string)
+      if (typeof expected === 'string') expect(saved.api_key).toBe(expected)
+      else expect(saved.api_key).toMatch(expected)
+    }
+  })
+})

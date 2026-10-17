@@ -22,6 +22,25 @@ export interface Database {
   permission: DbPermission
 }
 
+// A registered database as the admin API returns it
+export interface AdminDatabase {
+  id: string
+  name: string
+  description: string | null
+  binding_name: string
+  is_active: number
+  created_at: number
+}
+
+export interface DatabaseGrant {
+  id: string
+  user_id: string
+  database_id: string
+  permission: DbPermission
+  email: string
+  user_name: string
+}
+
 export interface QueryResult {
   results: Record<string, unknown>[]
   meta?: Record<string, unknown>
@@ -40,8 +59,8 @@ export interface StatementResult {
 
 export interface QueryHistoryItem {
   id: string
-  user_id: string
-  database_id: string
+  user_id: string | null // null once the user or database was deleted
+  database_id: string | null
   sql: string
   duration_ms: number | null
   row_count: number | null

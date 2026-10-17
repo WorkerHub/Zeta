@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
-import { sendEmail } from '../email'
+import { buildOtpEmail, buildPasswordResetEmail, sendEmail } from '../email'
 import { fakeD1, fakeEnv } from '../../routes/__tests__/fakes'
 
 function envWithSettings(settings: Record<string, string>) {
@@ -47,5 +47,31 @@ describe('sendEmail sender validation', () => {
     expect(await sendEmail(env, payload)).toEqual({ success: true })
     const body = JSON.parse(String(fetchSpy.mock.calls[0]![1]!.body))
     expect(body.from).toBe('Zeta <noreply@example.com>')
+  })
+})
+
+describe('email templates', () => {
+  it('escapes single quotes along with the other HTML metacharacters', () => {
+    const { html } = buildPasswordResetEmail({
+      appName: `O'Brien's <b>"DB"</b> & co`,
+      appUrl: "https://x.example.com/'onmouseover='alert(1)",
+      toEmail: 'user@example.com',
+      token: 't',
+    })
+    expect(html).not.toMatch(/'/)
+    expect(html).toContain('&#39;onmouseover=&#39;alert(1)')
+
+    const otp = buildOtpEmail({ appName: `O'Brien's <b>DB</b>`, toEmail: 'user@example.com', otp: '123456' })
+    expect(otp.html).toContain('O&#39;Brien&#39;s &lt;b&gt;DB&lt;/b&gt;')
+  })
+
+  it('keeps the plain-text part free of HTML entities', () => {
+    const { text } = buildPasswordResetEmail({
+      appName: `Bob's & Co`,
+      appUrl: 'https://x.example.com',
+      toEmail: 'user@example.com',
+      token: 't',
+    })
+    expect(text).toBe(`Reset your Bob's & Co password: https://x.example.com/reset-password?token=t`)
   })
 })

@@ -1,4 +1,4 @@
-import { Hono } from 'hono'
+import { Hono, type Context } from 'hono'
 import type { Env, Variables, DatabaseRow } from '../types'
 import { requireAuth } from '../middleware/auth'
 import { uuid } from '../lib/id'
@@ -11,6 +11,14 @@ const MAX_SQL_LENGTH = 100_000
 
 const query = new Hono<{ Bindings: Env; Variables: Variables }>()
 query.use('*', requireAuth)
+
+// A registered database whose binding is missing or unusable. The detail names the binding, an
+// internal deployment detail, so only admins (who manage bindings anyway) get to see it.
+function bindingError(c: Context<{ Bindings: Env; Variables: Variables }>, detail: string) {
+  if (c.get('userRole') === 'admin') return c.json({ error: `${detail} Contact the admin.` }, 500)
+  console.error(`Query binding error: ${detail}`)
+  return c.json({ error: 'Database configuration error. Contact the admin.' }, 500)
+}
 
 // ── POST /api/query ────────────────────────────────────────────────────────────
 
@@ -53,7 +61,7 @@ query.post('/', async (c) => {
 
   // Resolve the CF Worker binding
   const binding = resolveQueryBinding(c.env, db.binding_name)
-  if (!binding.ok) return c.json({ error: `${binding.error} Contact the admin.` }, 500)
+  if (!binding.ok) return bindingError(c, binding.error)
 
   const d1 = binding.db
   const start = Date.now()
@@ -135,7 +143,7 @@ query.post('/batch', async (c) => {
 
   // Resolve binding
   const binding = resolveQueryBinding(c.env, db.binding_name)
-  if (!binding.ok) return c.json({ error: `${binding.error} Contact the admin.` }, 500)
+  if (!binding.ok) return bindingError(c, binding.error)
   const d1 = binding.db
 
   // Run each statement sequentially, continue on error

@@ -1,5 +1,6 @@
 import { Hono } from 'hono'
 import { cors } from 'hono/cors'
+import { bodyLimit } from 'hono/body-limit'
 import type { Env, Variables } from './types'
 import { securityHeaders } from './middleware/security'
 import auth from './routes/auth'
@@ -32,6 +33,14 @@ app.use(
 )
 
 app.use('*', securityHeaders)
+
+// Rejects oversized bodies before any route parses them. The largest legitimate payloads (a 512K
+// notebook, a batch of statements) stay well below this.
+const MAX_BODY_BYTES = 4 * 1024 * 1024
+app.use(
+  '/api/*',
+  bodyLimit({ maxSize: MAX_BODY_BYTES, onError: (c) => c.json({ error: 'Request body too large' }, 413) })
+)
 
 // ── API routes ────────────────────────────────────────────────────────────────
 

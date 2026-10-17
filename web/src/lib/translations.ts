@@ -232,6 +232,8 @@ export const translations: Record<Locale, Record<string, string>> = {
     'admin_settings.test_email_failed': 'Failed to send test email',
     'admin_settings.loading': 'Loading…',
     'admin_settings.keep_existing': 'Leave blank to keep existing',
+    'admin_settings.clear_secret': 'Clear saved credential',
+    'admin_settings.secret_will_clear': 'The saved credential will be removed when you save',
 
     // Errors (fallbacks when the server gives no message)
     'errors.generic': 'Something went wrong',
@@ -248,6 +250,10 @@ export const translations: Record<Locale, Record<string, string>> = {
     'errors.delete_user_failed': 'Failed to delete user',
     'errors.delete_db_failed': 'Failed to delete database',
     'errors.save_failed': 'Failed to save',
+    'errors.load_databases_failed': 'Failed to load databases',
+    'errors.load_notebooks_failed': 'Failed to load notebooks',
+    'errors.delete_notebook_failed': 'Failed to delete notebook',
+    'errors.load_history_failed': 'Failed to load query history',
 
     // Query results
     'results.count': '{n} results',
@@ -267,6 +273,7 @@ export const translations: Record<Locale, Record<string, string>> = {
 
     // Common
     'common.loading': 'Loading…',
+    'common.dismiss': 'Dismiss',
   },
   zh: {
     // App
@@ -498,6 +505,8 @@ export const translations: Record<Locale, Record<string, string>> = {
     'admin_settings.test_email_failed': '测试邮件发送失败',
     'admin_settings.loading': '加载中…',
     'admin_settings.keep_existing': '留空则保留现有值',
+    'admin_settings.clear_secret': '清除已保存的凭据',
+    'admin_settings.secret_will_clear': '保存后将删除已保存的凭据',
 
     // Errors (fallbacks when the server gives no message)
     'errors.generic': '出错了',
@@ -514,6 +523,10 @@ export const translations: Record<Locale, Record<string, string>> = {
     'errors.delete_user_failed': '删除用户失败',
     'errors.delete_db_failed': '删除数据库失败',
     'errors.save_failed': '保存失败',
+    'errors.load_databases_failed': '数据库列表加载失败',
+    'errors.load_notebooks_failed': '笔记本加载失败',
+    'errors.delete_notebook_failed': '删除笔记本失败',
+    'errors.load_history_failed': '查询历史加载失败',
 
     // Query results
     'results.count': '{n} 个结果',
@@ -533,6 +546,7 @@ export const translations: Record<Locale, Record<string, string>> = {
 
     // Common
     'common.loading': '加载中…',
+    'common.dismiss': '关闭',
   },
 }
 

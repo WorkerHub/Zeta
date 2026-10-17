@@ -9,7 +9,7 @@ type Ctx = Context<{ Bindings: Env; Variables: Variables }>
 // user's sessions were invalidated (password/role/email change, deletion).
 async function authenticate(c: Ctx) {
   const token = c.req.header('Authorization')?.replace('Bearer ', '')
-  const payload = await verifyAccessToken(token, c.env.JWT_SECRET)
+  const payload = await verifyAccessToken(token, c.env)
   if (!payload) return null
   const invalidatedAt = await c.env.KV.get(KV.sessionInvalidatedAt(payload.sub))
   if (invalidatedAt && payload.iat <= parseInt(invalidatedAt, 10)) return null

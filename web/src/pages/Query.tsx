@@ -52,6 +52,7 @@ export default function QueryPage() {
     updateContent,
     updateDatabase,
     saveError,
+    loadError: notebooksLoadError,
     loading: notebooksLoading,
     canCreate,
   } = useNotebooks()
@@ -62,6 +63,8 @@ export default function QueryPage() {
   const [statementResults, setStatementResults] = useState<StatementResult[]>([])
   const [activeResultIdx, setActiveResultIdx] = useState(0)
   const [runError, setRunError] = useState('')
+  // Failures outside a query run (loading databases, deleting a notebook)
+  const [pageError, setPageError] = useState('')
   const [running, setRunning] = useState(false)
   const [showHistory, setShowHistory] = useState(false)
   const [showDbMenu, setShowDbMenu] = useState(false)
@@ -86,8 +89,8 @@ export default function QueryPage() {
   }, [])
 
   // Layout: 'vertical' = top/bottom, 'horizontal' = left/right
-  const [layout, setLayout] = useState<'vertical' | 'horizontal'>(
-    () => (localStorage.getItem('query-layout') as 'vertical' | 'horizontal') ?? 'vertical'
+  const [layout, setLayout] = useState<'vertical' | 'horizontal'>(() =>
+    localStorage.getItem('query-layout') === 'horizontal' ? 'horizontal' : 'vertical'
   )
 
   // Draggable split
@@ -103,8 +106,8 @@ export default function QueryPage() {
     databasesApi
       .list()
       .then(setDatabases)
-      .catch(() => {})
-  }, [])
+      .catch(() => setPageError(t('errors.load_databases_failed')))
+  }, [t])
 
   // Close dropdowns on outside click
   useEffect(() => {
@@ -138,9 +141,9 @@ export default function QueryPage() {
           const res = await queryApi.execute({ databaseId: selectedDb.id, sql: stmt })
           const entry: StatementResult = {
             sql: stmt,
-            results: (res.results ?? []) as Record<string, unknown>[],
+            results: res.results ?? [],
             duration_ms: res.duration_ms ?? 0,
-            changes: (res.meta as { changes?: number } | undefined)?.changes,
+            changes: res.meta?.changes,
             truncated: res.truncated,
           }
           setStatementResults([entry])
@@ -435,7 +438,11 @@ export default function QueryPage() {
                 type="button"
                 onClick={(e) => {
                   e.stopPropagation()
-                  if (window.confirm(t('notebook.delete_confirm'))) deleteNotebook(nb.id).catch(() => {})
+                  if (!window.confirm(t('notebook.delete_confirm'))) return
+                  setPageError('')
+                  deleteNotebook(nb.id).catch((err) =>
+                    setPageError(err instanceof Error ? err.message : t('errors.delete_notebook_failed'))
+                  )
                 }}
                 className="opacity-0 group-hover:opacity-100 p-0.5 rounded hover:bg-zinc-200 dark:hover:bg-zinc-700 text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 transition-opacity"
               >
@@ -543,6 +550,23 @@ export default function QueryPage() {
 
           {/* Results */}
           <div className="flex-1 overflow-hidden flex flex-col">
+            {(pageError || notebooksLoadError) && (
+              <div className="mx-4 mt-4 flex items-start gap-2 p-3 bg-red-500/10 border border-red-500/20 rounded-xl shrink-0">
+                <AlertCircle size={16} className="text-red-400 shrink-0 mt-0.5" />
+                <p className="flex-1 text-sm text-red-400">{pageError || t('errors.load_notebooks_failed')}</p>
+                {pageError && (
+                  <button
+                    type="button"
+                    onClick={() => setPageError('')}
+                    className="p-0.5 rounded text-red-400 hover:bg-red-500/10"
+                    title={t('common.dismiss')}
+                    aria-label={t('common.dismiss')}
+                  >
+                    <X size={14} />
+                  </button>
+                )}
+              </div>
+            )}
             {running && (
               <div className="flex items-center justify-center h-full gap-2 text-zinc-500">
                 <Loader2 size={18} className="animate-spin" />

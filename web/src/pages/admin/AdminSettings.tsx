@@ -32,7 +32,10 @@ export default function AdminSettings() {
   const [smtp, setSmtp] = useState<SmtpConfig>(DEFAULT_SMTP)
   const [resend, setResend] = useState<ResendConfig>(DEFAULT_RESEND)
   const [smtpHasSecret, setSmtpHasSecret] = useState(false)
+  // Admin asked to remove the stored SMTP password (e.g. the server no longer needs auth)
+  const [smtpClearSecret, setSmtpClearSecret] = useState(false)
   const [resendHasSecret, setResendHasSecret] = useState(false)
+  const [resendClearSecret, setResendClearSecret] = useState(false)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
@@ -49,7 +52,8 @@ export default function AdminSettings() {
       .getSettings()
       .then((cfg) => {
         setSettings(cfg)
-        setEmailProvider((cfg.email_provider as EmailProvider) || 'none')
+        const provider = cfg.email_provider
+        setEmailProvider(provider === 'smtp' || provider === 'resend' ? provider : 'none')
         if (cfg.smtp_config) {
           try {
             const parsed = JSON.parse(cfg.smtp_config)
@@ -91,15 +95,28 @@ export default function AdminSettings() {
         payload.smtp_config = JSON.stringify({
           ...smtpRest,
           port: Number(smtp.port) || 587,
-          ...(password ? { password } : {}),
+          // Omitted = keep the stored password, '' = clear it
+          ...(password ? { password } : smtpClearSecret ? { password: '' } : {}),
         })
       }
       if (emailProvider === 'resend') {
         const { api_key, ...resendRest } = resend
-        payload.resend_config = JSON.stringify({ ...resendRest, ...(api_key ? { api_key } : {}) })
+        payload.resend_config = JSON.stringify({
+          ...resendRest,
+          // Omitted = keep the stored key, '' = clear it
+          ...(api_key ? { api_key } : resendClearSecret ? { api_key: '' } : {}),
+        })
       }
 
       await adminApi.updateSettings(payload)
+      if (emailProvider === 'smtp' && (smtp.password || smtpClearSecret)) {
+        setSmtpHasSecret(Boolean(smtp.password))
+        setSmtpClearSecret(false)
+      }
+      if (emailProvider === 'resend' && (resend.api_key || resendClearSecret)) {
+        setResendHasSecret(Boolean(resend.api_key))
+        setResendClearSecret(false)
+      }
       setSaved(true)
       setTimeout(() => setSaved(false), 3000)
     } catch (err) {
@@ -283,10 +300,28 @@ export default function AdminSettings() {
                     type="password"
                     className="input"
                     value={smtp.password}
-                    onChange={(e) => setSmtpField('password', e.target.value)}
+                    onChange={(e) => {
+                      setSmtpField('password', e.target.value)
+                      if (e.target.value) setSmtpClearSecret(false)
+                    }}
                     autoComplete="off"
-                    placeholder={smtpHasSecret ? t('admin_settings.keep_existing') : ''}
+                    placeholder={
+                      smtpClearSecret
+                        ? t('admin_settings.secret_will_clear')
+                        : smtpHasSecret
+                          ? t('admin_settings.keep_existing')
+                          : ''
+                    }
                   />
+                  {smtpHasSecret && !smtpClearSecret && !smtp.password && (
+                    <button
+                      type="button"
+                      onClick={() => setSmtpClearSecret(true)}
+                      className="mt-1 text-xs text-zinc-500 hover:text-red-400"
+                    >
+                      {t('admin_settings.clear_secret')}
+                    </button>
+                  )}
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-3">
@@ -329,10 +364,28 @@ export default function AdminSettings() {
                   type="password"
                   className="input font-mono"
                   value={resend.api_key}
-                  onChange={(e) => setResendField('api_key', e.target.value)}
-                  placeholder={resendHasSecret ? t('admin_settings.keep_existing') : 're_xxxxxxxxxxxx'}
+                  onChange={(e) => {
+                    setResendField('api_key', e.target.value)
+                    if (e.target.value) setResendClearSecret(false)
+                  }}
+                  placeholder={
+                    resendClearSecret
+                      ? t('admin_settings.secret_will_clear')
+                      : resendHasSecret
+                        ? t('admin_settings.keep_existing')
+                        : 're_xxxxxxxxxxxx'
+                  }
                   autoComplete="off"
                 />
+                {resendHasSecret && !resendClearSecret && !resend.api_key && (
+                  <button
+                    type="button"
+                    onClick={() => setResendClearSecret(true)}
+                    className="mt-1 text-xs text-zinc-500 hover:text-red-400"
+                  >
+                    {t('admin_settings.clear_secret')}
+                  </button>
+                )}
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
