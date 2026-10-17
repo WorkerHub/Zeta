@@ -56,7 +56,7 @@ export default function AdminUsers() {
       setDeleteTarget(null)
       load()
     } catch (err) {
-      setDeleteError(err instanceof Error ? err.message : 'Failed to delete user')
+      setDeleteError(err instanceof Error ? err.message : t('errors.delete_user_failed'))
       setDeleteTarget(null)
     } finally {
       setDeleteLoading(false)
@@ -94,7 +94,7 @@ export default function AdminUsers() {
       closeModal()
       load()
     } catch (err) {
-      setFormError(err instanceof Error ? err.message : 'An error occurred')
+      setFormError(err instanceof Error ? err.message : t('errors.generic'))
     } finally {
       setFormLoading(false)
     }

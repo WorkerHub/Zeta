@@ -157,12 +157,14 @@ export const profileApi = {
   setupTotp: () => apiFetch<{ secret: string; uri: string }>('/profile/totp/setup', { method: 'POST' }),
   confirmTotp: (body: { code: string; name?: string }) =>
     apiFetch<{ message: string }>('/profile/totp/confirm', { method: 'POST', body: JSON.stringify(body) }),
-  deleteTotp: (id: string) => apiFetch<{ message: string }>(`/profile/totp/${id}`, { method: 'DELETE' }),
+  deleteTotp: (id: string, currentPassword: string) =>
+    apiFetch<{ message: string }>(`/profile/totp/${id}`, { method: 'DELETE', body: JSON.stringify({ currentPassword }) }),
 
   passkeyRegisterOptions: () => apiFetch<Record<string, unknown>>('/profile/passkey/register/options', { method: 'POST' }),
   passkeyRegisterVerify: (body: unknown) =>
     apiFetch<{ message: string }>('/profile/passkey/register/verify', { method: 'POST', body: JSON.stringify(body) }),
-  deletePasskey: (id: string) => apiFetch<{ message: string }>(`/profile/passkey/${id}`, { method: 'DELETE' }),
+  deletePasskey: (id: string, currentPassword: string) =>
+    apiFetch<{ message: string }>(`/profile/passkey/${id}`, { method: 'DELETE', body: JSON.stringify({ currentPassword }) }),
 }
 
 // ── Databases endpoints ───────────────────────────────────────────────────────

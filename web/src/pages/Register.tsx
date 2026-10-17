@@ -21,7 +21,7 @@ export default function Register() {
       await authApi.register(form)
       setSuccess(t('auth.registration_success'))
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Registration failed')
+      setError(err instanceof Error ? err.message : t('errors.register_failed'))
     } finally {
       setLoading(false)
     }

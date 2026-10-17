@@ -31,7 +31,7 @@ export default function Login() {
         navigate('/query')
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Login failed')
+      setError(err instanceof Error ? err.message : t('errors.login_failed'))
     } finally {
       setLoading(false)
     }

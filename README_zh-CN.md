@@ -108,14 +108,14 @@
 | 名称 | 如何生成 |
 |------|---------|
 | `JWT_SECRET` | 任意 64 位随机字符串，例如 `openssl rand -hex 32` |
-| `ENCRYPTION_KEY` | 64 位十六进制（32 字节），例如 `openssl rand -hex 32` |
+| `ENCRYPTION_KEY` | 64 位十六进制（32 字节），例如 `openssl rand -hex 32`。会严格校验：其他取值（口令、较短的密钥等）会被直接拒绝，而不是悄悄生成一个弱密钥 |
 | `SETUP_SECRET` | 任意随机字符串，例如 `openssl rand -hex 16` |
 
 **变量（Text 类型）**：
 
 | 名称 | 值 |
 |------|----|
-| `APP_URL` | 你的 Worker 地址，例如 `https://zeta.yourname.workers.dev` 或自定义域名 |
+| `APP_URL` | 你的 Worker 地址，例如 `https://zeta.yourname.workers.dev` 或自定义域名。请填写用户实际访问的 `https://` 地址：它是 CORS 唯一允许的来源、Passkey 的 RP ID，也是邮件链接的前缀 |
 | `TABLE_PREFIX` | *（可选）* 所有内部 D1 表的前缀，例如 `kp` → 表名变为 `kp_users`、`kp_settings` 等。必须在**调用 setup 接口之前**设置，初始化后不可更改。 |
 
 > 以上配置完全隔离于 GitHub。`wrangler.toml` 中的 `keep_vars = true` 确保每次部署不会覆盖你在此处设置的值。
@@ -151,10 +151,10 @@ curl -X POST https://<你的域名>/api/setup \
 成功后返回：
 
 ```json
-{ "ok": true, "message": "Database initialised successfully. You can now register at /register — the first user becomes admin." }
+{ "ok": true, "message": "Database initialised successfully. You can now register at /register — the first user becomes admin. On new installs registration then stays closed until an admin opens it in Admin → Settings." }
 ```
 
-> 该接口是幂等的，重复调用不会造成任何破坏，可安全地多次调用。**每次升级部署后请再调用一次**：它还会对旧版本创建的数据库执行 Schema 升级（例如让 `query_history` 在删除用户或数据库时保留记录——升级前删除用户或数据库会失败）。
+> 该接口是幂等的，重复调用不会造成任何破坏，可安全地多次调用。**每次升级部署后请再调用一次**：它还会对旧版本创建的数据库执行 Schema 升级（例如让 `query_history` 在删除用户或数据库时保留记录——升级前删除用户或数据库会失败；以及创建 `rate_limits` 表，让登录 / 两步验证 / 邮件的限流计数精确生效——该表创建前会退回到近似的 KV 计数）。
 >
 > 旧版本使用的 `GET /api/setup/<SETUP_SECRET>` 已废弃：现在会返回 `405` 且不执行任何操作。如果曾经访问过旧 URL，建议轮换 `SETUP_SECRET`。
 
@@ -164,8 +164,8 @@ curl -X POST https://<你的域名>/api/setup \
 
 访问 `https://<你的域名>/register` 进行注册。**第一个注册的用户自动成为管理员**。
 
-注册完成后，你可以：
-- 在 **管理后台 → 设置** 中关闭注册开关，防止其他人随意注册
+新部署在第一个账号创建后会自动关闭注册。之后你可以：
+- 在 **管理后台 → 用户** 中创建账号，或在 **管理后台 → 设置** 中开放自助注册（配置好邮件服务后，建议同时开启邮箱验证和强制两步验证）
 - 在 **管理后台 → 数据库** 中添加可查询的 D1 数据库
 - 在 **管理后台 → 数据库 → 权限** 中为用户分配访问权限
 
@@ -244,7 +244,7 @@ curl -X POST http://localhost:8787/api/setup \
 | 名称 | 类型 | 说明 |
 |------|------|------|
 | `JWT_SECRET` | 密钥 | 签发访问令牌和刷新令牌（HS256） |
-| `ENCRYPTION_KEY` | 密钥 | 64 位十六进制 — TOTP 密钥的 AES-GCM 加密密钥 |
+| `ENCRYPTION_KEY` | 密钥 | 64 位十六进制（严格校验）— TOTP 密钥及 SMTP/Resend 凭据的 AES-GCM 加密密钥 |
 | `SETUP_SECRET` | 密钥 | 保护 `POST /api/setup` 初始化端点 |
 | `APP_URL` | 变量 | 部署的完整 URL，例如 `https://zeta.example.com` |
 | `TABLE_PREFIX` | 变量 | *（可选）* 内部表名前缀（例如 `kp`）。首次 setup 前设置，初始化后不可更改。 |
@@ -258,7 +258,7 @@ curl -X POST http://localhost:8787/api/setup \
 | 前缀 | 说明 |
 |------|------|
 | `POST /api/auth/*` | 注册、登录、注销、令牌刷新、邮件验证、密码重置、2FA（TOTP / 邮件 OTP / Passkey） |
-| `GET/PATCH /api/profile/*` | 个人信息、修改密码、TOTP 设置/确认/删除、Passkey 注册/删除 |
+| `GET/PATCH /api/profile/*` | 个人信息、修改密码、TOTP 设置/确认/删除、Passkey 注册/删除。删除 TOTP 或 Passkey 需在 JSON 请求体中提供 `{"currentPassword": "..."}` |
 | `GET /api/databases` | 列出当前用户可访问的数据库 |
 | `POST /api/query` | 对绑定的 D1 数据库执行 SQL |
 | `GET /api/query/history` | 查询执行历史（可按数据库过滤） |

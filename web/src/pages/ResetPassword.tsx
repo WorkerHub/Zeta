@@ -24,7 +24,7 @@ export default function ResetPassword() {
       await authApi.resetPassword({ token, password })
       navigate('/login', { state: { message: t('auth.reset_success') } })
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Reset failed')
+      setError(err instanceof Error ? err.message : t('errors.reset_failed'))
     } finally {
       setLoading(false)
     }

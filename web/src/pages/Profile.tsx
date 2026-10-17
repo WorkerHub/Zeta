@@ -33,6 +33,12 @@ export default function ProfilePage() {
   const [passkeyLoading, setPasskeyLoading] = useState(false)
   const [passkeyError, setPasskeyError] = useState('')
 
+  // Removing a second factor needs the current password
+  const [removal, setRemoval] = useState<{ kind: 'totp' | 'passkey'; id: string } | null>(null)
+  const [removalPassword, setRemovalPassword] = useState('')
+  const [removalError, setRemovalError] = useState('')
+  const [removalLoading, setRemovalLoading] = useState(false)
+
   useEffect(() => {
     profileApi.me().then(setUser).finally(() => setLoading(false))
   }, [])
@@ -55,7 +61,7 @@ export default function ProfilePage() {
       setPwSuccess(t('profile.password_changed'))
       setPwForm({ currentPassword: '', newPassword: '', confirm: '' })
     } catch (err) {
-      setPwError(err instanceof Error ? err.message : 'Failed')
+      setPwError(err instanceof Error ? err.message : t('errors.generic'))
     } finally {
       setPwLoading(false)
     }
@@ -67,7 +73,7 @@ export default function ProfilePage() {
       const res = await profileApi.setupTotp()
       setTotpSetup(res)
     } catch (err) {
-      setTotpError(err instanceof Error ? err.message : 'Failed')
+      setTotpError(err instanceof Error ? err.message : t('errors.generic'))
     } finally {
       setTotpLoading(false)
     }
@@ -81,20 +87,29 @@ export default function ProfilePage() {
       const updated = await profileApi.me()
       setUser(updated)
     } catch (err) {
-      setTotpError(err instanceof Error ? err.message : 'Invalid code')
+      setTotpError(err instanceof Error ? err.message : t('errors.invalid_code'))
     } finally {
       setTotpLoading(false)
     }
   }
 
-  async function deleteTotpCred(id: string) {
-    if (!window.confirm(t('profile.confirm_delete_totp'))) return
+  function askRemoval(kind: 'totp' | 'passkey', id: string) {
+    setRemoval({ kind, id }); setRemovalPassword(''); setRemovalError('')
+  }
+
+  async function confirmRemoval(e: React.FormEvent) {
+    e.preventDefault()
+    if (!removal) return
+    setRemovalError(''); setRemovalLoading(true)
     try {
-      await profileApi.deleteTotp(id)
-      const updated = await profileApi.me()
-      setUser(updated)
+      if (removal.kind === 'totp') await profileApi.deleteTotp(removal.id, removalPassword)
+      else await profileApi.deletePasskey(removal.id, removalPassword)
+      setRemoval(null); setRemovalPassword('')
+      setUser(await profileApi.me())
     } catch (err) {
-      setTotpError(err instanceof Error ? err.message : 'Failed to delete TOTP credential')
+      setRemovalError(err instanceof Error ? err.message : t('errors.generic'))
+    } finally {
+      setRemovalLoading(false)
     }
   }
 
@@ -118,21 +133,10 @@ export default function ProfilePage() {
       if (err instanceof Error && err.name === 'NotAllowedError') {
         setPasskeyError(t('profile.passkey_cancelled'))
       } else {
-        setPasskeyError(err instanceof Error ? err.message : 'Passkey registration failed')
+        setPasskeyError(err instanceof Error ? err.message : t('profile.passkey_failed'))
       }
     } finally {
       setPasskeyLoading(false)
-    }
-  }
-
-  async function deletePasskeyCred(id: string) {
-    if (!window.confirm(t('profile.confirm_delete_passkey'))) return
-    try {
-      await profileApi.deletePasskey(id)
-      const updated = await profileApi.me()
-      setUser(updated)
-    } catch (err) {
-      setPasskeyError(err instanceof Error ? err.message : 'Failed to delete passkey')
     }
   }
 
@@ -223,7 +227,7 @@ export default function ProfilePage() {
                     <p className="text-sm text-zinc-800 dark:text-zinc-200">{cred.name}</p>
                     <p className="text-xs text-zinc-500">{t('profile.totp_added')} {new Date(cred.created_at * 1000).toLocaleDateString()}</p>
                   </div>
-                  <button onClick={() => deleteTotpCred(cred.id)} className="btn-ghost p-1.5 text-red-400">
+                  <button onClick={() => askRemoval('totp', cred.id)} className="btn-ghost p-1.5 text-red-400">
                     <Trash2 size={14} />
                   </button>
                 </li>
@@ -242,7 +246,7 @@ export default function ProfilePage() {
               </p>
               <div className="flex justify-center">
                 {totpQr ? (
-                  <img src={totpQr} alt="TOTP QR code" className="rounded-lg w-44 h-44" />
+                  <img src={totpQr} alt={t('profile.totp_qr_alt')} className="rounded-lg w-44 h-44" />
                 ) : (
                   <div className="w-44 h-44 rounded-lg bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center text-zinc-500 text-xs">
                     {t('profile.totp_generating')}
@@ -292,7 +296,7 @@ export default function ProfilePage() {
                     <p className="text-sm text-zinc-800 dark:text-zinc-200">{cred.name ?? t('profile.passkey')}</p>
                     <p className="text-xs text-zinc-500">{t('profile.totp_added')} {new Date(cred.created_at * 1000).toLocaleDateString()}</p>
                   </div>
-                  <button onClick={() => deletePasskeyCred(cred.id)} className="btn-ghost p-1.5 text-red-400">
+                  <button onClick={() => askRemoval('passkey', cred.id)} className="btn-ghost p-1.5 text-red-400">
                     <Trash2 size={14} />
                   </button>
                 </li>
@@ -306,6 +310,29 @@ export default function ProfilePage() {
           {passkeyError && <p className="text-sm text-red-400 mt-2">{passkeyError}</p>}
         </div>
       </div>
+
+      {removal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+          <form onSubmit={confirmRemoval} className="card w-full max-w-sm p-6 shadow-2xl space-y-4">
+            <h2 className="text-base font-semibold text-zinc-900 dark:text-zinc-100">
+              {t(removal.kind === 'totp' ? 'profile.confirm_delete_totp' : 'profile.confirm_delete_passkey')}
+            </h2>
+            <p className="text-sm text-zinc-500">{t('profile.confirm_remove_desc')}</p>
+            <div>
+              <label className="label">{t('profile.current_password')}</label>
+              <input type="password" className="input" value={removalPassword} autoFocus required
+                autoComplete="current-password" onChange={(e) => setRemovalPassword(e.target.value)} />
+            </div>
+            {removalError && <p className="text-sm text-red-400">{removalError}</p>}
+            <div className="flex gap-3">
+              <button type="button" onClick={() => setRemoval(null)} className="btn-secondary flex-1">{t('2fa.cancel')}</button>
+              <button type="submit" disabled={removalLoading || !removalPassword} className="btn-danger flex-1">
+                {removalLoading ? t('profile.removing') : t('profile.remove')}
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
     </div>
   )
 }

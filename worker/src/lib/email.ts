@@ -5,7 +5,7 @@ import { connect } from 'cloudflare:sockets'
 
 const EMAIL_RE = /^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$/
 
-function isValidEmail(email: string): boolean {
+export function isValidEmail(email: string): boolean {
   return EMAIL_RE.test(email) && !email.includes('\r') && !email.includes('\n')
 }
 
@@ -69,6 +69,7 @@ async function sendViaResend(env: Env, payload: EmailPayload): Promise<{ success
   }
 
   const from = payload.from || config.from || 'noreply@example.com'
+  if (!isValidEmail(from)) return { success: false, error: 'Invalid sender (from) address' }
   const fromName = (payload.fromName || config.from_name || 'Zeta').replace(/[\r\n]/g, '')
 
   const response = await fetch('https://api.resend.com/emails', {
@@ -107,7 +108,9 @@ async function sendViaSMTP(env: Env, payload: EmailPayload): Promise<{ success: 
     }
   }
 
+  // `from` goes verbatim into MAIL FROM and the From header: CR/LF in it would inject commands
   const from = payload.from || config.from || 'noreply@example.com'
+  if (!isValidEmail(from)) return { success: false, error: 'Invalid sender (from) address' }
   const fromName = (payload.fromName || config.from_name || 'Zeta').replace(/[\r\n]/g, '')
   const isImplicitTls = config.port === 465
 

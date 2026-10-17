@@ -15,7 +15,8 @@ const AboutPage = lazy(() => import('./pages/About'))
 const AdminPage = lazy(() => import('./pages/admin/AdminLayout'))
 
 function RouteLoading() {
-  return <div className="flex h-screen items-center justify-center text-zinc-500 text-sm">Loading...</div>
+  const { t } = useLocale()
+  return <div className="flex h-screen items-center justify-center text-zinc-500 text-sm">{t('common.loading')}</div>
 }
 
 function PrivateRoute({ children }: { children: React.ReactNode }) {

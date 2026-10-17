@@ -94,7 +94,7 @@ export default function AdminSettings() {
       setSaved(true)
       setTimeout(() => setSaved(false), 3000)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to save')
+      setError(err instanceof Error ? err.message : t('errors.save_failed'))
     } finally {
       setSaving(false)
     }
@@ -216,7 +216,7 @@ export default function AdminSettings() {
                   <label className="label">{t('admin_settings.smtp_password')}</label>
                   <input type="password" className="input" value={smtp.password}
                     onChange={(e) => setSmtpField('password', e.target.value)} autoComplete="off"
-                    placeholder={smtpHasSecret ? 'Leave blank to keep existing' : ''} />
+                    placeholder={smtpHasSecret ? t('admin_settings.keep_existing') : ''} />
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-3">
@@ -240,7 +240,7 @@ export default function AdminSettings() {
                 <label className="label">{t('admin_settings.resend_api_key')}</label>
                 <input type="password" className="input font-mono" value={resend.api_key}
                   onChange={(e) => setResendField('api_key', e.target.value)}
-                  placeholder={resendHasSecret ? 'Leave blank to keep existing' : 're_xxxxxxxxxxxx'}
+                  placeholder={resendHasSecret ? t('admin_settings.keep_existing') : 're_xxxxxxxxxxxx'}
                   autoComplete="off" />
               </div>
               <div className="grid grid-cols-2 gap-3">

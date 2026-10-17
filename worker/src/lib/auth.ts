@@ -1,5 +1,6 @@
 import type { Env } from '../types'
 import { KV } from './kv'
+import { tables } from './db'
 
 // ── Password (PBKDF2 via WebCrypto) ─────────────────────────────────────────
 
@@ -185,62 +186,111 @@ export async function isRefreshTokenRevoked(env: Env, jti: string): Promise<bool
 
 // ── Rate limiting ─────────────────────────────────────────────────────────────
 
-async function overLimit(env: Env, key: string, limit: number): Promise<boolean> {
-  return parseInt((await env.KV.get(key)) ?? '0', 10) >= limit
+// Counters live in the D1 rate_limits table: each hit is a single upsert, and D1 runs every
+// statement on one primary, so concurrent requests can no longer all read the same count and
+// slip past the limit (KV's read-then-write could, and KV reads are only eventually
+// consistent). Fixed window: the first hit after expiry starts a new one.
+//
+// Deployments that have not re-run POST /api/setup (or applied migration 0003) yet lack the
+// table; they fall back to the old, approximate KV counters instead of failing every login.
+
+let warnedKvFallback = false
+
+function kvFallback(err: unknown): void {
+  if (warnedKvFallback) return
+  warnedKvFallback = true
+  console.warn('rate_limits table unavailable, using approximate KV counters. Re-run POST /api/setup.', err)
 }
 
-async function bump(env: Env, key: string, ttl: number): Promise<void> {
-  const count = parseInt((await env.KV.get(key)) ?? '0', 10)
-  await env.KV.put(key, String(count + 1), { expirationTtl: ttl })
+// Records one hit against `key` and returns the count in the current window, this hit included.
+async function hitCounter(env: Env, key: string, ttl: number): Promise<number> {
+  const ts = Math.floor(Date.now() / 1000)
+  try {
+    const T = tables(env)
+    const row = await env.DB.prepare(
+      `INSERT INTO ${T.rate_limits} (key, count, expires_at) VALUES (?1, 1, ?2)
+       ON CONFLICT(key) DO UPDATE SET
+         count = CASE WHEN expires_at <= ?3 THEN 1 ELSE count + 1 END,
+         expires_at = CASE WHEN expires_at <= ?3 THEN ?2 ELSE expires_at END
+       RETURNING count`
+    ).bind(key, ts + ttl, ts).first<{ count: number }>()
+    if (!row) throw new Error('upsert returned no row')
+    // Expired rows are otherwise only reset on their next hit; sweep them now and then.
+    if (Math.random() < 0.01) {
+      await env.DB.prepare(`DELETE FROM ${T.rate_limits} WHERE expires_at <= ?1`).bind(ts).run()
+    }
+    return row.count
+  } catch (err) {
+    kvFallback(err)
+    const count = parseInt((await env.KV.get(key)) ?? '0', 10) + 1
+    await env.KV.put(key, String(count), { expirationTtl: ttl })
+    return count
+  }
 }
 
-// Returns false when either the IP or the targeted account has too many recent failures.
-export async function isLoginBlocked(env: Env, ip: string, email: string): Promise<boolean> {
+// Takes back one hit, e.g. a login attempt that turned out to use the right password.
+async function undoHit(env: Env, key: string, ttl: number): Promise<void> {
+  try {
+    const T = tables(env)
+    await env.DB.prepare(`UPDATE ${T.rate_limits} SET count = MAX(count - 1, 0) WHERE key = ?1`).bind(key).run()
+  } catch (err) {
+    kvFallback(err)
+    const count = parseInt((await env.KV.get(key)) ?? '0', 10)
+    if (count > 0) await env.KV.put(key, String(count - 1), { expirationTtl: ttl })
+  }
+}
+
+async function clearCounter(env: Env, key: string): Promise<void> {
+  try {
+    const T = tables(env)
+    await env.DB.prepare(`DELETE FROM ${T.rate_limits} WHERE key = ?1`).bind(key).run()
+  } catch (err) {
+    kvFallback(err)
+    await env.KV.delete(key)
+  }
+}
+
+// Counts one attempt and returns false once more than `limit` were made in the window.
+export async function checkRateLimit(env: Env, key: string, limit: number, ttl: number): Promise<boolean> {
+  return (await hitCounter(env, key, ttl)) <= limit
+}
+
+const LOGIN_WINDOW = 15 * 60
+
+// Reserves an attempt against both the IP and the targeted account *before* the password is
+// checked, so a burst of parallel guesses is counted in full. Returns false when either limit is
+// exceeded. Callers must call loginAttemptSucceeded() once the password turns out to be right.
+export async function beginLoginAttempt(env: Env, ip: string, email: string): Promise<boolean> {
   const [byIp, byAccount] = await Promise.all([
-    overLimit(env, KV.loginAttempts(ip), 20),
-    overLimit(env, KV.loginAttempts(`acct:${email}`), 10),
+    hitCounter(env, KV.loginAttempts(ip), LOGIN_WINDOW),
+    hitCounter(env, KV.loginAttempts(`acct:${email}`), LOGIN_WINDOW),
   ])
-  return byIp || byAccount
+  return byIp <= 20 && byAccount <= 10
 }
 
-export async function recordLoginFailure(env: Env, ip: string, email: string): Promise<void> {
+// Clears the account counter and gives the IP its reserved attempt back: only failures count
+// against an IP, and a successful login must not wipe the IP's failure history either.
+export async function loginAttemptSucceeded(env: Env, ip: string, email: string): Promise<void> {
   await Promise.all([
-    bump(env, KV.loginAttempts(ip), 15 * 60),
-    bump(env, KV.loginAttempts(`acct:${email}`), 15 * 60),
+    undoHit(env, KV.loginAttempts(ip), LOGIN_WINDOW),
+    clearCounter(env, KV.loginAttempts(`acct:${email}`)),
   ])
-}
-
-// Only the account counter is cleared: a successful login must not wipe the IP's failure history.
-export async function resetLoginAttempts(env: Env, email: string): Promise<void> {
-  await env.KV.delete(KV.loginAttempts(`acct:${email}`))
 }
 
 export async function check2faRateLimit(env: Env, userId: string): Promise<boolean> {
-  const key = KV.twoFactorAttempts(userId)
-  const count = parseInt((await env.KV.get(key)) ?? '0', 10)
-  if (count >= 5) return false
-  await env.KV.put(key, String(count + 1), { expirationTtl: 10 * 60 })
-  return true
+  return checkRateLimit(env, KV.twoFactorAttempts(userId), 5, 10 * 60)
 }
 
 export async function reset2faAttempts(env: Env, userId: string): Promise<void> {
-  await env.KV.delete(KV.twoFactorAttempts(userId))
+  await clearCounter(env, KV.twoFactorAttempts(userId))
 }
 
 export async function checkEmailRateLimit(env: Env, ip: string): Promise<boolean> {
-  const key = KV.emailAttempts(ip)
-  const count = parseInt((await env.KV.get(key)) ?? '0', 10)
-  if (count >= 3) return false
-  await env.KV.put(key, String(count + 1), { expirationTtl: 15 * 60 })
-  return true
+  return checkRateLimit(env, KV.emailAttempts(ip), 3, 15 * 60)
 }
 
 export async function checkRegisterRateLimit(env: Env, ip: string): Promise<boolean> {
-  const key = KV.registerAttempts(ip)
-  const count = parseInt((await env.KV.get(key)) ?? '0', 10)
-  if (count >= 5) return false
-  await env.KV.put(key, String(count + 1), { expirationTtl: 15 * 60 })
-  return true
+  return checkRateLimit(env, KV.registerAttempts(ip), 5, 15 * 60)
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────────

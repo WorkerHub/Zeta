@@ -1,6 +1,6 @@
 import type { Locale } from './i18n'
 
-const translations: Record<Locale, Record<string, string>> = {
+export const translations: Record<Locale, Record<string, string>> = {
   en: {
     // App
     'app.name': 'Zeta',
@@ -71,6 +71,10 @@ const translations: Record<Locale, Record<string, string>> = {
     'query.history': 'History',
     'query.query_history': 'Query History',
     'query.no_history': 'No history yet',
+    'query.layout_vertical': 'Top / Bottom',
+    'query.layout_horizontal': 'Left / Right',
+    'query.autosave_failed': 'Autosave failed',
+    'query.autosave_failed_desc': 'Your latest edits could not be saved. They will be retried on the next change.',
 
     // Notebooks
     'notebook.untitled': 'Untitled',
@@ -82,6 +86,7 @@ const translations: Record<Locale, Record<string, string>> = {
     'theme.auto': 'Auto',
     'theme.light': 'Light',
     'theme.dark': 'Dark',
+    'theme.label': 'Theme',
 
     // User menu
     'user.profile_security': 'Profile & Security',
@@ -131,6 +136,11 @@ const translations: Record<Locale, Record<string, string>> = {
     'profile.passkey_cancelled': 'Passkey registration was cancelled.',
     'profile.confirm_delete_totp': 'Are you sure you want to remove this authenticator?',
     'profile.confirm_delete_passkey': 'Are you sure you want to remove this passkey?',
+    'profile.passkey_failed': 'Passkey registration failed',
+    'profile.confirm_remove_desc': 'Enter your current password to confirm.',
+    'profile.remove': 'Remove',
+    'profile.removing': 'Removing…',
+    'profile.totp_qr_alt': 'TOTP QR code',
 
     // Admin
     'admin.title': 'Admin Panel',
@@ -192,6 +202,8 @@ const translations: Record<Locale, Record<string, string>> = {
     'admin_db.loading': 'Loading…',
     'admin_db.no_databases': 'No databases registered yet',
     'admin_db.confirm_delete': 'Delete database "{name}" from registry? This does not delete the actual D1 database.',
+    'admin_db.name_placeholder': 'My Database',
+    'admin_db.toggle_active': 'Toggle active',
 
     // Admin Settings
     'admin_settings.save_changes': 'Save changes',
@@ -218,6 +230,34 @@ const translations: Record<Locale, Record<string, string>> = {
     'admin_settings.test_email_sent': 'Test email sent!',
     'admin_settings.test_email_failed': 'Failed to send test email',
     'admin_settings.loading': 'Loading…',
+    'admin_settings.keep_existing': 'Leave blank to keep existing',
+
+    // Errors (fallbacks when the server gives no message)
+    'errors.generic': 'Something went wrong',
+    'errors.login_failed': 'Login failed',
+    'errors.register_failed': 'Registration failed',
+    'errors.reset_failed': 'Password reset failed',
+    'errors.verify_failed': 'Verification failed',
+    'errors.no_token': 'No token provided.',
+    'errors.query_failed': 'Query failed',
+    'errors.send_otp_failed': 'Failed to send the code',
+    'errors.invalid_code': 'Invalid code',
+    'errors.passkey_cancelled': 'Passkey authentication was cancelled.',
+    'errors.passkey_failed': 'Passkey verification failed',
+    'errors.delete_user_failed': 'Failed to delete user',
+    'errors.delete_db_failed': 'Failed to delete database',
+    'errors.save_failed': 'Failed to save',
+
+    // Query results
+    'results.count': '{n} results',
+    'results.error': 'Error',
+    'results.error_short': 'error',
+    'results.row': '{n} row',
+    'results.rows': '{n} rows',
+    'results.change': '{n} change',
+    'results.changes': '{n} changes',
+    'results.truncated': '(truncated — add a LIMIT or narrow the query)',
+    'results.no_rows': 'No rows returned',
 
     // Language
     'lang.en': 'English',
@@ -297,6 +337,10 @@ const translations: Record<Locale, Record<string, string>> = {
     'query.history': '历史',
     'query.query_history': '查询历史',
     'query.no_history': '暂无历史记录',
+    'query.layout_vertical': '上下布局',
+    'query.layout_horizontal': '左右布局',
+    'query.autosave_failed': '自动保存失败',
+    'query.autosave_failed_desc': '最近的修改未能保存，将在下次修改时重试。',
 
     // Notebooks
     'notebook.untitled': '未命名',
@@ -308,6 +352,7 @@ const translations: Record<Locale, Record<string, string>> = {
     'theme.auto': '跟随系统',
     'theme.light': '浅色',
     'theme.dark': '深色',
+    'theme.label': '主题',
 
     // User menu
     'user.profile_security': '个人资料与安全',
@@ -357,6 +402,11 @@ const translations: Record<Locale, Record<string, string>> = {
     'profile.passkey_cancelled': '通行密钥注册已取消。',
     'profile.confirm_delete_totp': '确定要移除此验证器吗？',
     'profile.confirm_delete_passkey': '确定要移除此通行密钥吗？',
+    'profile.passkey_failed': '通行密钥注册失败',
+    'profile.confirm_remove_desc': '请输入当前密码以确认。',
+    'profile.remove': '移除',
+    'profile.removing': '移除中…',
+    'profile.totp_qr_alt': 'TOTP 二维码',
 
     // Admin
     'admin.title': '管理面板',
@@ -418,6 +468,8 @@ const translations: Record<Locale, Record<string, string>> = {
     'admin_db.loading': '加载中…',
     'admin_db.no_databases': '暂无已注册的数据库',
     'admin_db.confirm_delete': '从注册表中删除数据库"{name}"？这不会删除实际的 D1 数据库。',
+    'admin_db.name_placeholder': '我的数据库',
+    'admin_db.toggle_active': '切换启用状态',
 
     // Admin Settings
     'admin_settings.save_changes': '保存更改',
@@ -444,6 +496,34 @@ const translations: Record<Locale, Record<string, string>> = {
     'admin_settings.test_email_sent': '测试邮件已发送！',
     'admin_settings.test_email_failed': '测试邮件发送失败',
     'admin_settings.loading': '加载中…',
+    'admin_settings.keep_existing': '留空则保留现有值',
+
+    // Errors (fallbacks when the server gives no message)
+    'errors.generic': '出错了',
+    'errors.login_failed': '登录失败',
+    'errors.register_failed': '注册失败',
+    'errors.reset_failed': '密码重置失败',
+    'errors.verify_failed': '验证失败',
+    'errors.no_token': '缺少验证令牌。',
+    'errors.query_failed': '查询失败',
+    'errors.send_otp_failed': '验证码发送失败',
+    'errors.invalid_code': '验证码无效',
+    'errors.passkey_cancelled': '通行密钥验证已取消。',
+    'errors.passkey_failed': '通行密钥验证失败',
+    'errors.delete_user_failed': '删除用户失败',
+    'errors.delete_db_failed': '删除数据库失败',
+    'errors.save_failed': '保存失败',
+
+    // Query results
+    'results.count': '{n} 个结果',
+    'results.error': '错误',
+    'results.error_short': '错误',
+    'results.row': '{n} 行',
+    'results.rows': '{n} 行',
+    'results.change': '{n} 处变更',
+    'results.changes': '{n} 处变更',
+    'results.truncated': '（结果已截断 — 请添加 LIMIT 或缩小查询范围）',
+    'results.no_rows': '没有返回任何行',
 
     // Language
     'lang.en': 'English',
@@ -467,8 +547,11 @@ export function getLocale(): Locale {
   return currentLocale
 }
 
-export function t(key: string): string {
-  return translations[currentLocale]?.[key] ?? translations.en[key] ?? key
+// `vars` fills {placeholders}, e.g. t('results.rows', { n: 3 })
+export function t(key: string, vars?: Record<string, string | number>): string {
+  const text = translations[currentLocale]?.[key] ?? translations.en[key] ?? key
+  if (!vars) return text
+  return text.replace(/\{(\w+)\}/g, (m, name: string) => (name in vars ? String(vars[name]) : m))
 }
 
 export function subscribeLocale(fn: () => void): () => void {

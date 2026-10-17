@@ -1,9 +1,10 @@
 import { Hono } from 'hono'
+import type { Context } from 'hono'
 import type { Env, Variables, UserRow, TotpCredentialRow, PasskeyCredentialRow } from '../types'
 import { requireAuth } from '../middleware/auth'
 import { uuid } from '../lib/id'
 import { now, audit, tables, getSetting } from '../lib/db'
-import { hashPassword, verifyPassword } from '../lib/auth'
+import { hashPassword, verifyPassword, beginLoginAttempt, loginAttemptSucceeded } from '../lib/auth'
 import {
   generateTotpSecret, encryptTotpSecret, decryptTotpSecret,
   getTotpUri, verifyTotpCode,
@@ -20,6 +21,30 @@ profile.use('*', requireAuth)
 
 function clientIp(c: { req: { header: (k: string) => string | undefined } }): string {
   return c.req.header('cf-connecting-ip') ?? 'unknown'
+}
+
+type Ctx = Context<{ Bindings: Env; Variables: Variables }>
+
+// Re-checks the account password before security-sensitive changes, so a stolen access token
+// alone cannot change the password or strip 2FA. Guesses count toward the same per-IP and
+// per-account limits as the login form. Returns an error response, or null when confirmed.
+async function confirmPassword(c: Ctx, password: unknown): Promise<Response | null> {
+  if (typeof password !== 'string' || !password) return c.json({ error: 'Current password is required' }, 400)
+
+  const T = tables(c.env)
+  const user = await c.env.DB.prepare(`SELECT email, password_hash FROM ${T.users} WHERE id = ?1`)
+    .bind(c.get('userId')).first<{ email: string; password_hash: string | null }>()
+  if (!user?.password_hash) return c.json({ error: 'No password set' }, 400)
+
+  const ip = clientIp(c)
+  if (!(await beginLoginAttempt(c.env, ip, user.email))) {
+    return c.json({ error: 'Too many attempts. Try again later.' }, 429)
+  }
+  if (!(await verifyPassword(password, user.password_hash))) {
+    return c.json({ error: 'Current password is incorrect' }, 403)
+  }
+  await loginAttemptSucceeded(c.env, ip, user.email)
+  return null
 }
 
 // ── GET /api/profile/me ───────────────────────────────────────────────────────
@@ -60,20 +85,15 @@ profile.patch('/me', async (c) => {
 
 profile.post('/change-password', async (c) => {
   const body = await c.req.json<{ currentPassword?: string; newPassword?: string }>().catch(() => null)
-  if (!body?.currentPassword || !body.newPassword) {
+  if (!body?.currentPassword || typeof body.newPassword !== 'string' || !body.newPassword) {
     return c.json({ error: 'currentPassword and newPassword are required' }, 400)
   }
   if (body.newPassword.length < 8) return c.json({ error: 'Password must be at least 8 characters' }, 400)
 
+  const denied = await confirmPassword(c, body.currentPassword)
+  if (denied) return denied
+
   const T = tables(c.env)
-  const user = await c.env.DB.prepare(`SELECT password_hash FROM ${T.users} WHERE id = ?1`)
-    .bind(c.get('userId')).first<{ password_hash: string | null }>()
-  if (!user?.password_hash) return c.json({ error: 'No password set' }, 400)
-
-  if (!(await verifyPassword(body.currentPassword, user.password_hash))) {
-    return c.json({ error: 'Current password is incorrect' }, 403)
-  }
-
   const hash = await hashPassword(body.newPassword)
   await c.env.DB.prepare(`UPDATE ${T.users} SET password_hash = ?1, updated_at = ?2 WHERE id = ?3`)
     .bind(hash, now(), c.get('userId')).run()
@@ -122,11 +142,19 @@ profile.post('/totp/confirm', async (c) => {
   return c.json({ message: 'TOTP authenticator added' })
 })
 
+// Removing a second factor requires the current password: { "currentPassword": "..." }
 profile.delete('/totp/:id', async (c) => {
+  const body = await c.req.json<{ currentPassword?: unknown }>().catch(() => null)
+  const denied = await confirmPassword(c, body?.currentPassword)
+  if (denied) return denied
+
   const T = tables(c.env)
   const id = c.req.param('id')
   await c.env.DB.prepare(`DELETE FROM ${T.totp_credentials} WHERE id = ?1 AND user_id = ?2`)
     .bind(id, c.get('userId')).run()
+  c.executionCtx.waitUntil(audit(c.env, {
+    userId: c.get('userId'), action: 'delete_totp', resource: id, ip: clientIp(c),
+  }))
   return c.json({ message: 'TOTP credential removed' })
 })
 
@@ -196,10 +224,17 @@ profile.post('/passkey/register/verify', async (c) => {
 })
 
 profile.delete('/passkey/:id', async (c) => {
+  const body = await c.req.json<{ currentPassword?: unknown }>().catch(() => null)
+  const denied = await confirmPassword(c, body?.currentPassword)
+  if (denied) return denied
+
   const T = tables(c.env)
   const id = c.req.param('id')
   await c.env.DB.prepare(`DELETE FROM ${T.passkey_credentials} WHERE id = ?1 AND user_id = ?2`)
     .bind(id, c.get('userId')).run()
+  c.executionCtx.waitUntil(audit(c.env, {
+    userId: c.get('userId'), action: 'delete_passkey', resource: id, ip: clientIp(c),
+  }))
   return c.json({ message: 'Passkey removed' })
 })
 
