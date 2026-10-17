@@ -204,28 +204,34 @@ async function ownsNotebook(c: Context<{ Bindings: Env; Variables: Variables }>,
   return row !== null
 }
 
-const RUN_SUMMARY_COLUMNS = `r.id, r.notebook_id, r.database_id, r.sql, r.statement_count, r.row_count, r.error_count,
+const RUN_SUMMARY_COLUMNS = `r.id, r.seq, r.notebook_id, r.database_id, r.sql, r.statement_count, r.row_count, r.error_count,
   r.duration_ms, r.storage_truncated, r.results_bytes, r.executed_at`
 
 type RunSummaryRow = Omit<NotebookRunRow, 'user_id' | 'results'> & { database_name: string | null }
 
-// GET /api/notebooks/:id/runs — newest first, without the results
+// GET /api/notebooks/:id/runs — newest (highest number) first, without the results. Pages
+// continue below the number given in `before` (else from `offset`), which stays right while runs
+// are added or deleted in the meantime.
 notebooks.get('/:id/runs', async (c) => {
   const notebookId = c.req.param('id')
   if (!(await ownsNotebook(c, notebookId))) return c.json({ error: 'Notebook not found' }, 404)
   const limit = Math.min(Math.max(parseInt(c.req.query('limit') ?? '50', 10) || 50, 1), 200)
   const offset = Math.max(parseInt(c.req.query('offset') ?? '0', 10) || 0, 0)
+  const before = parseInt(c.req.query('before') ?? '', 10)
+  const cursor = before > 0 ? ' AND r.seq < ?5' : ''
   const T = tables(c.env)
 
   // One row more than asked tells whether there are more
-  const rows = await c.env.DB.prepare(
+  const stmt = c.env.DB.prepare(
     `SELECT ${RUN_SUMMARY_COLUMNS}, d.name AS database_name
      FROM ${T.notebook_runs} r LEFT JOIN ${T.d1_databases} d ON d.id = r.database_id
-     WHERE r.notebook_id = ?1 AND r.user_id = ?2
-     ORDER BY r.executed_at DESC, r.id DESC LIMIT ?3 OFFSET ?4`
+     WHERE r.notebook_id = ?1 AND r.user_id = ?2${cursor}
+     ORDER BY r.seq DESC LIMIT ?3 OFFSET ?4`
   )
-    .bind(notebookId, c.get('userId'), limit + 1, offset)
-    .all<RunSummaryRow>()
+  const rows = await (cursor
+    ? stmt.bind(notebookId, c.get('userId'), limit + 1, 0, before)
+    : stmt.bind(notebookId, c.get('userId'), limit + 1, offset)
+  ).all<RunSummaryRow>()
 
   const access = new Map<string, boolean>()
   for (const id of new Set(rows.results.map((r) => r.database_id))) access.set(id, await canUseDatabase(c, id))

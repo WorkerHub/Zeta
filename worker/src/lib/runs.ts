@@ -137,8 +137,40 @@ export async function getRunPolicy(env: Env, userId: string): Promise<RunPolicy>
 
 // ── Saving and pruning ────────────────────────────────────────────────────────
 
+// Takes the next run number of the user's notebook (#1, #2, …), atomically. The counter on the
+// notebook only grows, so a number is never handed out twice, not even after the newest run was
+// deleted or the list cleared; the unique (notebook_id, seq) index backs this up. The highest
+// stored number is included in case the counter lags behind it.
+// Returns null when the notebook is not the user's. `seq` is null when the counter cannot be used
+// (the database predates run numbers: POST /api/setup was not re-run after upgrading); the run
+// then goes unsaved instead of failing the query.
+export async function reserveRunSeq(
+  env: Env,
+  notebookId: string,
+  userId: string
+): Promise<{ seq: number | null } | null> {
+  const T = tables(env)
+  try {
+    const row = await env.DB.prepare(
+      `UPDATE ${T.notebooks} SET last_run_seq = MAX(last_run_seq,
+         (SELECT COALESCE(MAX(seq), 0) FROM ${T.notebook_runs} WHERE notebook_id = ?1)) + 1
+       WHERE id = ?1 AND user_id = ?2 RETURNING last_run_seq`
+    )
+      .bind(notebookId, userId)
+      .first<{ last_run_seq: number }>()
+    return row ? { seq: row.last_run_seq } : null
+  } catch (err) {
+    console.error(`Cannot number the run, it will not be saved (re-run POST /api/setup?): ${err}`)
+    const row = await env.DB.prepare(`SELECT 1 FROM ${T.notebooks} WHERE id = ?1 AND user_id = ?2`)
+      .bind(notebookId, userId)
+      .first()
+    return row ? { seq: null } : null
+  }
+}
+
 export interface NewRun {
   id: string
+  seq: number // from reserveRunSeq
   notebookId: string
   userId: string
   databaseId: string
@@ -148,8 +180,8 @@ export interface NewRun {
   executedAt: number // milliseconds, so runs started within the same second keep their order
 }
 
-// Inserts the run and prunes, in one batch, the notebook down to its run limit and the user down
-// to the storage quota. The new run is always kept: it is the newest, and a single run's results
+// Inserts the run and prunes, in one batch, the notebook down to its run limit (keeping the highest
+// numbers) and the user down to the storage quota. The new run is always kept: it is the newest, and a single run's results
 // (at most MAX_STORED_RESULT_BYTES) are smaller than the smallest quota.
 export async function saveRun(env: Env, run: NewRun): Promise<void> {
   const T = tables(env)
@@ -158,8 +190,8 @@ export async function saveRun(env: Env, run: NewRun): Promise<void> {
   await env.DB.batch([
     env.DB.prepare(
       `INSERT INTO ${T.notebook_runs} (id, notebook_id, user_id, database_id, sql, statement_count, row_count,
-         error_count, duration_ms, storage_truncated, results_bytes, executed_at, results)
-       VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)`
+         error_count, duration_ms, storage_truncated, results_bytes, executed_at, seq, results)
+       VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)`
     ).bind(
       run.id,
       run.notebookId,
@@ -173,11 +205,12 @@ export async function saveRun(env: Env, run: NewRun): Promise<void> {
       packed.storageTruncated ? 1 : 0,
       packed.bytes,
       run.executedAt,
+      run.seq,
       packed.json
     ),
     env.DB.prepare(
       `DELETE FROM ${T.notebook_runs} WHERE notebook_id = ?1 AND id NOT IN (
-         SELECT id FROM ${T.notebook_runs} WHERE notebook_id = ?1 ORDER BY executed_at DESC, id DESC LIMIT ?2)`
+         SELECT id FROM ${T.notebook_runs} WHERE notebook_id = ?1 ORDER BY seq DESC LIMIT ?2)`
     ).bind(run.notebookId, policy.effectiveLimit),
     env.DB.prepare(quotaPruneSql(T, true)).bind(policy.quotaBytes, run.userId),
   ])
@@ -209,7 +242,7 @@ export async function pruneRuns(env: Env, opts: { userId?: string } = {}): Promi
   const countPrune = env.DB.prepare(
     `DELETE FROM ${T.notebook_runs} WHERE id IN (
       SELECT id FROM (
-        SELECT r.id, ROW_NUMBER() OVER (PARTITION BY r.notebook_id ORDER BY r.executed_at DESC, r.id DESC) AS rn,
+        SELECT r.id, ROW_NUMBER() OVER (PARTITION BY r.notebook_id ORDER BY r.seq DESC) AS rn,
                MIN(COALESCE(u.notebook_run_limit, ?1), ?1) AS keep
         FROM ${T.notebook_runs} r LEFT JOIN ${T.users} u ON u.id = r.user_id${userFilter}
       ) WHERE rn > keep

@@ -83,6 +83,7 @@ export interface Notebook {
 // A saved notebook run, as listed (without its results)
 export interface NotebookRunSummary {
   id: string
+  seq: number // the run's number within its notebook (#1 = first); never changes, never reused
   notebook_id: string
   database_id: string
   database_name: string | null

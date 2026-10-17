@@ -13,7 +13,7 @@ import {
   type Permission,
   type SqlClass,
 } from '../lib/sql-guard'
-import { saveRun, type RunStatement } from '../lib/runs'
+import { reserveRunSeq, saveRun, type RunStatement } from '../lib/runs'
 
 const MAX_RESULT_ROWS = 5000
 const MAX_SQL_LENGTH = 100_000
@@ -32,15 +32,26 @@ function bindingError(c: Context<{ Bindings: Env; Variables: Variables }>, detai
 type Ctx = Context<{ Bindings: Env; Variables: Variables }>
 
 // The optional notebookId a run is saved under: undefined/null = not saved, otherwise it must be
-// one of the caller's notebooks. Returns an error response, or the id (null when absent).
-async function resolveNotebook(c: Ctx, notebookId: unknown): Promise<Response | string | null> {
+// one of the caller's notebooks. Returns an error response, null when absent, or the notebook with
+// the number its run gets (see reserveRunSeq). Pass save = false when nothing will run, so no
+// number is used up; `seq` is then null and nothing is saved.
+async function resolveNotebook(
+  c: Ctx,
+  notebookId: unknown,
+  save = true
+): Promise<Response | { id: string; seq: number | null } | null> {
   if (notebookId === undefined || notebookId === null) return null
   if (typeof notebookId !== 'string' || !notebookId) return c.json({ error: 'Invalid notebookId' }, 400)
+  const notFound = () => c.json({ error: 'Notebook not found' }, 404)
+  if (save) {
+    const reserved = await reserveRunSeq(c.env, notebookId, c.get('userId'))
+    return reserved ? { id: notebookId, seq: reserved.seq } : notFound()
+  }
   const T = tables(c.env)
   const row = await c.env.DB.prepare(`SELECT 1 FROM ${T.notebooks} WHERE id = ?1 AND user_id = ?2`)
     .bind(notebookId, c.get('userId'))
     .first()
-  return row ? notebookId : c.json({ error: 'Notebook not found' }, 404)
+  return row ? { id: notebookId, seq: null } : notFound()
 }
 
 interface Executed {
@@ -113,8 +124,8 @@ query.post('/', async (c) => {
   const binding = resolveQueryBinding(c.env, db.binding_name)
   if (!binding.ok) return bindingError(c, binding.error)
 
-  const notebookId = await resolveNotebook(c, body.notebookId)
-  if (notebookId instanceof Response) return notebookId
+  const notebook = await resolveNotebook(c, body.notebookId)
+  if (notebook instanceof Response) return notebook
 
   const d1 = binding.db
   const executedAt = Date.now()
@@ -141,17 +152,18 @@ query.post('/', async (c) => {
   )
 
   // Save the run under its notebook (non-blocking)
-  let run: { run_id: string; executed_at: number } | null = null
-  if (notebookId) {
+  let run: { run_id: string; executed_at: number; seq: number } | null = null
+  if (notebook?.seq != null) {
     const statement: RunStatement = { sql, results: result?.results ?? [], duration_ms: duration }
     if (result?.changes !== undefined) statement.changes = result.changes
     if (result?.truncated) statement.truncated = true
     if (errorMsg) statement.error = errorMsg
-    run = { run_id: uuid(), executed_at: executedAt }
+    run = { run_id: uuid(), executed_at: executedAt, seq: notebook.seq }
     c.executionCtx.waitUntil(
       saveRun(c.env, {
         id: run.run_id,
-        notebookId,
+        seq: notebook.seq,
+        notebookId: notebook.id,
         userId,
         databaseId: db.id,
         sql,
@@ -217,14 +229,18 @@ query.post('/batch', async (c) => {
   if (!binding.ok) return bindingError(c, binding.error)
   const d1 = binding.db
 
-  const notebookId = await resolveNotebook(c, body.notebookId)
-  if (notebookId instanceof Response) return notebookId
+  // A batch whose statements are all rejected before running is not saved, like a rejected single
+  // one, and uses up no run number
+  const runsAny = body.statements.some((x) => {
+    const sql = x.trim()
+    return sql !== '' && !checkSqlAccess(classifySql(sql), permission)
+  })
+  const notebook = await resolveNotebook(c, body.notebookId, runsAny)
+  if (notebook instanceof Response) return notebook
   const executedAt = Date.now()
 
   // Run each statement sequentially, continue on error
   const results: RunStatement[] = []
-  // A batch whose statements were all rejected before running is not saved, like a rejected single one
-  let executedAny = false
 
   for (const rawSql of body.statements) {
     const sql = rawSql.trim()
@@ -237,7 +253,6 @@ query.post('/batch', async (c) => {
       continue
     }
 
-    executedAny = true
     const start = Date.now()
     let stmtResult: Record<string, unknown>[] = []
     let changes: number | undefined
@@ -274,12 +289,13 @@ query.post('/batch', async (c) => {
   }
 
   // Save the run under its notebook (non-blocking)
-  if (notebookId && executedAny) {
+  if (notebook?.seq != null) {
     const runId = uuid()
     c.executionCtx.waitUntil(
       saveRun(c.env, {
         id: runId,
-        notebookId,
+        seq: notebook.seq,
+        notebookId: notebook.id,
         userId,
         databaseId: db.id,
         sql: results.map((r) => r.sql).join(';\n'),
@@ -288,7 +304,7 @@ query.post('/batch', async (c) => {
         executedAt,
       })
     )
-    return c.json({ results, run_id: runId, executed_at: executedAt })
+    return c.json({ results, run_id: runId, executed_at: executedAt, seq: notebook.seq })
   }
 
   return c.json({ results })

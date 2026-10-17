@@ -39,6 +39,8 @@ export function useNotebookRuns(activeId: string | null) {
   const [pending, setPending] = useState<Record<string, Pending>>({})
   const byNotebookRef = useRef(byNotebook)
   const resultsRef = useRef(results)
+  // Notebooks with a page request in flight, so scroll events cannot ask for the same page twice
+  const fetching = useRef(new Set<string>())
 
   useEffect(() => {
     byNotebookRef.current = byNotebook
@@ -53,13 +55,18 @@ export function useNotebookRuns(activeId: string | null) {
 
   const loadPage = useCallback(
     async (nbId: string, append: boolean) => {
-      const offset = append ? (byNotebookRef.current[nbId]?.list.length ?? 0) : 0
+      if (fetching.current.has(nbId)) return
+      fetching.current.add(nbId)
+      // Older pages continue below the oldest run listed
+      const before = append ? byNotebookRef.current[nbId]?.list.at(-1)?.seq : undefined
       patchNotebook(nbId, (s) => ({ ...s, loading: true, loadError: false }))
       try {
-        const page = await notebooksApi.runs(nbId, { limit: RUN_PAGE_SIZE, offset })
+        const page = await notebooksApi.runs(nbId, { limit: RUN_PAGE_SIZE, before })
         patchNotebook(nbId, (s) => receivePage(s, page.results, page.has_more, append))
       } catch {
         patchNotebook(nbId, (s) => ({ ...s, loading: false, loadError: true }))
+      } finally {
+        fetching.current.delete(nbId)
       }
     },
     [patchNotebook]

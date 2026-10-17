@@ -53,13 +53,16 @@ describe('setup endpoint', () => {
   })
 
   describe('query_history upgrade', () => {
-    // Answers PRAGMA table_info for every table; the users table already has its newest column
+    // Answers PRAGMA table_info for every table; the users, notebooks and notebook_runs tables
+    // already have their newest columns
     const tableInfo = (notnull: number) => [
       { name: 'id', notnull: 0 },
       { name: 'user_id', notnull },
       { name: 'database_id', notnull },
       { name: 'sql', notnull: 1 },
       { name: 'notebook_run_limit', notnull: 0 },
+      { name: 'last_run_seq', notnull: 1 },
+      { name: 'seq', notnull: 0 },
     ]
     const foreignKeys = (onDelete: string) => [
       { from: 'user_id', table: 'users', on_delete: onDelete },

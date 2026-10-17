@@ -2,8 +2,10 @@ import { describe, it, expect } from 'vitest'
 import { addRun, cacheResults, clearRunsState, emptyRunsState, receivePage, removeRun } from '../runs'
 import type { NotebookRunSummary } from '../../types'
 
+// `at` doubles as the run number
 const run = (id: string, at: number, notebook_id = 'nb-1'): NotebookRunSummary => ({
   id,
+  seq: at,
   notebook_id,
   database_id: 'db-1',
   database_name: 'one',
@@ -40,12 +42,26 @@ describe('receivePage', () => {
     expect(ids(s.list)).toEqual(['new', 'old'])
     expect(s.selectedRunId).toBe('new')
   })
+
+  it('drops a run made here that is older than the reloaded list (deleted or pruned meanwhile)', () => {
+    const s = receivePage(addRun(emptyRunsState, run('gone', 2)), [run('newer', 3)], false, false)
+    expect(ids(s.list)).toEqual(['newer'])
+    expect(s.selectedRunId).toBe('newer')
+  })
 })
 
 describe('run list updates', () => {
   it('puts a new run first and selects it', () => {
     const s = addRun(receivePage(emptyRunsState, [run('a', 1)], false, false), run('b', 2))
     expect(ids(s.list)).toEqual(['b', 'a'])
+    expect(s.selectedRunId).toBe('b')
+  })
+
+  it('keeps the list ordered by number when runs finish out of order', () => {
+    let s = receivePage(emptyRunsState, [run('a', 1)], false, false)
+    s = addRun(s, run('c', 3))
+    s = addRun(s, run('b', 2))
+    expect(ids(s.list)).toEqual(['c', 'b', 'a'])
     expect(s.selectedRunId).toBe('b')
   })
 
