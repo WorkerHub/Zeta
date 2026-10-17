@@ -284,7 +284,12 @@ function wrapBase64(b64: string): string {
 // ── Template helpers ──────────────────────────────────────────────────────────
 
 function escapeHtml(s: string): string {
-  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
+  return s
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;')
 }
 
 export function buildVerificationEmail(opts: {
@@ -294,13 +299,12 @@ export function buildVerificationEmail(opts: {
   token: string
 }): EmailPayload {
   const link = `${opts.appUrl}/verify-email?token=${encodeURIComponent(opts.token)}`
-  const safeName = escapeHtml(opts.appName)
   const safeLink = escapeHtml(link)
   return {
     to: opts.toEmail,
     subject: `Verify your ${opts.appName} email`,
     html: `<p>Click <a href="${safeLink}">here</a> to verify your email address. This link expires in 24 hours.</p>`,
-    text: `Verify your ${safeName} email: ${link}`,
+    text: `Verify your ${opts.appName} email: ${link}`,
   }
 }
 
@@ -311,13 +315,12 @@ export function buildPasswordResetEmail(opts: {
   token: string
 }): EmailPayload {
   const link = `${opts.appUrl}/reset-password?token=${encodeURIComponent(opts.token)}`
-  const safeName = escapeHtml(opts.appName)
   const safeLink = escapeHtml(link)
   return {
     to: opts.toEmail,
     subject: `Reset your ${opts.appName} password`,
     html: `<p>Click <a href="${safeLink}">here</a> to reset your password. This link expires in 1 hour.</p>`,
-    text: `Reset your ${safeName} password: ${link}`,
+    text: `Reset your ${opts.appName} password: ${link}`,
   }
 }
 

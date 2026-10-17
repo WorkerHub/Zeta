@@ -163,20 +163,26 @@ notebooks.delete('/:id', async (c) => {
     .first<{ position: number }>()
   if (!existing) return c.json({ error: 'Notebook not found' }, 404)
 
-  const countRow = await c.env.DB.prepare(`SELECT COUNT(*) as cnt FROM ${T.notebooks} WHERE user_id = ?1`)
-    .bind(userId)
-    .first<{ cnt: number }>()
-  if ((countRow?.cnt ?? 0) <= 1) {
-    return c.json({ error: 'Cannot delete the last notebook' }, 400)
+  // The "keep at least one" check is part of the DELETE itself: a separate COUNT first would let
+  // two concurrent deletes (e.g. from two tabs) both see two notebooks and remove both.
+  const deleted = await c.env.DB.prepare(
+    `DELETE FROM ${T.notebooks} WHERE id = ?1 AND user_id = ?2
+       AND (SELECT COUNT(*) FROM ${T.notebooks} WHERE user_id = ?2) > 1`
+  )
+    .bind(notebookId, userId)
+    .run()
+  if (!deleted.meta.changes) {
+    const stillThere = await c.env.DB.prepare(`SELECT 1 FROM ${T.notebooks} WHERE id = ?1 AND user_id = ?2`)
+      .bind(notebookId, userId)
+      .first()
+    return stillThere
+      ? c.json({ error: 'Cannot delete the last notebook' }, 400)
+      : c.json({ error: 'Notebook not found' }, 404)
   }
 
-  await c.env.DB.batch([
-    c.env.DB.prepare(`DELETE FROM ${T.notebooks} WHERE id = ?1`).bind(notebookId),
-    c.env.DB.prepare(`UPDATE ${T.notebooks} SET position = position - 1 WHERE user_id = ?1 AND position > ?2`).bind(
-      userId,
-      existing.position
-    ),
-  ])
+  await c.env.DB.prepare(`UPDATE ${T.notebooks} SET position = position - 1 WHERE user_id = ?1 AND position > ?2`)
+    .bind(userId, existing.position)
+    .run()
 
   return c.json({ message: 'Deleted' })
 })

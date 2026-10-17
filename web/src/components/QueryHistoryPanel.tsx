@@ -2,15 +2,7 @@ import { useEffect, useState } from 'react'
 import { History, XCircle, CheckCircle2, Clock } from 'lucide-react'
 import { queryApi } from '../lib/api'
 import { useLocale } from '../hooks/useLocale'
-
-interface HistoryItem {
-  id: string
-  sql: string
-  duration_ms: number | null
-  row_count: number | null
-  error: string | null
-  executed_at: number
-}
+import type { QueryHistoryItem } from '../types'
 
 interface Props {
   databaseId: string
@@ -19,15 +11,20 @@ interface Props {
 
 export default function QueryHistoryPanel({ databaseId, onSelect }: Props) {
   const { t, locale } = useLocale()
-  const [items, setItems] = useState<HistoryItem[]>([])
+  const [items, setItems] = useState<QueryHistoryItem[]>([])
   const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState(false)
 
   useEffect(() => {
     setLoading(true)
+    setLoadError(false)
     queryApi
       .history({ databaseId, limit: 50 })
-      .then((res) => setItems(res.results as HistoryItem[]))
-      .catch(() => {})
+      .then((res) => setItems(res.results))
+      .catch(() => {
+        setItems([])
+        setLoadError(true)
+      })
       .finally(() => setLoading(false))
   }, [databaseId])
 
@@ -54,6 +51,10 @@ export default function QueryHistoryPanel({ databaseId, onSelect }: Props) {
       {loading ? (
         <div className="flex items-center justify-center flex-1 text-zinc-400 dark:text-zinc-600 text-sm">
           {t('common.loading')}
+        </div>
+      ) : loadError ? (
+        <div className="flex items-center justify-center flex-1 px-4 text-center text-red-400 text-sm">
+          {t('errors.load_history_failed')}
         </div>
       ) : items.length === 0 ? (
         <div className="flex items-center justify-center flex-1 text-zinc-400 dark:text-zinc-600 text-sm">

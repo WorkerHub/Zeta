@@ -115,7 +115,7 @@ Go to **Workers & Pages → zeta → Settings → Variables and Secrets**:
 
 | Name | Value |
 |------|-------|
-| `APP_URL` | Your Worker URL, e.g. `https://zeta.yourname.workers.dev` or your custom domain. Use the exact `https://` URL users open: it is the only origin CORS allows, the passkey RP ID and the base of email links |
+| `APP_URL` | Your Worker URL, e.g. `https://zeta.yourname.workers.dev` or your custom domain. Use the exact `https://` URL users open: it is the only origin CORS allows, the passkey RP ID, the base of email links and the issuer/audience of every login token (changing it later signs everybody out) |
 | `TABLE_PREFIX` | *(Optional)* Prefix for all internal D1 tables, e.g. `kp` → tables become `kp_users`, `kp_settings`, etc. Must be set **before** calling the setup endpoint. Cannot be changed after initialisation. |
 
 > These are kept out of GitHub entirely. The `keep_vars = true` setting in `wrangler.toml` ensures each deployment never overwrites values you set here.
@@ -261,14 +261,14 @@ git config blame.ignoreRevsFile .git-blame-ignore-revs
 | `JWT_SECRET` | Secret | Signs access + refresh JWTs (HS256) |
 | `ENCRYPTION_KEY` | Secret | 64-char hex (strictly validated) — AES-GCM key for TOTP secrets and SMTP/Resend credentials |
 | `SETUP_SECRET` | Secret | Protects `POST /api/setup` |
-| `APP_URL` | Variable | Full URL of your deployment |
+| `APP_URL` | Variable | Full URL of your deployment; also the JWT `iss`/`aud`, so tokens from another deployment sharing `JWT_SECRET` are rejected |
 | `TABLE_PREFIX` | Variable | *(Optional)* Prefix for internal tables (e.g. `kp`). Set before first setup run. Immutable after initialisation. |
 
 ---
 
 ## API Overview
 
-All endpoints live under `/api/`. Authentication uses short-lived JWT access tokens (Authorization header) plus an HttpOnly refresh-token cookie.
+All endpoints live under `/api/`. Authentication uses short-lived JWT access tokens (Authorization header) plus an HttpOnly refresh-token cookie. Request bodies are capped at 4 MB (larger ones get `413`).
 
 | Prefix | Description |
 |--------|-------------|

@@ -11,9 +11,11 @@ on:
 jobs:
   create-tag:
     runs-on: ubuntu-latest
-    # The tag is pushed with PAT_TOKEN (so it triggers release.yml); GITHUB_TOKEN only reads
+    # Creates the tag and its release directly with GITHUB_TOKEN. Tags pushed with GITHUB_TOKEN do
+    # not trigger release.yml, so this used to need a personal access token; creating the release
+    # here instead keeps that broad, long-lived credential out of the repository entirely.
     permissions:
-      contents: read
+      contents: write
     
     steps:
       - name: Validate tag format
@@ -32,7 +34,6 @@ jobs:
         with:
           ref: main
           fetch-depth: 0
-          token: ${{ secrets.PAT_TOKEN }}
       
       - name: Check if tag already exists
         env:
@@ -47,18 +48,11 @@ jobs:
           fi
           echo "✅ Tag '$TAG' does not exist, proceeding..."
       
-      - name: Configure Git
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-      
-      - name: Create and push tag
+      - name: Create tag and release
         env:
           TAG: ${{ inputs.tag }}
+          GH_TOKEN: ${{ github.token }}
         run: |
-          echo "Creating tag: $TAG"
-          git tag "$TAG"
-          echo "Pushing tag to remote..."
-          git push origin "$TAG"
-          echo "✅ Successfully created and pushed tag: $TAG"
-          echo "🚀 This will trigger the automatic release workflow"
+          echo "Creating tag and release: $TAG"
+          gh release create "$TAG" --target "$(git rev-parse HEAD)" --title "$TAG" --generate-notes
+          echo "✅ Successfully created tag and release: $TAG"

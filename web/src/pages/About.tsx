@@ -45,7 +45,7 @@ export default function AboutPage() {
           </div>
           <div>
             <h1 className="text-xl font-semibold text-zinc-900 dark:text-zinc-100">Zeta</h1>
-            <p className="text-sm text-zinc-400 dark:text-zinc-500">v1.0.0</p>
+            <p className="text-sm text-zinc-400 dark:text-zinc-500">{__APP_VERSION__}</p>
           </div>
         </div>
 

@@ -2,47 +2,43 @@ import { useState, useEffect, useCallback } from 'react'
 import { Plus, Trash2, Power, Users } from 'lucide-react'
 import { adminApi } from '../../lib/api'
 import { useLocale } from '../../hooks/useLocale'
-
-interface DbRecord {
-  id: string
-  name: string
-  description: string | null
-  binding_name: string
-  is_active: number
-  created_at: number
-}
-
-interface Permission {
-  id: string
-  user_id: string
-  database_id: string
-  permission: string
-  email: string
-  user_name: string
-}
+import type { AdminDatabase, DatabaseGrant } from '../../types'
 
 export default function AdminDatabases() {
   const { t } = useLocale()
-  const [databases, setDatabases] = useState<DbRecord[]>([])
+  const [databases, setDatabases] = useState<AdminDatabase[]>([])
+  const [error, setError] = useState('')
   const [loading, setLoading] = useState(true)
   const [showAdd, setShowAdd] = useState(false)
   const [newDb, setNewDb] = useState({ name: '', description: '', binding_name: '' })
   const [addError, setAddError] = useState('')
-  const [selectedDb, setSelectedDb] = useState<DbRecord | null>(null)
-  const [permissions, setPermissions] = useState<Permission[]>([])
+  const [selectedDb, setSelectedDb] = useState<AdminDatabase | null>(null)
+  const [permissions, setPermissions] = useState<DatabaseGrant[]>([])
   const [allUsers, setAllUsers] = useState<Array<{ id: string; email: string; name: string }>>([])
   const [permUserId, setPermUserId] = useState('')
   const [permLevel, setPermLevel] = useState('read')
 
+  // Runs an admin action and shows its error instead of dropping it
+  const attempt = useCallback(
+    async (action: () => Promise<void>) => {
+      setError('')
+      try {
+        await action()
+      } catch (err) {
+        setError(err instanceof Error ? err.message : t('errors.generic'))
+      }
+    },
+    [t]
+  )
+
   const load = useCallback(async () => {
     setLoading(true)
-    try {
+    await attempt(async () => {
       const res = await adminApi.databases()
-      setDatabases(res.results as DbRecord[])
-    } finally {
-      setLoading(false)
-    }
-  }, [])
+      setDatabases(res.results)
+    })
+    setLoading(false)
+  }, [attempt])
 
   useEffect(() => {
     load()
@@ -60,9 +56,11 @@ export default function AdminDatabases() {
     }
   }
 
-  async function toggleActive(db: DbRecord) {
-    await adminApi.updateDatabase(db.id, { is_active: !db.is_active })
-    load()
+  async function toggleActive(db: AdminDatabase) {
+    await attempt(async () => {
+      await adminApi.updateDatabase(db.id, { is_active: !db.is_active })
+      await load()
+    })
   }
 
   async function deleteDb(id: string, name: string) {
@@ -76,24 +74,30 @@ export default function AdminDatabases() {
     }
   }
 
-  async function loadPermissions(db: DbRecord) {
+  async function fetchPermissions(db: AdminDatabase) {
     setSelectedDb(db)
     const [perms, users] = await Promise.all([adminApi.getPermissions(db.id), adminApi.users({ limit: 200 })])
-    setPermissions(perms.results as Permission[])
+    setPermissions(perms.results)
     setAllUsers(users.results.map((u) => ({ id: u.id, email: u.email, name: u.name })))
   }
 
+  const loadPermissions = (db: AdminDatabase) => attempt(() => fetchPermissions(db))
+
   async function grantPerm() {
     if (!selectedDb || !permUserId) return
-    await adminApi.setPermission(selectedDb.id, permUserId, permLevel)
-    await loadPermissions(selectedDb)
-    setPermUserId('')
+    await attempt(async () => {
+      await adminApi.setPermission(selectedDb.id, permUserId, permLevel)
+      await fetchPermissions(selectedDb)
+      setPermUserId('')
+    })
   }
 
   async function revokePerm(userId: string) {
     if (!selectedDb) return
-    await adminApi.revokePermission(selectedDb.id, userId)
-    await loadPermissions(selectedDb)
+    await attempt(async () => {
+      await adminApi.revokePermission(selectedDb.id, userId)
+      await fetchPermissions(selectedDb)
+    })
   }
 
   return (
@@ -104,6 +108,8 @@ export default function AdminDatabases() {
           <Plus size={13} /> {t('admin_db.add_database')}
         </button>
       </div>
+
+      {error && <p className="mb-4 text-sm text-red-400">{error}</p>}
 
       {/* Add form */}
       {showAdd && (

@@ -1,9 +1,10 @@
 import { Hono } from 'hono'
 import { getCookie } from 'hono/cookie'
 import type { Env, Variables, UserRow, PasskeyCredentialRow } from '../types'
-import { nanoid, uuid } from '../lib/id'
+import { nanoid, otpCode, uuid } from '../lib/id'
 import { now, getSetting, audit, tables } from '../lib/db'
 import { KV } from '../lib/kv'
+import { isSecure } from '../middleware/security'
 import {
   hashPassword,
   verifyPassword,
@@ -51,12 +52,6 @@ function clearRefreshCookie(c: HeaderSetter, secure: boolean): void {
     c.header('Set-Cookie', `refresh_token=; ${flags}`, { append: true })
   }
 }
-
-// Secure whenever the app is configured for HTTPS *or* this request actually arrived over HTTPS,
-// so a mistyped http:// APP_URL behind TLS cannot strip the flag from the refresh cookie.
-type SecureCtx = { env: Env; req: { url: string } }
-const isSecure = (c: SecureCtx) =>
-  Boolean(c.env.APP_URL?.trim().startsWith('https')) || new URL(c.req.url).protocol === 'https:'
 
 // ── POST /api/auth/register ───────────────────────────────────────────────────
 
@@ -234,15 +229,15 @@ auth.post('/login', async (c) => {
   const needs2fa = enforce2fa === 'true' || user.two_factor_required === 1 || hasTotpOrPasskey !== null
 
   if (needs2fa) {
-    const pendingToken = await createPending2faToken(user.id, c.env.JWT_SECRET)
+    const pendingToken = await createPending2faToken(user.id, c.env)
     c.executionCtx.waitUntil(audit(c.env, { userId: user.id, action: 'login_2fa_required', ip }))
     // The user id already travels inside pendingToken; echoing it would let anyone holding
     // valid credentials harvest internal ids.
     return c.json({ requires2fa: true, pendingToken })
   }
 
-  const accessToken = await createAccessToken(user.id, user.role, c.env.JWT_SECRET)
-  const refreshToken = await createRefreshToken(user.id, c.env.JWT_SECRET)
+  const accessToken = await createAccessToken(user.id, user.role, c.env)
+  const refreshToken = await createRefreshToken(user.id, c.env)
   setRefreshCookie(c, refreshToken, isSecure(c))
 
   c.executionCtx.waitUntil(audit(c.env, { userId: user.id, action: 'login', ip }))
@@ -255,7 +250,7 @@ auth.post('/2fa/totp', async (c) => {
   const body = await c.req.json<{ pendingToken?: string; code?: string }>().catch(() => null)
   if (!body?.pendingToken || !body.code) return c.json({ error: 'pendingToken and code are required' }, 400)
 
-  const pending = await verifyPending2faToken(body.pendingToken, c.env.JWT_SECRET)
+  const pending = await verifyPending2faToken(body.pendingToken, c.env)
   if (!pending) return c.json({ error: 'Invalid or expired token' }, 401)
 
   if (await c.env.KV.get(KV.jtiDeny(pending.jti))) return c.json({ error: 'Token already used' }, 401)
@@ -288,8 +283,8 @@ auth.post('/2fa/totp', async (c) => {
   const user = await c.env.DB.prepare(`SELECT * FROM ${T.users} WHERE id = ?1`).bind(pending.sub).first<UserRow>()
   if (!user) return c.json({ error: 'User not found' }, 404)
 
-  const accessToken = await createAccessToken(user.id, user.role, c.env.JWT_SECRET)
-  const refreshToken = await createRefreshToken(user.id, c.env.JWT_SECRET)
+  const accessToken = await createAccessToken(user.id, user.role, c.env)
+  const refreshToken = await createRefreshToken(user.id, c.env)
   setRefreshCookie(c, refreshToken, isSecure(c))
 
   c.executionCtx.waitUntil(audit(c.env, { userId: user.id, action: 'login_2fa_totp', ip: clientIp(c) }))
@@ -302,7 +297,7 @@ auth.post('/2fa/email-otp/send', async (c) => {
   const body = await c.req.json<{ pendingToken?: string }>().catch(() => null)
   if (!body?.pendingToken) return c.json({ error: 'pendingToken is required' }, 400)
 
-  const pending = await verifyPending2faToken(body.pendingToken, c.env.JWT_SECRET)
+  const pending = await verifyPending2faToken(body.pendingToken, c.env)
   if (!pending) return c.json({ error: 'Invalid or expired token' }, 401)
 
   if (await c.env.KV.get(KV.jtiDeny(pending.jti))) return c.json({ error: 'Token already used' }, 401)
@@ -316,8 +311,7 @@ auth.post('/2fa/email-otp/send', async (c) => {
     .first<{ email: string }>()
   if (!user) return c.json({ error: 'User not found' }, 404)
 
-  // Generate 6-digit OTP
-  const otp = String((crypto.getRandomValues(new Uint32Array(1))[0]! % 900000) + 100000)
+  const otp = otpCode()
   await c.env.KV.put(KV.emailOtp(pending.sub), otp, { expirationTtl: 600 })
 
   const appName = (await getSetting(c.env, 'app_name')) ?? 'Zeta'
@@ -331,7 +325,7 @@ auth.post('/2fa/email-otp/verify', async (c) => {
   const body = await c.req.json<{ pendingToken?: string; code?: string }>().catch(() => null)
   if (!body?.pendingToken || !body.code) return c.json({ error: 'pendingToken and code are required' }, 400)
 
-  const pending = await verifyPending2faToken(body.pendingToken, c.env.JWT_SECRET)
+  const pending = await verifyPending2faToken(body.pendingToken, c.env)
   if (!pending) return c.json({ error: 'Invalid or expired token' }, 401)
 
   if (await c.env.KV.get(KV.jtiDeny(pending.jti))) return c.json({ error: 'Token already used' }, 401)
@@ -358,8 +352,8 @@ auth.post('/2fa/email-otp/verify', async (c) => {
   const user = await c.env.DB.prepare(`SELECT * FROM ${T.users} WHERE id = ?1`).bind(pending.sub).first<UserRow>()
   if (!user) return c.json({ error: 'User not found' }, 404)
 
-  const accessToken = await createAccessToken(user.id, user.role, c.env.JWT_SECRET)
-  const refreshToken = await createRefreshToken(user.id, c.env.JWT_SECRET)
+  const accessToken = await createAccessToken(user.id, user.role, c.env)
+  const refreshToken = await createRefreshToken(user.id, c.env)
   setRefreshCookie(c, refreshToken, isSecure(c))
 
   c.executionCtx.waitUntil(audit(c.env, { userId: user.id, action: 'login_2fa_email_otp', ip: clientIp(c) }))
@@ -372,7 +366,7 @@ auth.post('/refresh', async (c) => {
   const cookieToken = getCookie(c, 'refresh_token')
   if (!cookieToken) return c.json({ error: 'No refresh token' }, 401)
 
-  const payload = await verifyRefreshToken(cookieToken, c.env.JWT_SECRET)
+  const payload = await verifyRefreshToken(cookieToken, c.env)
   if (!payload) return c.json({ error: 'Invalid or expired refresh token' }, 401)
 
   if (await isRefreshTokenRevoked(c.env, payload.jti)) {
@@ -390,8 +384,8 @@ auth.post('/refresh', async (c) => {
 
   // Rotate refresh token
   await revokeRefreshToken(c.env, payload.jti)
-  const accessToken = await createAccessToken(user.id, user.role, c.env.JWT_SECRET)
-  const refreshToken = await createRefreshToken(user.id, c.env.JWT_SECRET)
+  const accessToken = await createAccessToken(user.id, user.role, c.env)
+  const refreshToken = await createRefreshToken(user.id, c.env)
   setRefreshCookie(c, refreshToken, isSecure(c))
 
   return c.json({ accessToken })
@@ -402,7 +396,7 @@ auth.post('/refresh', async (c) => {
 auth.post('/logout', async (c) => {
   const cookieToken = getCookie(c, 'refresh_token')
   if (cookieToken) {
-    const payload = await verifyRefreshToken(cookieToken, c.env.JWT_SECRET)
+    const payload = await verifyRefreshToken(cookieToken, c.env)
     if (payload) await revokeRefreshToken(c.env, payload.jti)
   }
   clearRefreshCookie(c, isSecure(c))
@@ -472,7 +466,7 @@ auth.post('/2fa/passkey/options', async (c) => {
   const body = await c.req.json<{ pendingToken?: string }>().catch(() => null)
   if (!body?.pendingToken) return c.json({ error: 'pendingToken is required' }, 400)
 
-  const pending = await verifyPending2faToken(body.pendingToken, c.env.JWT_SECRET)
+  const pending = await verifyPending2faToken(body.pendingToken, c.env)
   if (!pending) return c.json({ error: 'Invalid or expired token' }, 401)
 
   if (await c.env.KV.get(KV.jtiDeny(pending.jti))) return c.json({ error: 'Token already used' }, 401)
@@ -503,7 +497,7 @@ auth.post('/2fa/passkey/verify', async (c) => {
     return c.json({ error: 'pendingToken and credential are required' }, 400)
   }
 
-  const pending = await verifyPending2faToken(body.pendingToken, c.env.JWT_SECRET)
+  const pending = await verifyPending2faToken(body.pendingToken, c.env)
   if (!pending) return c.json({ error: 'Invalid or expired token' }, 401)
 
   if (await c.env.KV.get(KV.jtiDeny(pending.jti))) return c.json({ error: 'Token already used' }, 401)
@@ -552,8 +546,8 @@ auth.post('/2fa/passkey/verify', async (c) => {
   const user = await c.env.DB.prepare(`SELECT * FROM ${T.users} WHERE id = ?1`).bind(pending.sub).first<UserRow>()
   if (!user) return c.json({ error: 'User not found' }, 404)
 
-  const accessToken = await createAccessToken(user.id, user.role, c.env.JWT_SECRET)
-  const refreshToken = await createRefreshToken(user.id, c.env.JWT_SECRET)
+  const accessToken = await createAccessToken(user.id, user.role, c.env)
+  const refreshToken = await createRefreshToken(user.id, c.env)
   setRefreshCookie(c, refreshToken, isSecure(c))
 
   c.executionCtx.waitUntil(audit(c.env, { userId: user.id, action: 'login_2fa_passkey', ip: clientIp(c) }))

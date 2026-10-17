@@ -8,16 +8,19 @@ export default function ForgotPassword() {
   const { t, locale, changeLocale } = useLocale()
   const [email, setEmail] = useState('')
   const [message, setMessage] = useState('')
+  const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     setLoading(true)
+    setError('')
     try {
       const res = await authApi.forgotPassword({ email })
       setMessage(res.message)
     } catch (err) {
-      setMessage(err instanceof Error ? err.message : t('errors.generic'))
+      // Keep the form so the user can retry
+      setError(err instanceof Error ? err.message : t('errors.generic'))
     } finally {
       setLoading(false)
     }
@@ -47,7 +50,9 @@ export default function ForgotPassword() {
 
           {message ? (
             <div className="space-y-4">
-              <p className="text-sm text-zinc-300">{message}</p>
+              <p className="text-sm text-emerald-500 dark:text-emerald-400" role="status">
+                {message}
+              </p>
               <Link to="/login" className="btn-secondary w-full block text-center">
                 {t('auth.back_to_signin')}
               </Link>
@@ -70,6 +75,11 @@ export default function ForgotPassword() {
                   autoFocus
                 />
               </div>
+              {error && (
+                <p className="text-sm text-red-400" role="alert">
+                  {error}
+                </p>
+              )}
               <button type="submit" className="btn-primary w-full" disabled={loading}>
                 {loading ? t('auth.sending') : t('auth.send_reset')}
               </button>

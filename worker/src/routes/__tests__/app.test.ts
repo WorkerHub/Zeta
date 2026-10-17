@@ -45,3 +45,53 @@ describe('requireAuth', () => {
     expect((await callWorker(env, '/api/admin/users', { headers: admin })).status).toBe(401)
   })
 })
+
+describe('security headers', () => {
+  it('sends HSTS when the request arrived over https, even if APP_URL says http', async () => {
+    const env = fakeEnv({ APP_URL: 'http://zeta.example.com' })
+    const res = await callWorker(env, 'https://zeta.example.com/api/health')
+    expect(res.headers.get('Strict-Transport-Security')).toContain('max-age=')
+  })
+
+  it('omits HSTS for plain-http local development', async () => {
+    const res = await callWorker(fakeEnv(), '/api/health')
+    expect(res.headers.get('Strict-Transport-Security')).toBeNull()
+  })
+
+  it('covers the SPA too, with a CSP that allows the Google Fonts the page loads', async () => {
+    const res = await callWorker(fakeEnv(), '/query')
+    const csp = res.headers.get('Content-Security-Policy') ?? ''
+    expect(csp).toContain("style-src 'self' 'unsafe-inline' https://fonts.googleapis.com")
+    expect(csp).toContain("font-src 'self' https://fonts.gstatic.com")
+    expect(csp).toContain("base-uri 'self'")
+    expect(csp).toContain("form-action 'self'")
+  })
+})
+
+describe('request body limit', () => {
+  it('rejects oversized API bodies with a JSON 413 before any route parses them', async () => {
+    const { db, calls } = fakeD1()
+    const env = fakeEnv({ DB: db })
+    const res = await callWorker(env, '/api/auth/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: 'a@example.com', password: 'x'.repeat(5 * 1024 * 1024) }),
+    })
+    expect(res.status).toBe(413)
+    expect(await res.json()).toEqual({ error: 'Request body too large' })
+    expect(res.headers.get('X-Content-Type-Options')).toBe('nosniff')
+    expect(calls).toHaveLength(0)
+  })
+
+  it('lets a large but legitimate notebook save through', async () => {
+    const { db } = fakeD1((sql) => (sql.startsWith('SELECT id FROM notebooks') ? { id: 'nb1' } : null))
+    const env = fakeEnv({ DB: db })
+    const res = await callWorker(env, '/api/notebooks/nb1', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', ...(await bearer(env, 'u1')) },
+      // 512K characters of 3-byte UTF-8 text: the largest notebook the API accepts
+      body: JSON.stringify({ sql_content: '表'.repeat(512 * 1024) }),
+    })
+    expect(res.status).toBe(200)
+  })
+})

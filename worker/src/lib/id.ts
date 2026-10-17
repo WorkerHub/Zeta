@@ -9,3 +9,15 @@ export function nanoid(size = 21): string {
 export function uuid(): string {
   return crypto.randomUUID()
 }
+
+// Uniformly random 6-digit code (100000–999999). Rejection sampling: 2^32 is not a multiple of
+// 900000, so a plain modulo would make the lowest codes very slightly more likely.
+export function otpCode(): string {
+  const RANGE = 900_000
+  const limit = 2 ** 32 - (2 ** 32 % RANGE)
+  const buf = new Uint32Array(1)
+  for (;;) {
+    const n = crypto.getRandomValues(buf)[0]!
+    if (n < limit) return String((n % RANGE) + 100_000)
+  }
+}

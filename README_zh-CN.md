@@ -115,7 +115,7 @@
 
 | 名称 | 值 |
 |------|----|
-| `APP_URL` | 你的 Worker 地址，例如 `https://zeta.yourname.workers.dev` 或自定义域名。请填写用户实际访问的 `https://` 地址：它是 CORS 唯一允许的来源、Passkey 的 RP ID，也是邮件链接的前缀 |
+| `APP_URL` | 你的 Worker 地址，例如 `https://zeta.yourname.workers.dev` 或自定义域名。请填写用户实际访问的 `https://` 地址：它是 CORS 唯一允许的来源、Passkey 的 RP ID、邮件链接的前缀，也是所有登录令牌的签发方/受众（之后修改会让所有用户重新登录） |
 | `TABLE_PREFIX` | *（可选）* 所有内部 D1 表的前缀，例如 `kp` → 表名变为 `kp_users`、`kp_settings` 等。必须在**调用 setup 接口之前**设置，初始化后不可更改。 |
 
 > 以上配置完全隔离于 GitHub。`wrangler.toml` 中的 `keep_vars = true` 确保每次部署不会覆盖你在此处设置的值。
@@ -261,14 +261,14 @@ git config blame.ignoreRevsFile .git-blame-ignore-revs
 | `JWT_SECRET` | 密钥 | 签发访问令牌和刷新令牌（HS256） |
 | `ENCRYPTION_KEY` | 密钥 | 64 位十六进制（严格校验）— TOTP 密钥及 SMTP/Resend 凭据的 AES-GCM 加密密钥 |
 | `SETUP_SECRET` | 密钥 | 保护 `POST /api/setup` 初始化端点 |
-| `APP_URL` | 变量 | 部署的完整 URL，例如 `https://zeta.example.com` |
+| `APP_URL` | 变量 | 部署的完整 URL，例如 `https://zeta.example.com`；同时作为 JWT 的 `iss`/`aud`，其他共用 `JWT_SECRET` 的部署签发的令牌会被拒绝 |
 | `TABLE_PREFIX` | 变量 | *（可选）* 内部表名前缀（例如 `kp`）。首次 setup 前设置，初始化后不可更改。 |
 
 ---
 
 ## API 概览
 
-所有端点挂载在 `/api/` 下，认证使用短效 JWT 访问令牌（Authorization 请求头）+ HttpOnly 刷新令牌 Cookie。
+所有端点挂载在 `/api/` 下，认证使用短效 JWT 访问令牌（Authorization 请求头）+ HttpOnly 刷新令牌 Cookie。请求体上限 4 MB（超出返回 `413`）。
 
 | 前缀 | 说明 |
 |------|------|

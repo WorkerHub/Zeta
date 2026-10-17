@@ -56,9 +56,10 @@ export function fakeD1(handler: DbHandler = () => null, opts: { rateLimits?: boo
       const rows = exec(sql, args)
       return { results: Array.isArray(rows) ? rows : [], meta: {} }
     },
+    // `handler` may return { changes: n } to report how many rows a run() touched (default 1).
     run: async () => {
-      exec(sql, args)
-      return { results: [], meta: { changes: 1 } }
+      const res = exec(sql, args) as { changes?: unknown } | null | undefined
+      return { results: [], meta: { changes: typeof res?.changes === 'number' ? res.changes : 1 } }
     },
   })
   const db = {
@@ -127,5 +128,5 @@ export const postJson = (body: unknown, extra: RequestInit = {}): RequestInit =>
 })
 
 export async function bearer(env: Env, userId: string, role: 'admin' | 'member' = 'member') {
-  return { Authorization: `Bearer ${await createAccessToken(userId, role, env.JWT_SECRET)}` }
+  return { Authorization: `Bearer ${await createAccessToken(userId, role, env)}` }
 }
