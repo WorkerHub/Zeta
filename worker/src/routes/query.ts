@@ -1,10 +1,10 @@
 import { Hono, type Context } from 'hono'
-import type { D1Database } from '@cloudflare/workers-types'
 import type { Env, Variables, DatabaseRow } from '../types'
 import { requireAuth } from '../middleware/auth'
 import { uuid } from '../lib/id'
 import { now, tables } from '../lib/db'
-import { resolveQueryBinding } from '../lib/bindings'
+import { resolveQueryTarget, type QueryTarget } from '../lib/bindings'
+import { D1HttpError, queryD1Http } from '../lib/d1-http'
 import {
   classifySql,
   checkSqlAccess,
@@ -22,15 +22,29 @@ const MAX_SQL_LENGTH = 100_000
 const query = new Hono<{ Bindings: Env; Variables: Variables }>()
 query.use('*', requireAuth)
 
-// A registered database whose binding is missing or unusable. The detail names the binding, an
-// internal deployment detail, so only admins (who manage bindings anyway) get to see it.
-function bindingError(c: Context<{ Bindings: Env; Variables: Variables }>, detail: string) {
+// A registered database whose target cannot be resolved (missing binding, application DB, or a
+// missing ZETA_APP_DB_ID). The detail is a deployment detail, so only admins get to see it.
+function queryError(c: Context<{ Bindings: Env; Variables: Variables }>, detail: string) {
   if (c.get('userRole') === 'admin') return c.json({ error: `${detail} Contact the admin.` }, 500)
-  console.error(`Query binding error: ${detail}`)
+  console.error(`Query target error: ${detail}`)
   return c.json({ error: 'Database configuration error. Contact the admin.' }, 500)
 }
 
 type Ctx = Context<{ Bindings: Env; Variables: Variables }>
+
+// Maps an execution error to a client-safe message and HTTP status. SQL errors and rate limits are
+// shown to everyone; transport/auth/config errors are deployment details shown only to admins.
+type ErrorStatus = 400 | 429 | 500
+function resolveExecError(c: Ctx, err: unknown): { message: string; status: ErrorStatus } {
+  if (err instanceof D1HttpError) {
+    if (err.kind === 'sql') return { message: err.message, status: 400 }
+    if (err.kind === 'rate_limit') return { message: err.message, status: 429 }
+    if (c.get('userRole') === 'admin') return { message: `${err.message} Contact the admin.`, status: 500 }
+    console.error(`Query execution error: ${err.message}`)
+    return { message: 'Database configuration error. Contact the admin.', status: 500 }
+  }
+  return { message: err instanceof Error ? err.message : String(err), status: 400 }
+}
 
 // The optional notebookId a run is saved under: undefined/null = not saved, otherwise it must be
 // one of the caller's notebooks. Returns an error response, null when absent, or the notebook with
@@ -65,21 +79,37 @@ interface Executed {
 // Runs one statement that already passed classification and the permission check. Reads are
 // capped by the database itself: wrapped in `LIMIT MAX_RESULT_ROWS + 1` (see limitReadSql), the
 // extra row only telling that the result was cut off. EXPLAIN and PRAGMA cannot be wrapped and are
-// cut off here instead.
-async function executeStatement(d1: D1Database, sql: string, kind: SqlClass): Promise<Executed> {
+// cut off here instead. The target is a Worker binding or the D1 HTTP API; both return the same
+// shape so the rest of the route is unchanged.
+async function executeStatement(env: Env, target: QueryTarget, sql: string, kind: SqlClass): Promise<Executed> {
   if (isWriteClass(kind)) {
-    const res = await d1.prepare(sql).run()
-    return { results: [], meta: res.meta as Record<string, unknown>, changes: res.meta.changes ?? 0, truncated: false }
+    if (target.kind === 'binding') {
+      const res = await target.d1.prepare(sql).run()
+      return {
+        results: [],
+        meta: res.meta as Record<string, unknown>,
+        changes: res.meta.changes ?? 0,
+        truncated: false,
+      }
+    }
+    const res = await queryD1Http(env, target.databaseId, sql)
+    return { results: [], meta: res.meta, changes: res.changes, truncated: false }
   }
   const limited = limitReadSql(sql, MAX_RESULT_ROWS)
-  const res = await d1.prepare(limited ?? sql).all()
-  const rows = res.results as Record<string, unknown>[]
-  const truncated = rows.length > MAX_RESULT_ROWS
-  return {
-    results: truncated ? rows.slice(0, MAX_RESULT_ROWS) : rows,
-    meta: res.meta as Record<string, unknown>,
-    truncated,
+  if (target.kind === 'binding') {
+    const res = await target.d1.prepare(limited ?? sql).all()
+    const rows = res.results as Record<string, unknown>[]
+    const truncated = rows.length > MAX_RESULT_ROWS
+    return {
+      results: truncated ? rows.slice(0, MAX_RESULT_ROWS) : rows,
+      meta: res.meta as Record<string, unknown>,
+      truncated,
+    }
   }
+  const res = await queryD1Http(env, target.databaseId, limited ?? sql)
+  const rows = res.results
+  const truncated = rows.length > MAX_RESULT_ROWS
+  return { results: truncated ? rows.slice(0, MAX_RESULT_ROWS) : rows, meta: res.meta, truncated }
 }
 
 // Rewrites a MySQL introspection statement (SHOW TABLES, DESCRIBE, …) into its read-only
@@ -134,22 +164,24 @@ query.post('/', async (c) => {
   const denied = checkSqlAccess(kind, permission)
   if (denied) return c.json({ error: denied }, kind === 'multiple' || kind === 'empty' ? 400 : 403)
 
-  // Resolve the CF Worker binding
-  const binding = resolveQueryBinding(c.env, db.binding_name)
-  if (!binding.ok) return bindingError(c, binding.error)
+  // Resolve the execution target (D1 HTTP API, or a legacy binding during the migration)
+  const resolved = resolveQueryTarget(c.env, db)
+  if (!resolved.ok) return queryError(c, resolved.error)
 
   const notebook = await resolveNotebook(c, body.notebookId)
   if (notebook instanceof Response) return notebook
 
-  const d1 = binding.db
   const executedAt = Date.now()
   let result: Executed | null = null
   let errorMsg: string | null = null
+  let errorStatus: ErrorStatus = 400
 
   try {
-    result = await executeStatement(d1, runSql, kind)
+    result = await executeStatement(c.env, resolved.target, runSql, kind)
   } catch (err) {
-    errorMsg = err instanceof Error ? err.message : String(err)
+    const mapped = resolveExecError(c, err)
+    errorMsg = mapped.message
+    errorStatus = mapped.status
   }
 
   const duration = Date.now() - executedAt
@@ -188,7 +220,7 @@ query.post('/', async (c) => {
     )
   }
 
-  if (errorMsg || !result) return c.json({ error: errorMsg, ...run }, 400)
+  if (errorMsg || !result) return c.json({ error: errorMsg, ...run }, errorStatus)
   const payload = isWriteClass(kind)
     ? { meta: result.meta, results: [] }
     : { results: result.results, meta: result.meta, truncated: result.truncated }
@@ -238,10 +270,9 @@ query.post('/batch', async (c) => {
     permission = (perm.permission as Permission) ?? 'read'
   }
 
-  // Resolve binding
-  const binding = resolveQueryBinding(c.env, db.binding_name)
-  if (!binding.ok) return bindingError(c, binding.error)
-  const d1 = binding.db
+  // Resolve the execution target (D1 HTTP API, or a legacy binding during the migration)
+  const resolved = resolveQueryTarget(c.env, db)
+  if (!resolved.ok) return queryError(c, resolved.error)
 
   // A batch whose statements are all rejected before running is not saved, like a rejected single
   // one, and uses up no run number
@@ -283,12 +314,12 @@ query.post('/batch', async (c) => {
     let truncated = false
 
     try {
-      const executed = await executeStatement(d1, runSql, kind)
+      const executed = await executeStatement(c.env, resolved.target, runSql, kind)
       stmtResult = executed.results
       changes = executed.changes
       truncated = executed.truncated
     } catch (err) {
-      errorMsg = err instanceof Error ? err.message : String(err)
+      errorMsg = resolveExecError(c, err).message
     }
 
     const duration = Date.now() - start

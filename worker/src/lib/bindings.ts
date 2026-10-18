@@ -1,5 +1,6 @@
 import type { D1Database } from '@cloudflare/workers-types'
-import type { Env } from '../types'
+import type { Env, DatabaseRow } from '../types'
+import { appDbId } from './d1-http'
 
 // Bindings that hold the app's own data and must never be exposed to the SQL editor.
 const RESERVED_BINDINGS = new Set(['DB', 'KV', 'ASSETS'])
@@ -22,4 +23,30 @@ export function resolveQueryBinding(env: Env, name: unknown): QueryBindingResult
     return { ok: false, error: `Binding "${name}" is not a D1 database on this Worker.` }
   }
   return { ok: true, db: binding as D1Database }
+}
+
+// How a registered database is executed: over the D1 HTTP API (new), or a legacy Worker binding
+// (during the migration, until the admin re-links it).
+export type QueryTarget = { kind: 'binding'; d1: D1Database } | { kind: 'http'; databaseId: string }
+
+export type QueryTargetResult = { ok: true; target: QueryTarget } | { ok: false; error: string }
+
+// Resolves a registered database row to its execution target. Rows with a cf_database_id run over
+// the HTTP API (and the application's own database is refused), rows without fall back to their
+// binding. The app-DB exclusion fails closed: without ZETA_APP_DB_ID configured the HTTP path
+// cannot prove a database is not the app DB, so it refuses to run.
+export function resolveQueryTarget(env: Env, db: DatabaseRow): QueryTargetResult {
+  if (db.cf_database_id) {
+    const appId = appDbId(env)
+    if (!appId) {
+      return { ok: false, error: 'ZETA_APP_DB_ID is not configured on this Worker.' }
+    }
+    if (db.cf_database_id === appId) {
+      return { ok: false, error: 'This database is the application database and cannot be queried.' }
+    }
+    return { ok: true, target: { kind: 'http', databaseId: db.cf_database_id } }
+  }
+  const binding = resolveQueryBinding(env, db.binding_name)
+  if (!binding.ok) return binding
+  return { ok: true, target: { kind: 'binding', d1: binding.db } }
 }

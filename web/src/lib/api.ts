@@ -1,6 +1,7 @@
 import { getAccessToken, clearSession, setSession, getCurrentUser } from './auth'
 import type {
   AdminDatabase,
+  CfD1Database,
   Database,
   DatabaseGrant,
   Notebook,
@@ -260,10 +261,13 @@ export const adminApi = {
   deleteUser: (id: string) => apiFetch<{ message: string }>(`/admin/users/${id}`, { method: 'DELETE' }),
 
   databases: () => apiFetch<{ results: AdminDatabase[] }>('/admin/databases'),
-  createDatabase: (body: { name: string; description?: string; binding_name: string }) =>
+  listD1Databases: () => apiFetch<{ results: CfD1Database[] }>('/admin/d1/databases'),
+  createDatabase: (body: { cf_database_id: string; name?: string; description?: string }) =>
     apiFetch<{ id: string }>('/admin/databases', { method: 'POST', body: JSON.stringify(body) }),
-  updateDatabase: (id: string, body: { name?: string; description?: string; is_active?: boolean }) =>
-    apiFetch<{ message: string }>(`/admin/databases/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
+  updateDatabase: (
+    id: string,
+    body: { name?: string; description?: string; is_active?: boolean; cf_database_id?: string }
+  ) => apiFetch<{ message: string }>(`/admin/databases/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
   deleteDatabase: (id: string) => apiFetch<{ message: string }>(`/admin/databases/${id}`, { method: 'DELETE' }),
 
   getPermissions: (dbId: string) => apiFetch<{ results: DatabaseGrant[] }>(`/admin/databases/${dbId}/permissions`),

@@ -46,7 +46,7 @@ A self-hosted SQL query interface for [Cloudflare D1](https://developers.cloudfl
 | Runtime | Cloudflare Workers |
 | API framework | Hono.js v4 |
 | App database | D1 (SQLite) — users, notebooks, settings, history |
-| Query targets | Additional D1 bindings |
+| Query targets | Additional D1 databases (over the Cloudflare D1 HTTP API) |
 | Sessions / 2FA state | Cloudflare KV |
 | Frontend | React 19 + Vite + Tailwind CSS v4 |
 
@@ -110,6 +110,7 @@ Go to **Workers & Pages → zeta → Settings → Variables and Secrets**:
 | `JWT_SECRET` | Any random 64-char string — e.g. `openssl rand -hex 32` |
 | `ENCRYPTION_KEY` | 64-char hex (32 bytes) — e.g. `openssl rand -hex 32`. Validated strictly: any other value (a passphrase, a shorter key) is rejected instead of silently yielding a weak key |
 | `SETUP_SECRET` | Any random string — e.g. `openssl rand -hex 16` |
+| `CF_D1_API_TOKEN` | A Cloudflare API token with **D1 → Edit** permission (account-scoped). Used at runtime to list and query the D1 databases you add in the admin panel. This is a *separate* token from the GitHub `CLOUDFLARE_API_TOKEN` used to deploy. |
 
 **Variables** (type: Text):
 
@@ -117,6 +118,8 @@ Go to **Workers & Pages → zeta → Settings → Variables and Secrets**:
 |------|-------|
 | `APP_URL` | Your Worker URL, e.g. `https://zeta.yourname.workers.dev` or your custom domain. Use the exact `https://` URL users open: it is the only origin CORS allows, the passkey RP ID, the base of email links and the issuer/audience of every login token (changing it later signs everybody out) |
 | `TABLE_PREFIX` | *(Optional)* Prefix for all internal D1 tables, e.g. `kp` → tables become `kp_users`, `kp_settings`, etc. Must be set **before** calling the setup endpoint. Cannot be changed after initialisation. |
+
+> `CF_ACCOUNT_ID` and `ZETA_APP_DB_ID` are injected automatically at deploy time from the GitHub Variables `CLOUDFLARE_ACCOUNT_ID` and `D1_DATABASE_ID` — do **not** set them here. You only configure `CF_D1_API_TOKEN` above.
 
 > These are kept out of GitHub entirely. The `keep_vars = true` setting in `wrangler.toml` ensures each deployment never overwrites values you set here.
 
@@ -154,7 +157,7 @@ Expected response:
 { "ok": true, "message": "Database initialised successfully. You can now register at /register — the first user becomes admin. On new installs registration then stays closed until an admin opens it in Admin → Settings." }
 ```
 
-> The endpoint is idempotent — safe to call multiple times. **Re-run it after every upgrade**: it also applies schema upgrades to databases created by earlier versions (e.g. making `query_history` keep rows when a user or database is deleted — until then, deleting users or databases fails — and creating the `rate_limits` table that makes login / 2FA / email rate limits exact; until it exists they fall back to approximate KV counters; and rebuilding a `user_database_permissions` table whose foreign keys still point at unprefixed `users` / `d1_databases` tables — until then, granting or revoking database access and deleting users or databases fail with `no such table`. Permission rows whose user or database no longer exists are dropped; the response reports how many under `permissionsRepair`; and creating the `notebook_runs` table plus the `users.notebook_run_limit` column for [saved query results](#saved-query-results) — until then, runs are not saved and the list of saved runs fails to load; and numbering saved runs: adding `notebook_runs.seq` and `notebooks.last_run_seq`, numbering the existing runs of each notebook from 1 (oldest first) and adding a unique `(notebook_id, seq)` index — **after deploying the version with numbered run tabs, call it once more**: until then, queries still run but are not saved, and the run tabs fail to load). Databases created from the migrations get the same through `pnpm migrate:remote` (`0004_notebook_runs.sql`, `0005_notebook_run_seq.sql`).
+> The endpoint is idempotent — safe to call multiple times. **Re-run it after every upgrade**: it also applies schema upgrades to databases created by earlier versions (e.g. making `query_history` keep rows when a user or database is deleted — until then, deleting users or databases fails — and creating the `rate_limits` table that makes login / 2FA / email rate limits exact; until it exists they fall back to approximate KV counters; and rebuilding a `user_database_permissions` table whose foreign keys still point at unprefixed `users` / `d1_databases` tables — until then, granting or revoking database access and deleting users or databases fail with `no such table`. Permission rows whose user or database no longer exists are dropped; the response reports how many under `permissionsRepair`; and creating the `notebook_runs` table plus the `users.notebook_run_limit` column for [saved query results](#saved-query-results) — until then, runs are not saved and the list of saved runs fails to load; and numbering saved runs: adding `notebook_runs.seq` and `notebooks.last_run_seq`, numbering the existing runs of each notebook from 1 (oldest first) and adding a unique `(notebook_id, seq)` index — **after deploying the version with numbered run tabs, call it once more**: until then, queries still run but are not saved, and the run tabs fail to load; and adding `d1_databases.cf_database_id` for [adding D1 databases over the HTTP API](#adding-a-queryable-d1-database) — until then, the admin panel's add/link database flows fail with `no such column: cf_database_id`). Databases created from the migrations get the same through `pnpm migrate:remote` (`0004_notebook_runs.sql`, `0005_notebook_run_seq.sql`, `0006_d1_cf_database_id.sql`).
 >
 > Earlier versions used `GET /api/setup/<SETUP_SECRET>`. That form is gone: it now returns `405` and does nothing. If you ever opened the old URL, consider rotating `SETUP_SECRET`.
 
@@ -173,22 +176,14 @@ On new installs, registration closes as soon as that first account exists. After
 
 ## Adding a Queryable D1 Database
 
-D1 databases are injected into the Worker at deploy time via GitHub Actions Variables — no file editing required.
+D1 databases are added from the admin panel — no binding, no redeploy. The Worker reaches them over the Cloudflare D1 HTTP API using the `CF_D1_API_TOKEN` secret and `CF_ACCOUNT_ID` variable configured in Step 3.
 
-1. In your GitHub repo → **Settings → Secrets and variables → Actions → Variables**, add two variables:
+1. In **Admin → Databases**, click **Add database**.
+2. Pick a D1 database from your account's list (Zeta's own app database is excluded).
+3. Optionally set a display name and description, then register it.
+4. Grant users `read` or `write` access in **Admin → Databases → Permissions**.
 
-   | Name | Value |
-   |------|-------|
-   | `QUERY_DB_N_NAME` | The D1 database name (e.g. `my-app-db`) |
-   | `QUERY_DB_N_ID` | The D1 database ID (UUID from the Cloudflare dashboard) |
-
-   Replace `N` with a number from 1 to 10 (e.g. `QUERY_DB_1_NAME`, `QUERY_DB_1_ID`). Numbers don't need to be consecutive.
-
-2. Push to `main` (or trigger **workflow_dispatch**) — the Actions workflow will automatically append a `[[d1_databases]]` binding for every `QUERY_DB_N` pair that is set.
-
-3. In **Admin → Databases**, click **Add database** and enter the binding name (e.g. `QUERY_DB_1`).
-
-4. In **Databases → Permissions**, grant users `read` or `write` access.
+> **Migrating databases registered before the HTTP API.** Databases added by the old binding method still run through their Worker binding until you re-link them. In **Admin → Databases**, click **Link** on a database that still shows a binding, and pick the matching Cloudflare database. Permissions, query history and saved runs are kept. Once every database is re-linked, you can delete the `QUERY_DB_N_*` GitHub Actions variables — they are no longer needed.
 
 ---
 
@@ -245,6 +240,9 @@ JWT_SECRET=dev-jwt-secret
 ENCRYPTION_KEY=0000000000000000000000000000000000000000000000000000000000000001
 SETUP_SECRET=dev-setup-secret
 APP_URL=http://localhost:8787
+CF_D1_API_TOKEN=<a D1 → Edit API token>
+CF_ACCOUNT_ID=<your Cloudflare Account ID>
+ZETA_APP_DB_ID=<the D1 Database ID of this app's own database>
 ```
 
 Initialise the local database:
@@ -285,8 +283,8 @@ git config blame.ignoreRevsFile .git-blame-ignore-revs
 | `D1_DATABASE_NAME` | Variable | D1 database name (e.g. `zeta-db`) |
 | `D1_DATABASE_ID` | Variable | D1 database ID |
 | `KV_NAMESPACE_ID` | Variable | KV namespace ID |
-| `QUERY_DB_N_NAME` | Variable | Query database name for slot N (1–10), e.g. `QUERY_DB_1_NAME` |
-| `QUERY_DB_N_ID` | Variable | Query database ID for slot N (1–10), e.g. `QUERY_DB_1_ID` |
+| `QUERY_DB_N_NAME` | Variable | *(Legacy)* Query database name for slot N (1–10), e.g. `QUERY_DB_1_NAME` — only needed for databases still on bindings |
+| `QUERY_DB_N_ID` | Variable | *(Legacy)* Query database ID for slot N (1–10), e.g. `QUERY_DB_1_ID` — only needed for databases still on bindings |
 
 ### Cloudflare Dashboard (set manually)
 
@@ -295,8 +293,11 @@ git config blame.ignoreRevsFile .git-blame-ignore-revs
 | `JWT_SECRET` | Secret | Signs access + refresh JWTs (HS256) |
 | `ENCRYPTION_KEY` | Secret | 64-char hex (strictly validated) — AES-GCM key for TOTP secrets and SMTP/Resend credentials |
 | `SETUP_SECRET` | Secret | Protects `POST /api/setup` |
+| `CF_D1_API_TOKEN` | Secret | API token with `D1 → Edit` permission — lists and queries the D1 databases added in the admin panel |
 | `APP_URL` | Variable | Full URL of your deployment; also the JWT `iss`/`aud`, so tokens from another deployment sharing `JWT_SECRET` are rejected |
 | `TABLE_PREFIX` | Variable | *(Optional)* Prefix for internal tables (e.g. `kp`). Set before first setup run. Immutable after initialisation. |
+
+`CF_ACCOUNT_ID` and `ZETA_APP_DB_ID` are not set here: `wrangler.toml`'s `[vars]` injects them at deploy time from the GitHub Variables `CLOUDFLARE_ACCOUNT_ID` and `D1_DATABASE_ID`.
 
 ---
 
@@ -309,7 +310,7 @@ All endpoints live under `/api/`. Authentication uses short-lived JWT access tok
 | `POST /api/auth/*` | Register, login, logout, token refresh, email verification, password reset, 2FA (TOTP / Email OTP / Passkey) |
 | `GET/PATCH /api/profile/*` | Profile, password change, TOTP setup/confirm/delete, passkey registration/delete. Deleting a TOTP or passkey requires a JSON body `{"currentPassword": "..."}` |
 | `GET /api/databases` | List accessible databases for the current user |
-| `POST /api/query` | Execute SQL against a bound D1 database (`/batch` for several statements). Reads return at most 5,000 rows (`truncated: true` beyond). With `notebookId`, the run is saved under that notebook and the response carries `run_id` / `seq` (its number) / `executed_at` |
+| `POST /api/query` | Execute SQL against a queryable D1 database (`/batch` for several statements). Databases added in the admin panel run over the D1 HTTP API; legacy ones still use their Worker binding until re-linked. Reads return at most 5,000 rows (`truncated: true` beyond). With `notebookId`, the run is saved under that notebook and the response carries `run_id` / `seq` (its number) / `executed_at` |
 | `GET /api/query/history` | Query execution history (filterable by database) |
 | `GET/POST/PATCH/DELETE /api/notebooks` | CRUD for SQL notebooks (per-user, max 20) |
 | `GET/DELETE /api/notebooks/:id/runs[/:runId]` | A notebook's saved runs: list (highest number `seq` first, `limit` plus `before=<seq>` or `offset`), read one with its results, delete one, or clear all |

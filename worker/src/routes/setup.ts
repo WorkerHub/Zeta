@@ -144,6 +144,17 @@ async function addUserRunLimitColumn(db: D1Database, T: ReturnType<typeof tables
   return true
 }
 
+// d1_databases.cf_database_id was added when query targets moved to the D1 HTTP API; older tables
+// lack it and keep working through their binding until an admin re-links each database. This only
+// adds the column (the binding → UUID mapping cannot be recovered at runtime, so the rows are
+// re-linked from the admin UI).
+async function addCfDatabaseIdColumn(db: D1Database, T: ReturnType<typeof tables>): Promise<boolean> {
+  const cols = await db.prepare(`PRAGMA table_info(${T.d1_databases})`).all<{ name: string }>()
+  if (cols.results.some((col) => col.name === 'cf_database_id')) return false
+  await db.prepare(`ALTER TABLE ${T.d1_databases} ADD COLUMN cf_database_id TEXT`).run()
+  return true
+}
+
 // Run numbers (notebook_runs.seq, the counter notebooks.last_run_seq) were added after saved runs
 // first shipped; same change as migrations/0005. Adds the missing columns, numbers the runs that
 // have no number yet (oldest first, after the notebook's highest number, so re-runs only touch
@@ -238,6 +249,7 @@ function buildDDL(T: ReturnType<typeof tables>): string[] {
       name TEXT NOT NULL,
       description TEXT,
       binding_name TEXT NOT NULL UNIQUE,
+      cf_database_id TEXT,
       is_active INTEGER NOT NULL DEFAULT 1,
       created_at INTEGER NOT NULL,
       created_by TEXT REFERENCES ${T.users}(id)
@@ -386,6 +398,9 @@ setup.post('/', async (c) => {
       }
       if (await addUserRunLimitColumn(c.env.DB, T)) {
         upgraded.push(`${T.users}: added notebook_run_limit`)
+      }
+      if (await addCfDatabaseIdColumn(c.env.DB, T)) {
+        upgraded.push(`${T.d1_databases}: added cf_database_id`)
       }
       const runNumbers = await numberRuns(c.env.DB, T)
       if (runNumbers) upgraded.push(runNumbers)

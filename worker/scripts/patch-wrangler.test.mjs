@@ -34,6 +34,8 @@ describe('patchWrangler', () => {
     expect(values('database_name')).toEqual(['zeta-db'])
     expect(values('database_id')).toEqual([base.D1_DATABASE_ID])
     expect(values('id')).toEqual([base.KV_NAMESPACE_ID])
+    expect(values('CF_ACCOUNT_ID')).toEqual([base.CLOUDFLARE_ACCOUNT_ID])
+    expect(values('ZETA_APP_DB_ID')).toEqual([base.D1_DATABASE_ID])
   })
 
   it('keeps hostile values inside their TOML strings', () => {
