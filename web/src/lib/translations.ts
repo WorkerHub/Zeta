@@ -218,7 +218,7 @@ export const translations: Record<Locale, Record<string, string>> = {
     'admin_db.link': 'Link',
     'admin_db.link_title': 'Link database',
     'admin_db.link_desc':
-      'This database still runs through its Worker binding. Link it to a Cloudflare database to switch it to the D1 HTTP API; permissions, history and saved runs are kept.',
+      'This database is not linked to a Cloudflare database yet, so it cannot be queried. Link it to switch it to the D1 HTTP API; permissions, history and saved runs are kept.',
     'admin_db.no_available': 'No unregistered D1 databases found in this account.',
 
     // Admin Settings
@@ -544,7 +544,7 @@ export const translations: Record<Locale, Record<string, string>> = {
     'admin_db.link': '关联',
     'admin_db.link_title': '关联数据库',
     'admin_db.link_desc':
-      '该数据库仍通过 Worker 绑定运行。将其关联到某个 Cloudflare 数据库即可切换为 D1 HTTP API；权限、历史与已保存的运行记录都会保留。',
+      '该数据库尚未关联到 Cloudflare 数据库，因此暂时无法查询。将其关联到某个 Cloudflare 数据库即可切换为 D1 HTTP API；权限、历史与已保存的运行记录都会保留。',
     'admin_db.no_available': '该账号中没有未注册的 D1 数据库。',
 
     // Admin Settings

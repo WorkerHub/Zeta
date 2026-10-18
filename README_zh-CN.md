@@ -176,14 +176,14 @@ curl -X POST https://<你的域名>/api/setup \
 
 ## 接入更多 D1 数据库
 
-D1 数据库现在从管理后台直接添加——**无需绑定，也无需重新部署**。Worker 通过 Cloudflare D1 HTTP API 访问它们，凭据是第三步配置的 `CF_D1_API_TOKEN`（密钥）与 `CF_ACCOUNT_ID`（变量）。
+D1 数据库现在从管理后台直接添加——**无需绑定、无需改 GitHub Variables、也无需重新部署**。Worker 通过 Cloudflare D1 HTTP API 访问它们，凭据是第三步配置的 `CF_D1_API_TOKEN`（密钥）与 `CF_ACCOUNT_ID`（变量）。
 
 1. 在**管理后台 → 数据库**中点击**添加数据库**。
 2. 从账号的 D1 数据库列表中选择一个（Zeta 自身的应用库已被排除）。
 3. 可选地填写显示名称和描述，然后注册。
 4. 在**管理后台 → 数据库 → 权限**中为用户分配 `read`（只读）或 `write`（读写）权限。
 
-> **迁移旧的绑定式数据库。** 用旧的绑定方式注册的数据库，在你重新关联之前仍会通过 Worker 绑定运行。在**管理后台 → 数据库**中，对仍显示「通过绑定」的数据库点击**关联**，从列表中选择对应的 Cloudflare 数据库即可。权限、查询历史与已保存的运行记录都会保留。全部关联完成后，可以删除 GitHub 里的 `QUERY_DB_N_*` Actions 变量——它们已不再需要。
+> **旧版绑定式数据库。** 用旧的绑定方式注册的数据库没有 `cf_database_id`，在重新关联之前将无法查询。在**管理后台 → 数据库**中，对这类数据库点击**关联**，从列表中选择对应的 Cloudflare 数据库即可。权限、查询历史与已保存的运行记录都会保留。
 
 ---
 
@@ -283,8 +283,6 @@ git config blame.ignoreRevsFile .git-blame-ignore-revs
 | `D1_DATABASE_NAME` | Variable | D1 数据库名称（例如 `zeta-db`） |
 | `D1_DATABASE_ID` | Variable | D1 数据库 ID |
 | `KV_NAMESPACE_ID` | Variable | KV 命名空间 ID |
-| `QUERY_DB_N_NAME` | Variable | *（旧版）* 第 N 个查询数据库的名称（N 为 1–10），例如 `QUERY_DB_1_NAME` — 仅仍走绑定的数据库需要 |
-| `QUERY_DB_N_ID` | Variable | *（旧版）* 第 N 个查询数据库的 ID（N 为 1–10），例如 `QUERY_DB_1_ID` — 仅仍走绑定的数据库需要 |
 
 ### Cloudflare 控制台（手动配置）
 
@@ -310,7 +308,7 @@ git config blame.ignoreRevsFile .git-blame-ignore-revs
 | `POST /api/auth/*` | 注册、登录、注销、令牌刷新、邮件验证、密码重置、2FA（TOTP / 邮件 OTP / Passkey） |
 | `GET/PATCH /api/profile/*` | 个人信息、修改密码、TOTP 设置/确认/删除、Passkey 注册/删除。删除 TOTP 或 Passkey 需在 JSON 请求体中提供 `{"currentPassword": "..."}` |
 | `GET /api/databases` | 列出当前用户可访问的数据库 |
-| `POST /api/query` | 对可查询的 D1 数据库执行 SQL（多条语句用 `/batch`）。后台添加的数据库走 D1 HTTP API 执行，旧库在重新关联前仍走 Worker 绑定。读查询最多返回 5000 行，超出时返回 `truncated: true`。带上 `notebookId` 时，这次运行会保存到该 Notebook 下，响应中附带 `run_id` / `seq`（运行编号）/ `executed_at` |
+| `POST /api/query` | 对可查询的 D1 数据库执行 SQL（多条语句用 `/batch`）。数据库走 D1 HTTP API 执行。读查询最多返回 5000 行，超出时返回 `truncated: true`。带上 `notebookId` 时，这次运行会保存到该 Notebook 下，响应中附带 `run_id` / `seq`（运行编号）/ `executed_at` |
 | `GET /api/query/history` | 查询执行历史（可按数据库过滤） |
 | `GET/POST/PATCH/DELETE /api/notebooks` | SQL Notebook 的增删改查（每用户，最多 20 个） |
 | `GET/DELETE /api/notebooks/:id/runs[/:runId]` | Notebook 的运行记录：列表（按编号 `seq` 从大到小，支持 `limit`，以及 `before=<seq>` 或 `offset` 翻页）、读取单条及其结果、删除单条、清空全部 |

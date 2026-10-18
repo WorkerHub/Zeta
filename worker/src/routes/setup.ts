@@ -145,9 +145,9 @@ async function addUserRunLimitColumn(db: D1Database, T: ReturnType<typeof tables
 }
 
 // d1_databases.cf_database_id was added when query targets moved to the D1 HTTP API; older tables
-// lack it and keep working through their binding until an admin re-links each database. This only
-// adds the column (the binding → UUID mapping cannot be recovered at runtime, so the rows are
-// re-linked from the admin UI).
+// lack it and cannot be queried until an admin re-links each database. This only adds the column
+// (the binding → UUID mapping cannot be recovered at runtime, so the rows are re-linked from the
+// admin UI).
 async function addCfDatabaseIdColumn(db: D1Database, T: ReturnType<typeof tables>): Promise<boolean> {
   const cols = await db.prepare(`PRAGMA table_info(${T.d1_databases})`).all<{ name: string }>()
   if (cols.results.some((col) => col.name === 'cf_database_id')) return false

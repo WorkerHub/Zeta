@@ -6,7 +6,7 @@ const DB_1 = '22222222-2222-4222-8222-222222222222'
 
 afterEach(() => vi.unstubAllGlobals())
 
-// db1 is registered with a binding this Worker does not have
+// db1 is registered but not linked to a Cloudflare database (no cf_database_id)
 function queryEnv() {
   const { db } = fakeD1((sql) => {
     if (sql.startsWith('SELECT * FROM d1_databases')) return { id: 'db1', binding_name: 'QUERY_DB_9', is_active: 1 }
@@ -34,23 +34,23 @@ const fetchOk = (result: unknown) =>
       new Response(JSON.stringify(result), { status: 200, headers: { 'Content-Type': 'application/json' } })
     )
 
-describe('query against a database whose binding is missing', () => {
+describe('query against a database that is not linked', () => {
   for (const [path, body] of [
     ['/api/query', { databaseId: 'db1', sql: 'SELECT 1' }],
     ['/api/query/batch', { databaseId: 'db1', statements: ['SELECT 1'] }],
   ] as const) {
-    it(`${path}: does not reveal the binding name to members`, async () => {
+    it(`${path}: does not reveal the missing link to members`, async () => {
       const env = queryEnv()
       const res = await callWorker(env, path, postJson(body, { headers: await bearer(env, 'u1') }))
       expect(res.status).toBe(500)
       expect(await res.json()).toEqual({ error: 'Database configuration error. Contact the admin.' })
     })
 
-    it(`${path}: tells admins which binding is wrong`, async () => {
+    it(`${path}: tells admins the database is not linked`, async () => {
       const env = queryEnv()
       const res = await callWorker(env, path, postJson(body, { headers: await bearer(env, 'a1', 'admin') }))
       expect(res.status).toBe(500)
-      expect(((await res.json()) as { error: string }).error).toContain('QUERY_DB_9')
+      expect(((await res.json()) as { error: string }).error).toContain('not linked')
     })
   }
 })

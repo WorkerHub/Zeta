@@ -176,14 +176,14 @@ On new installs, registration closes as soon as that first account exists. After
 
 ## Adding a Queryable D1 Database
 
-D1 databases are added from the admin panel — no binding, no redeploy. The Worker reaches them over the Cloudflare D1 HTTP API using the `CF_D1_API_TOKEN` secret and `CF_ACCOUNT_ID` variable configured in Step 3.
+D1 databases are added from the admin panel — no binding, no GitHub Variables, no redeploy. The Worker reaches them over the Cloudflare D1 HTTP API using the `CF_D1_API_TOKEN` secret and `CF_ACCOUNT_ID` variable configured in Step 3.
 
 1. In **Admin → Databases**, click **Add database**.
 2. Pick a D1 database from your account's list (Zeta's own app database is excluded).
 3. Optionally set a display name and description, then register it.
 4. Grant users `read` or `write` access in **Admin → Databases → Permissions**.
 
-> **Migrating databases registered before the HTTP API.** Databases added by the old binding method still run through their Worker binding until you re-link them. In **Admin → Databases**, click **Link** on a database that still shows a binding, and pick the matching Cloudflare database. Permissions, query history and saved runs are kept. Once every database is re-linked, you can delete the `QUERY_DB_N_*` GitHub Actions variables — they are no longer needed.
+> **Databases registered before the HTTP API.** A database added by the old binding method has no `cf_database_id` and can no longer be queried until you re-link it. In **Admin → Databases**, click **Link** on such a database and pick the matching Cloudflare database. Permissions, query history and saved runs are kept.
 
 ---
 
@@ -283,8 +283,6 @@ git config blame.ignoreRevsFile .git-blame-ignore-revs
 | `D1_DATABASE_NAME` | Variable | D1 database name (e.g. `zeta-db`) |
 | `D1_DATABASE_ID` | Variable | D1 database ID |
 | `KV_NAMESPACE_ID` | Variable | KV namespace ID |
-| `QUERY_DB_N_NAME` | Variable | *(Legacy)* Query database name for slot N (1–10), e.g. `QUERY_DB_1_NAME` — only needed for databases still on bindings |
-| `QUERY_DB_N_ID` | Variable | *(Legacy)* Query database ID for slot N (1–10), e.g. `QUERY_DB_1_ID` — only needed for databases still on bindings |
 
 ### Cloudflare Dashboard (set manually)
 
@@ -310,7 +308,7 @@ All endpoints live under `/api/`. Authentication uses short-lived JWT access tok
 | `POST /api/auth/*` | Register, login, logout, token refresh, email verification, password reset, 2FA (TOTP / Email OTP / Passkey) |
 | `GET/PATCH /api/profile/*` | Profile, password change, TOTP setup/confirm/delete, passkey registration/delete. Deleting a TOTP or passkey requires a JSON body `{"currentPassword": "..."}` |
 | `GET /api/databases` | List accessible databases for the current user |
-| `POST /api/query` | Execute SQL against a queryable D1 database (`/batch` for several statements). Databases added in the admin panel run over the D1 HTTP API; legacy ones still use their Worker binding until re-linked. Reads return at most 5,000 rows (`truncated: true` beyond). With `notebookId`, the run is saved under that notebook and the response carries `run_id` / `seq` (its number) / `executed_at` |
+| `POST /api/query` | Execute SQL against a queryable D1 database (`/batch` for several statements). Databases run over the D1 HTTP API. Reads return at most 5,000 rows (`truncated: true` beyond). With `notebookId`, the run is saved under that notebook and the response carries `run_id` / `seq` (its number) / `executed_at` |
 | `GET /api/query/history` | Query execution history (filterable by database) |
 | `GET/POST/PATCH/DELETE /api/notebooks` | CRUD for SQL notebooks (per-user, max 20) |
 | `GET/DELETE /api/notebooks/:id/runs[/:runId]` | A notebook's saved runs: list (highest number `seq` first, `limit` plus `before=<seq>` or `offset`), read one with its results, delete one, or clear all |

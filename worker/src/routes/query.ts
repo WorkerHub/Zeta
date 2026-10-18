@@ -22,8 +22,9 @@ const MAX_SQL_LENGTH = 100_000
 const query = new Hono<{ Bindings: Env; Variables: Variables }>()
 query.use('*', requireAuth)
 
-// A registered database whose target cannot be resolved (missing binding, application DB, or a
-// missing ZETA_APP_DB_ID). The detail is a deployment detail, so only admins get to see it.
+// A registered database whose target cannot be resolved (not linked to a Cloudflare database, the
+// application DB, or a missing ZETA_APP_DB_ID). The detail is a deployment detail, so only admins
+// get to see it.
 function queryError(c: Context<{ Bindings: Env; Variables: Variables }>, detail: string) {
   if (c.get('userRole') === 'admin') return c.json({ error: `${detail} Contact the admin.` }, 500)
   console.error(`Query target error: ${detail}`)
@@ -76,36 +77,16 @@ interface Executed {
   truncated: boolean
 }
 
-// Runs one statement that already passed classification and the permission check. Reads are
-// capped by the database itself: wrapped in `LIMIT MAX_RESULT_ROWS + 1` (see limitReadSql), the
-// extra row only telling that the result was cut off. EXPLAIN and PRAGMA cannot be wrapped and are
-// cut off here instead. The target is a Worker binding or the D1 HTTP API; both return the same
-// shape so the rest of the route is unchanged.
+// Runs one statement that already passed classification and the permission check over the D1 HTTP
+// API. Reads are capped by the database itself: wrapped in `LIMIT MAX_RESULT_ROWS + 1` (see
+// limitReadSql), the extra row only telling that the result was cut off. EXPLAIN and PRAGMA cannot
+// be wrapped and are cut off here instead.
 async function executeStatement(env: Env, target: QueryTarget, sql: string, kind: SqlClass): Promise<Executed> {
   if (isWriteClass(kind)) {
-    if (target.kind === 'binding') {
-      const res = await target.d1.prepare(sql).run()
-      return {
-        results: [],
-        meta: res.meta as Record<string, unknown>,
-        changes: res.meta.changes ?? 0,
-        truncated: false,
-      }
-    }
     const res = await queryD1Http(env, target.databaseId, sql)
     return { results: [], meta: res.meta, changes: res.changes, truncated: false }
   }
   const limited = limitReadSql(sql, MAX_RESULT_ROWS)
-  if (target.kind === 'binding') {
-    const res = await target.d1.prepare(limited ?? sql).all()
-    const rows = res.results as Record<string, unknown>[]
-    const truncated = rows.length > MAX_RESULT_ROWS
-    return {
-      results: truncated ? rows.slice(0, MAX_RESULT_ROWS) : rows,
-      meta: res.meta as Record<string, unknown>,
-      truncated,
-    }
-  }
   const res = await queryD1Http(env, target.databaseId, limited ?? sql)
   const rows = res.results
   const truncated = rows.length > MAX_RESULT_ROWS
@@ -164,7 +145,7 @@ query.post('/', async (c) => {
   const denied = checkSqlAccess(kind, permission)
   if (denied) return c.json({ error: denied }, kind === 'multiple' || kind === 'empty' ? 400 : 403)
 
-  // Resolve the execution target (D1 HTTP API, or a legacy binding during the migration)
+  // Resolve the execution target (always the D1 HTTP API)
   const resolved = resolveQueryTarget(c.env, db)
   if (!resolved.ok) return queryError(c, resolved.error)
 
@@ -270,7 +251,7 @@ query.post('/batch', async (c) => {
     permission = (perm.permission as Permission) ?? 'read'
   }
 
-  // Resolve the execution target (D1 HTTP API, or a legacy binding during the migration)
+  // Resolve the execution target (always the D1 HTTP API)
   const resolved = resolveQueryTarget(c.env, db)
   if (!resolved.ok) return queryError(c, resolved.error)
 
