@@ -157,7 +157,7 @@ curl -X POST https://<你的域名>/api/setup \
 { "ok": true, "message": "Database initialised successfully. You can now register at /register — the first user becomes admin. On new installs registration then stays closed until an admin opens it in Admin → Settings." }
 ```
 
-> 现在也有一个 `/setup` 页面入口，对大多数用户而言比在终端里敲命令更方便：它提交的是同一个 `POST /api/setup` 请求（带上密钥），因此受到相同的限流保护。管理员可以在**管理后台 → 设置**里隐藏该页面（`setup_page_enabled`，默认开启）——这个开关**只影响页面**；`POST /api/setup` 仍可用密钥调用，作为升级 / 救急通道。`POST /api/setup` 按来源 IP 限流：**每 15 分钟 10 次**（超限返回 `429` 并带 `Retry-After` 头），计数发生在密钥校验之前。
+> 现在也有一个 `/setup` 页面入口，对大多数用户而言比在终端里敲命令更方便：它提交的是同一个 `POST /api/setup` 请求（带上密钥），因此受到相同的限流保护。管理员可以在**管理后台 → 设置**里隐藏该页面（`setup_page_enabled`，默认开启）——这个开关**只影响页面**；`POST /api/setup` 仍可用密钥调用，作为升级 / 救急通道。`POST /api/setup` 按来源 IP 限流：**每 10 分钟 3 次**（超限返回 `429` 并带 `Retry-After` 头），计数发生在密钥校验之前。
 
 > 该接口是幂等的，重复调用不会造成任何破坏，可安全地多次调用。**每次升级部署后请再调用一次**：它还会对旧版本创建的数据库执行 Schema 升级（例如让 `query_history` 在删除用户或数据库时保留记录——升级前删除用户或数据库会失败；以及创建 `rate_limits` 表，让登录 / 两步验证 / 邮件的限流计数精确生效——该表创建前会退回到近似的 KV 计数；以及在 `user_database_permissions` 表的外键仍指向不带前缀的 `users` / `d1_databases` 表时重建该表——修复前授权、撤销数据库权限以及删除用户或数据库都会报 `no such table` 错误。用户或数据库已不存在的权限记录会被丢弃，丢弃的行数会在响应的 `permissionsRepair` 字段中给出；以及为[查询结果保留](#查询结果保留)创建 `notebook_runs` 表并给 `users` 表添加 `notebook_run_limit` 列——升级前运行结果不会被保存，运行记录列表也无法加载；以及为运行记录编号：添加 `notebook_runs.seq` 和 `notebooks.last_run_seq` 列，把每个 Notebook 已有的运行记录按时间从早到晚从 1 开始编号，并建立唯一索引 `(notebook_id, seq)`——**部署带编号运行标签页的版本后，请再调用一次**：调用前查询仍可正常执行，但不会被保存，运行记录标签页也无法加载；以及为[通过 HTTP 接口添加 D1 数据库](#接入更多-d1-数据库)添加 `d1_databases.cf_database_id` 列——升级前后台的添加/关联数据库会报 `no such column: cf_database_id`）。通过迁移文件创建的数据库可执行 `pnpm migrate:remote`（`0004_notebook_runs.sql`、`0005_notebook_run_seq.sql`、`0006_d1_cf_database_id.sql`）完成同样的升级。
 >
@@ -318,7 +318,7 @@ git config blame.ignoreRevsFile .git-blame-ignore-revs
 | `GET/DELETE /api/notebooks/:id/runs[/:runId]` | Notebook 的运行记录：列表（按编号 `seq` 从大到小，支持 `limit`，以及 `before=<seq>` 或 `offset` 翻页）、读取单条及其结果、删除单条、清空全部 |
 | `GET/PUT /api/profile/run-settings` | 用户自己的保留次数（`run_limit`，`null` 表示跟随管理员上限）及存储用量 |
 | `GET/POST/PATCH/DELETE /api/admin/*` | 仅管理员：用户、数据库、权限、设置 |
-| `POST /api/setup` | 幂等的数据库 Schema 初始化（JSON 请求体 `{"secret": "<SETUP_SECRET>"}`）。按 IP 限流：每 15 分钟 10 次 |
+| `POST /api/setup` | 幂等的数据库 Schema 初始化（JSON 请求体 `{"secret": "<SETUP_SECRET>"}`）。按 IP 限流：每 10 分钟 3 次 |
 | `GET /api/setup/state` | 公开接口：`{"enabled": boolean}` —— `/setup` 页面是否开启 |
 | `GET /api/health` | 健康检查 |
 

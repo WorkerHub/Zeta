@@ -354,8 +354,8 @@ export async function checkRegisterRateLimit(env: Env, ip: string): Promise<bool
   return checkRateLimit(env, KV.registerAttempts(ip), 5, 15 * 60)
 }
 
-const SETUP_WINDOW = 15 * 60
-const SETUP_LIMIT = 10
+const SETUP_WINDOW = 10 * 60
+const SETUP_LIMIT = 3
 
 // Counts a setup attempt by IP and reports how many seconds remain in the current window once the
 // limit is exceeded (0 while still allowed), so the caller can send an exact Retry-After header.

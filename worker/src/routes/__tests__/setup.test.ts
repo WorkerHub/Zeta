@@ -56,10 +56,10 @@ describe('setup endpoint', () => {
   describe('POST /api/setup rate limiting', () => {
     const attempt = (ip?: string) => postJson({ secret: 'wrong' }, ip ? { headers: { 'cf-connecting-ip': ip } } : {})
 
-    it('returns 429 with Retry-After once an IP exceeds 10 attempts', async () => {
+    it('returns 429 with Retry-After once an IP exceeds 3 attempts', async () => {
       const { db } = fakeD1()
       const env = fakeEnv({ DB: db })
-      for (let i = 0; i < 10; i++) {
+      for (let i = 0; i < 3; i++) {
         expect((await callWorker(env, '/api/setup', attempt('203.0.113.9'))).status).toBe(403)
       }
       const blocked = await callWorker(env, '/api/setup', attempt('203.0.113.9'))
@@ -72,17 +72,17 @@ describe('setup endpoint', () => {
       const { db } = fakeD1()
       const env = fakeEnv({ DB: db })
       expect((await callWorker(env, '/api/setup', postJson({ secret: 'test-setup-secret' }))).status).toBe(200)
-      for (let i = 0; i < 9; i++) {
+      for (let i = 0; i < 2; i++) {
         expect((await callWorker(env, '/api/setup', postJson({ secret: 'wrong' }))).status).toBe(403)
       }
-      // 1 success + 9 failures = 10 attempts; the next one is throttled even with the right secret.
+      // 1 success + 2 failures = 3 attempts; the next one is throttled even with the right secret.
       expect((await callWorker(env, '/api/setup', postJson({ secret: 'test-setup-secret' }))).status).toBe(429)
     })
 
     it('keeps per-IP counters independent', async () => {
       const { db } = fakeD1()
       const env = fakeEnv({ DB: db })
-      for (let i = 0; i < 10; i++) {
+      for (let i = 0; i < 3; i++) {
         await callWorker(env, '/api/setup', attempt('203.0.113.1'))
       }
       expect((await callWorker(env, '/api/setup', attempt('203.0.113.1'))).status).toBe(429)
