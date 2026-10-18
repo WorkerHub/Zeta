@@ -163,6 +163,8 @@ Expected response:
 >
 > Earlier versions used `GET /api/setup/<SETUP_SECRET>`. That form is gone: it now returns `405` and does nothing. If you ever opened the old URL, consider rotating `SETUP_SECRET`.
 
+> Once the database is initialised, a signed-in admin can run the same check-and-upgrade from **Admin → Settings** (the **Check & upgrade database** button) without the secret — the admin session is the credential. First-time initialisation still needs the `/setup` page or the `curl` command above.
+
 ---
 
 ### Step 6 — Create the admin account
