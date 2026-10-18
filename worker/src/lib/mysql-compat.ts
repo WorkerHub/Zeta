@@ -18,7 +18,7 @@ type Token = { kind: 'word' | 'quoted' | 'punct'; value: string }
 // A tiny lexer matching the identifier rules used by sql-guard. Quoted identifiers
 // (backtick or double quote, each with doubled-quote escapes) yield their unquoted
 // value; everything else that is not a word character becomes a single punctuation token.
-function lex(sql: string): Token[] {
+function lex(sql: string): Token[] | null {
   const tokens: Token[] = []
   const n = sql.length
   let i = 0
@@ -30,12 +30,14 @@ function lex(sql: string): Token[] {
       const quote = ch
       i++
       let value = ''
+      let closed = false
       while (i < n) {
         if (sql[i] === quote) {
           if (sql[i + 1] === quote) {
             value += quote
             i += 2
           } else {
+            closed = true
             i++
             break
           }
@@ -44,6 +46,8 @@ function lex(sql: string): Token[] {
           i++
         }
       }
+      // An unterminated quoted identifier is invalid syntax: leave it for the normal path.
+      if (!closed) return null
       tokens.push({ kind: 'quoted', value })
     } else if (/[A-Za-z0-9_$\u0080-\uFFFF]/.test(ch)) {
       const start = i
@@ -116,13 +120,17 @@ function showCreateSql(table: string): string {
   return [
     'SELECT name AS "Table", sql AS "Create Table"',
     'FROM sqlite_master',
-    `WHERE type = 'table' AND name = ${t}`,
+    `WHERE type = 'table' AND name = ${t} COLLATE NOCASE`,
   ].join('\n')
 }
 
 function showIndexSql(table: string): string {
   const t = sqlLiteral(table)
-  return [
+  // Index rows come from pragma_index_list, plus one synthesised PRIMARY row for a table
+  // whose primary key is an INTEGER PRIMARY KEY (rowid alias): SQLite does not list that key
+  // in pragma_index_list. The NOT EXISTS guard avoids duplicating primary keys that DO appear
+  // there (composite / non-INTEGER keys).
+  const indexRows = [
     'SELECT',
     `  ${t} AS "Table",`,
     '  CASE WHEN il."unique" THEN 0 ELSE 1 END AS "Non_unique",',
@@ -142,7 +150,38 @@ function showIndexSql(table: string): string {
     `FROM pragma_index_list(${t}) AS il`,
     'JOIN pragma_index_info(il.name) AS ii',
     `LEFT JOIN pragma_table_info(${t}) AS p ON p.cid = ii.cid`,
-    "ORDER BY CASE WHEN il.origin = 'pk' THEN 0 ELSE 1 END, il.name, ii.seqno",
+  ].join('\n')
+  const rowidPrimaryKey = [
+    'SELECT',
+    `  ${t} AS "Table",`,
+    '  0 AS "Non_unique",',
+    '  \'PRIMARY\' AS "Key_name",',
+    '  1 AS "Seq_in_index",',
+    '  r.name AS "Column_name",',
+    '  \'A\' AS "Collation",',
+    '  NULL AS "Cardinality",',
+    '  NULL AS "Sub_part",',
+    '  NULL AS "Packed",',
+    '  \'\' AS "Null",',
+    '  \'BTREE\' AS "Index_type",',
+    '  \'\' AS "Comment",',
+    '  \'\' AS "Index_comment",',
+    '  \'YES\' AS "Visible",',
+    '  NULL AS "Expression"',
+    `FROM pragma_table_info(${t}) AS r`,
+    'WHERE r.pk = 1',
+    "  AND upper(r.type) = 'INTEGER'",
+    `  AND NOT EXISTS (SELECT 1 FROM pragma_index_list(${t}) WHERE origin = 'pk')`,
+  ].join('\n')
+  return [
+    'SELECT * FROM (',
+    indexRows,
+    '',
+    'UNION ALL',
+    '',
+    rowidPrimaryKey,
+    ')',
+    'ORDER BY CASE WHEN "Key_name" = \'PRIMARY\' THEN 0 ELSE 1 END, "Key_name", "Seq_in_index"',
   ].join('\n')
 }
 
@@ -190,6 +229,7 @@ export function translateMySql(input: string): MySqlResult {
   const sql = input.trim()
   if (!sql) return null
   const tokens = lex(sql)
+  if (!tokens) return null
   const first = tokens[0]
   if (first?.kind !== 'word') return null
   const keyword = first.value.toLowerCase()

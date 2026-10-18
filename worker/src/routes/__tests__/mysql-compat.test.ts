@@ -94,6 +94,14 @@ describe('MySQL compatibility layer through /api/query', () => {
     expect(String(body.results[0]!['Create Table'])).toMatch(/^CREATE TABLE users/)
   })
 
+  it('SHOW CREATE TABLE matches names case-insensitively like SQLite identifiers', async () => {
+    const { env } = setup()
+    const { status, body } = await query(env, 'SHOW CREATE TABLE Users')
+    expect(status).toBe(200)
+    expect(body.results).toHaveLength(1)
+    expect(body.results[0]).toMatchObject({ Table: 'users' })
+  })
+
   it('SHOW INDEX returns index and PRIMARY key info', async () => {
     const { env } = setup()
     const { status, body } = await query(env, 'SHOW INDEX FROM orders')
@@ -123,6 +131,7 @@ describe('MySQL compatibility layer through /api/query', () => {
     ])
     const unique = await query(env, 'SHOW INDEX FROM users')
     expect(unique.body.results).toEqual([
+      expect.objectContaining({ Key_name: 'PRIMARY', Non_unique: 0, Seq_in_index: 1, Column_name: 'id' }),
       expect.objectContaining({ Key_name: 'idx_users_email', Non_unique: 0, Column_name: 'email' }),
     ])
   })
@@ -173,6 +182,8 @@ describe('MySQL compatibility layer through /api/query', () => {
     const { env } = setup()
     // SHOW VARIABLES is not translated: it stays a write, so a read user is denied
     expect((await query(env, 'SHOW VARIABLES')).status).toBe(403)
+    // An unterminated quoted table name is invalid syntax, not a successful rewrite
+    expect((await query(env, 'DESCRIBE `users')).status).toBeGreaterThanOrEqual(400)
     // Ordinary SQL is unaffected
     const select = await query(env, 'SELECT COUNT(*) AS n FROM users')
     expect(select.status).toBe(200)

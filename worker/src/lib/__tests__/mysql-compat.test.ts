@@ -78,7 +78,7 @@ describe('translateMySql', () => {
         [
           'SELECT name AS "Table", sql AS "Create Table"',
           'FROM sqlite_master',
-          "WHERE type = 'table' AND name = 'users'",
+          "WHERE type = 'table' AND name = 'users' COLLATE NOCASE",
         ].join('\n')
       )
       expect(sql('show create table `users`')).toBe(sql('SHOW CREATE TABLE users'))
@@ -95,6 +95,7 @@ describe('translateMySql', () => {
   describe('SHOW INDEX / INDEXES / KEYS', () => {
     const expected = (table: string) =>
       [
+        'SELECT * FROM (',
         'SELECT',
         `  '${table}' AS "Table",`,
         '  CASE WHEN il."unique" THEN 0 ELSE 1 END AS "Non_unique",',
@@ -114,7 +115,31 @@ describe('translateMySql', () => {
         `FROM pragma_index_list('${table}') AS il`,
         'JOIN pragma_index_info(il.name) AS ii',
         `LEFT JOIN pragma_table_info('${table}') AS p ON p.cid = ii.cid`,
-        "ORDER BY CASE WHEN il.origin = 'pk' THEN 0 ELSE 1 END, il.name, ii.seqno",
+        '',
+        'UNION ALL',
+        '',
+        'SELECT',
+        `  '${table}' AS "Table",`,
+        '  0 AS "Non_unique",',
+        '  \'PRIMARY\' AS "Key_name",',
+        '  1 AS "Seq_in_index",',
+        '  r.name AS "Column_name",',
+        '  \'A\' AS "Collation",',
+        '  NULL AS "Cardinality",',
+        '  NULL AS "Sub_part",',
+        '  NULL AS "Packed",',
+        '  \'\' AS "Null",',
+        '  \'BTREE\' AS "Index_type",',
+        '  \'\' AS "Comment",',
+        '  \'\' AS "Index_comment",',
+        '  \'YES\' AS "Visible",',
+        '  NULL AS "Expression"',
+        `FROM pragma_table_info('${table}') AS r`,
+        'WHERE r.pk = 1',
+        "  AND upper(r.type) = 'INTEGER'",
+        `  AND NOT EXISTS (SELECT 1 FROM pragma_index_list('${table}') WHERE origin = 'pk')`,
+        ')',
+        'ORDER BY CASE WHEN "Key_name" = \'PRIMARY\' THEN 0 ELSE 1 END, "Key_name", "Seq_in_index"',
       ].join('\n')
 
     it('rewrites SHOW INDEX, SHOW INDEXES and SHOW KEYS', () => {
@@ -155,7 +180,9 @@ describe('translateMySql', () => {
   describe('injection safety', () => {
     it('escapes single quotes in the table name', () => {
       expect(sql("DESCRIBE `x' OR 1=1`")).toContain("pragma_table_info('x'' OR 1=1')")
-      expect(sql("SHOW CREATE TABLE `x'; DROP TABLE users; --`")).toContain("name = 'x''; DROP TABLE users; --'")
+      expect(sql("SHOW CREATE TABLE `x'; DROP TABLE users; --`")).toContain(
+        "name = 'x''; DROP TABLE users; --' COLLATE NOCASE"
+      )
     })
 
     it('produces a single read-only statement that passes the guard', () => {
@@ -186,6 +213,13 @@ describe('translateMySql', () => {
       ]) {
         expect(translateMySql(input)).toBeNull()
       }
+    })
+
+    it('rejects an unterminated quoted table name in both quote styles', () => {
+      expect(translateMySql('DESCRIBE `users')).toBeNull()
+      expect(translateMySql('DESCRIBE "users')).toBeNull()
+      expect(translateMySql('SHOW CREATE TABLE `users')).toBeNull()
+      expect(translateMySql('SHOW INDEX FROM "users')).toBeNull()
     })
   })
 })
