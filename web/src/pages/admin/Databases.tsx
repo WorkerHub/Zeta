@@ -166,7 +166,6 @@ export default function AdminDatabases() {
         <div className="card p-5 mb-4 space-y-4">
           <h2 className="text-sm font-semibold text-zinc-700 dark:text-zinc-300">{t('admin_db.register_title')}</h2>
           <p className="text-xs text-zinc-500">{t('admin_db.register_desc')}</p>
-          <p className="text-xs text-amber-500">{t('admin_db.add_hint')}</p>
           <div className="grid sm:grid-cols-2 gap-4">
             <div className="sm:col-span-2">
               <label htmlFor="db-cf" className="label">

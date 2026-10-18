@@ -203,8 +203,6 @@ export const translations: Record<Locale, Record<string, string>> = {
     'admin_db.add_database': 'Add database',
     'admin_db.register_title': 'Register a D1 database',
     'admin_db.register_desc': 'Pick a D1 database from your Cloudflare account. No binding or redeploy needed.',
-    'admin_db.add_hint':
-      'Databases registered earlier via a Worker binding should be re-linked with "Link" instead of added again.',
     'admin_db.display_name': 'Display name',
     'admin_db.binding_name': 'Binding name',
     'admin_db.description': 'Description (optional)',
@@ -562,7 +560,6 @@ export const translations: Record<Locale, Record<string, string>> = {
     'admin_db.add_database': '添加数据库',
     'admin_db.register_title': '注册 D1 数据库',
     'admin_db.register_desc': '从 Cloudflare 账号中选择一个 D1 数据库，无需绑定或重新部署。',
-    'admin_db.add_hint': '此前通过 Worker 绑定注册过的数据库，请用「关联」重新关联，而不要再次添加。',
     'admin_db.display_name': '显示名称',
     'admin_db.binding_name': '绑定名称',
     'admin_db.description': '描述（可选）',
