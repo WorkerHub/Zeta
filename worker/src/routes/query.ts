@@ -13,6 +13,7 @@ import {
   type Permission,
   type SqlClass,
 } from '../lib/sql-guard'
+import { translateMySql } from '../lib/mysql-compat'
 import { reserveRunSeq, saveRun, type RunStatement } from '../lib/runs'
 
 const MAX_RESULT_ROWS = 5000
@@ -81,6 +82,17 @@ async function executeStatement(d1: D1Database, sql: string, kind: SqlClass): Pr
   }
 }
 
+// Rewrites a MySQL introspection statement (SHOW TABLES, DESCRIBE, …) into its read-only
+// SQLite equivalent. `error` is set for statements that are recognised but unsupported
+// (SHOW DATABASES); `sql` is the statement to classify and run — the rewrite, or the
+// caller's input unchanged.
+function translate(sql: string): { sql: string; error?: string } {
+  const result = translateMySql(sql)
+  if (result?.type === 'error') return { sql, error: result.message }
+  if (result?.type === 'sql') return { sql: result.sql }
+  return { sql }
+}
+
 // ── POST /api/query ────────────────────────────────────────────────────────────
 
 query.post('/', async (c) => {
@@ -93,8 +105,10 @@ query.post('/', async (c) => {
   const userId = c.get('userId')
   const role = c.get('userRole')
   const sql = body.sql.trim()
+  const { sql: runSql, error: translateError } = translate(sql)
+  if (translateError) return c.json({ error: translateError }, 400)
 
-  const kind = classifySql(sql)
+  const kind = classifySql(runSql)
   if (kind === 'forbidden') return c.json({ error: 'This SQL statement is not allowed.' }, 403)
 
   // Resolve database + permission
@@ -133,7 +147,7 @@ query.post('/', async (c) => {
   let errorMsg: string | null = null
 
   try {
-    result = await executeStatement(d1, sql, kind)
+    result = await executeStatement(d1, runSql, kind)
   } catch (err) {
     errorMsg = err instanceof Error ? err.message : String(err)
   }
@@ -233,7 +247,10 @@ query.post('/batch', async (c) => {
   // one, and uses up no run number
   const runsAny = body.statements.some((x) => {
     const sql = x.trim()
-    return sql !== '' && !checkSqlAccess(classifySql(sql), permission)
+    if (!sql) return false
+    const translated = translate(sql)
+    if (translated.error) return false
+    return !checkSqlAccess(classifySql(translated.sql), permission)
   })
   const notebook = await resolveNotebook(c, body.notebookId, runsAny)
   if (notebook instanceof Response) return notebook
@@ -246,7 +263,13 @@ query.post('/batch', async (c) => {
     const sql = rawSql.trim()
     if (!sql) continue
 
-    const kind = classifySql(sql)
+    const { sql: runSql, error: translateError } = translate(sql)
+    if (translateError) {
+      results.push({ sql, results: [], duration_ms: 0, error: translateError })
+      continue
+    }
+
+    const kind = classifySql(runSql)
     const denied = checkSqlAccess(kind, permission)
     if (denied) {
       results.push({ sql, results: [], duration_ms: 0, error: denied })
@@ -260,7 +283,7 @@ query.post('/batch', async (c) => {
     let truncated = false
 
     try {
-      const executed = await executeStatement(d1, sql, kind)
+      const executed = await executeStatement(d1, runSql, kind)
       stmtResult = executed.results
       changes = executed.changes
       truncated = executed.truncated
