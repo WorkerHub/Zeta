@@ -25,7 +25,7 @@ describe('rate limiting', () => {
     const { db, calls } = fakeD1()
     await checkRateLimit(fakeEnv({ DB: db, TABLE_PREFIX: 'kp' }), 'k', 5, 60)
     expect(calls[0]!.sql.replace(/\s+/g, ' ')).toMatch(
-      /^INSERT INTO kp_rate_limits .+ ON CONFLICT\(key\) DO UPDATE SET .+ RETURNING count$/
+      /^INSERT INTO kp_rate_limits .+ ON CONFLICT\(key\) DO UPDATE SET .+ RETURNING count, expires_at$/
     )
   })
 
