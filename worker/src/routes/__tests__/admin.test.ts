@@ -1,5 +1,6 @@
 import { describe, it, expect, afterEach, vi } from 'vitest'
 import { bearer, callWorker, fakeD1, fakeEnv, postJson } from './fakes'
+import { sqliteD1 } from './sqlite-d1'
 
 afterEach(() => vi.unstubAllGlobals())
 
@@ -353,5 +354,70 @@ describe('database registry over the D1 HTTP API', () => {
     )
     expect(res.status).toBe(500)
     expect(((await res.json()) as { error: string }).error).toContain('ZETA_APP_DB_ID')
+  })
+})
+
+describe('POST /api/admin/setup', () => {
+  const upToDate = [
+    { name: 'id', notnull: 0 },
+    { name: 'user_id', notnull: 0 },
+    { name: 'database_id', notnull: 0 },
+    { name: 'notebook_run_limit', notnull: 0 },
+    { name: 'last_run_seq', notnull: 1 },
+    { name: 'seq', notnull: 0 },
+    { name: 'cf_database_id', notnull: 0 },
+  ]
+
+  it('runs the setup routine for an admin, without requiring SETUP_SECRET', async () => {
+    const { db, calls } = fakeD1((sql) => {
+      if (!sql.startsWith('PRAGMA table_info')) return null
+      return sql.includes('d1_databases')
+        ? [
+            { name: 'id', notnull: 0 },
+            { name: 'binding_name', notnull: 1 },
+          ]
+        : upToDate
+    })
+    const env = fakeEnv({ DB: db, SETUP_SECRET: '' })
+    const res = await callWorker(env, '/api/admin/setup', {
+      method: 'POST',
+      headers: await bearer(env, 'admin-1', 'admin'),
+    })
+    expect(res.status).toBe(200)
+    expect(await res.json()).toMatchObject({ ok: true, upgraded: [expect.stringContaining('cf_database_id')] })
+    expect(calls.some((c) => c.sql === 'ALTER TABLE d1_databases ADD COLUMN cf_database_id TEXT')).toBe(true)
+  })
+
+  it('rejects a non-admin user with 403', async () => {
+    const env = fakeEnv()
+    const res = await callWorker(env, '/api/admin/setup', {
+      method: 'POST',
+      headers: await bearer(env, 'member-1', 'member'),
+    })
+    expect(res.status).toBe(403)
+  })
+
+  it('rejects an unauthenticated request with 401', async () => {
+    const res = await callWorker(fakeEnv(), '/api/admin/setup', { method: 'POST' })
+    expect(res.status).toBe(401)
+  })
+
+  it('actually applies the upgrade: adds cf_database_id to an older database', async () => {
+    const { db, sqlite } = sqliteD1()
+    const env = fakeEnv({ DB: db })
+    // Initialise a full current schema through the keyed endpoint, then rewind d1_databases to a
+    // pre-cf_database_id state to simulate a database created by an older version.
+    expect((await callWorker(env, '/api/setup', postJson({ secret: 'test-setup-secret' }))).status).toBe(200)
+    sqlite.exec('ALTER TABLE d1_databases DROP COLUMN cf_database_id')
+
+    const res = await callWorker(env, '/api/admin/setup', {
+      method: 'POST',
+      headers: await bearer(env, 'admin-1', 'admin'),
+    })
+    expect(res.status).toBe(200)
+    expect(await res.json()).toMatchObject({ ok: true, upgraded: [expect.stringContaining('cf_database_id')] })
+
+    const cols = sqlite.prepare('PRAGMA table_info(d1_databases)').all() as Array<{ name: string }>
+    expect(cols.some((c) => c.name === 'cf_database_id')).toBe(true)
   })
 })
