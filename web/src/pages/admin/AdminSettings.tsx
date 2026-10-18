@@ -234,6 +234,7 @@ export default function AdminSettings() {
               type="button"
               role="switch"
               aria-checked={setupPageEnabled}
+              aria-label={t('admin_settings.setup_page')}
               onClick={() => set('setup_page_enabled', setupPageEnabled ? '0' : '1')}
               className="toggle-track"
             >

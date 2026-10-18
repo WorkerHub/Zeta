@@ -1,9 +1,134 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type RefObject } from 'react'
 import { Link } from 'react-router-dom'
 import { Database, Globe, Loader2 } from 'lucide-react'
 import { setupApi, SetupApiError } from '../lib/api'
 import { resolveSetupView, setupErrorInfo, type SetupView } from '../lib/setup'
 import { useLocale } from '../hooks/useLocale'
+
+type Translate = (key: string, vars?: Record<string, string | number>) => string
+
+// Stateless presentation for the card, split out of the page so its three branches (form /
+// disabled / success) can be asserted without a browser via renderToStaticMarkup.
+interface SetupCardProps {
+  t: Translate
+  view: SetupView | 'loading'
+  stateHint: boolean
+  secret: string
+  error: string
+  // null = not submitted yet (show the form); otherwise a success, empty for a fresh database
+  // or a list of upgrade items.
+  upgradedItems: string[] | null
+  submitting: boolean
+  inputRef: RefObject<HTMLInputElement | null>
+  onSecretChange: (value: string) => void
+  onSubmit: () => void
+}
+
+export function SetupCard({
+  t,
+  view,
+  stateHint,
+  secret,
+  error,
+  upgradedItems,
+  submitting,
+  inputRef,
+  onSecretChange,
+  onSubmit,
+}: SetupCardProps) {
+  if (view === 'loading') {
+    return <div className="card p-6 text-sm text-zinc-500">{t('common.loading')}</div>
+  }
+
+  if (view === 'disabled') {
+    return (
+      <div className="card p-6 space-y-4">
+        <h1 className="text-lg font-semibold text-zinc-900 dark:text-zinc-100">{t('setup.title')}</h1>
+        <p role="alert" className="text-sm text-zinc-600 dark:text-zinc-300">
+          {t('setup.disabled')}
+        </p>
+        <Link to="/login" className="btn-primary w-full">
+          {t('setup.go_login')}
+        </Link>
+      </div>
+    )
+  }
+
+  const success = upgradedItems !== null
+
+  return (
+    <div className="card p-6">
+      <h1 className="text-lg font-semibold text-zinc-900 mb-1 dark:text-zinc-100">{t('setup.title')}</h1>
+      <p className="text-sm text-zinc-500 mb-6">{t('setup.desc')}</p>
+
+      {success ? (
+        <div role="status" className="space-y-4">
+          {upgradedItems && upgradedItems.length > 0 ? (
+            <>
+              <p className="text-sm text-emerald-500">{t('setup.upgraded_title')}</p>
+              <ul className="text-sm text-zinc-700 dark:text-zinc-300 list-disc list-inside space-y-1">
+                {upgradedItems.map((item) => (
+                  <li key={item}>{item}</li>
+                ))}
+              </ul>
+              <Link to="/login" className="btn-primary w-full">
+                {t('setup.go_login')}
+              </Link>
+            </>
+          ) : (
+            <>
+              <p className="text-sm text-emerald-500">{t('setup.success')}</p>
+              <Link to="/register" className="btn-primary w-full">
+                {t('setup.register_admin')}
+              </Link>
+              <Link to="/login" className="btn-secondary w-full">
+                {t('setup.go_login')}
+              </Link>
+            </>
+          )}
+        </div>
+      ) : (
+        <form
+          onSubmit={(e) => {
+            e.preventDefault()
+            onSubmit()
+          }}
+          className="space-y-4"
+        >
+          {stateHint && <p className="text-xs text-amber-500">{t('setup.state_unavailable')}</p>}
+          <div>
+            <label htmlFor="setup-secret" className="label">
+              {t('setup.secret_label')}
+            </label>
+            <input
+              id="setup-secret"
+              ref={inputRef}
+              type="password"
+              value={secret}
+              onChange={(e) => onSecretChange(e.target.value)}
+              className="input"
+              autoComplete="off"
+              required
+              // biome-ignore lint/a11y/noAutofocus: single-purpose setup form; its only field is the entry point
+              autoFocus
+            />
+          </div>
+
+          {error && (
+            <p role="alert" className="text-sm text-red-400">
+              {error}
+            </p>
+          )}
+
+          <button type="button" onClick={onSubmit} className="btn-primary w-full" disabled={submitting}>
+            {submitting ? <Loader2 size={14} className="animate-spin" /> : null}
+            {submitting ? t('setup.submitting') : t('setup.submit')}
+          </button>
+        </form>
+      )}
+    </div>
+  )
+}
 
 export default function Setup() {
   const { t, locale, changeLocale } = useLocale()
@@ -37,7 +162,6 @@ export default function Setup() {
 
   async function handleSubmit() {
     setError('')
-    setUpgraded(null)
     if (!secret.trim()) {
       setError(t('setup.error_missing_secret'))
       inputRef.current?.focus()
@@ -62,9 +186,6 @@ export default function Setup() {
     }
   }
 
-  const success = upgraded !== null
-  const upgradedItems = upgraded && upgraded.length > 0 ? upgraded : null
-
   return (
     <div className="relative min-h-screen flex items-center justify-center p-4 bg-zinc-50 dark:bg-zinc-950">
       <button
@@ -83,84 +204,18 @@ export default function Setup() {
           <span className="text-xl font-semibold text-zinc-900 dark:text-zinc-100">{t('app.name')}</span>
         </div>
 
-        {view === 'loading' ? (
-          <div className="card p-6 text-sm text-zinc-500">{t('common.loading')}</div>
-        ) : view === 'disabled' ? (
-          <div className="card p-6 space-y-4">
-            <h1 className="text-lg font-semibold text-zinc-900 dark:text-zinc-100">{t('setup.title')}</h1>
-            <p role="alert" className="text-sm text-zinc-600 dark:text-zinc-300">
-              {t('setup.disabled')}
-            </p>
-            <Link to="/login" className="btn-primary w-full">
-              {t('setup.go_login')}
-            </Link>
-          </div>
-        ) : (
-          <div className="card p-6">
-            <h1 className="text-lg font-semibold text-zinc-900 mb-1 dark:text-zinc-100">{t('setup.title')}</h1>
-            <p className="text-sm text-zinc-500 mb-6">{t('setup.desc')}</p>
-
-            {success ? (
-              <div role="status" className="space-y-4">
-                {upgradedItems ? (
-                  <>
-                    <p className="text-sm text-emerald-500">{t('setup.upgraded_title')}</p>
-                    <ul className="text-sm text-zinc-700 dark:text-zinc-300 list-disc list-inside space-y-1">
-                      {upgradedItems.map((item) => (
-                        <li key={item}>{item}</li>
-                      ))}
-                    </ul>
-                    <Link to="/login" className="btn-primary w-full">
-                      {t('setup.go_login')}
-                    </Link>
-                  </>
-                ) : (
-                  <>
-                    <p className="text-sm text-emerald-500">{t('setup.success')}</p>
-                    <Link to="/register" className="btn-primary w-full">
-                      {t('setup.register_admin')}
-                    </Link>
-                    <Link to="/login" className="btn-secondary w-full">
-                      {t('setup.go_login')}
-                    </Link>
-                  </>
-                )}
-              </div>
-            ) : (
-              <form onSubmit={(e) => e.preventDefault()} className="space-y-4">
-                {stateHint && <p className="text-xs text-amber-500">{t('setup.state_unavailable')}</p>}
-                <div>
-                  <label htmlFor="setup-secret" className="label">
-                    {t('setup.secret_label')}
-                  </label>
-                  <input
-                    id="setup-secret"
-                    ref={inputRef}
-                    type="password"
-                    value={secret}
-                    onChange={(e) => setSecret(e.target.value)}
-                    className="input"
-                    autoComplete="off"
-                    required
-                    // biome-ignore lint/a11y/noAutofocus: single-purpose setup form; its only field is the entry point
-                    autoFocus
-                  />
-                </div>
-
-                {error && (
-                  <p role="alert" className="text-sm text-red-400">
-                    {error}
-                  </p>
-                )}
-
-                <button type="button" onClick={handleSubmit} className="btn-primary w-full" disabled={submitting}>
-                  {submitting ? <Loader2 size={14} className="animate-spin" /> : null}
-                  {submitting ? t('setup.submitting') : t('setup.submit')}
-                </button>
-              </form>
-            )}
-          </div>
-        )}
+        <SetupCard
+          t={t}
+          view={view}
+          stateHint={stateHint}
+          secret={secret}
+          error={error}
+          upgradedItems={upgraded}
+          submitting={submitting}
+          inputRef={inputRef}
+          onSecretChange={setSecret}
+          onSubmit={() => void handleSubmit()}
+        />
       </div>
     </div>
   )
