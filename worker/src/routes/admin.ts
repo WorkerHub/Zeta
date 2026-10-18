@@ -6,7 +6,7 @@ import { now, setSetting, getSettings, audit, tables } from '../lib/db'
 import { hashPassword, checkRateLimit } from '../lib/auth'
 import { KV } from '../lib/kv'
 import { sealSecret, sealLegacySecret } from '../lib/secrets'
-import { listAccountD1Databases, D1HttpError, type CfD1Database } from '../lib/d1-http'
+import { listAccountD1Databases, D1HttpError, appDbId, type CfD1Database } from '../lib/d1-http'
 import { sendEmail, isValidEmail } from '../lib/email'
 import { MAX_RUN_LIMIT, MAX_RUN_QUOTA_MB, parseBoundedInt, pruneRuns } from '../lib/runs'
 
@@ -240,12 +240,24 @@ function d1Error(c: Context<{ Bindings: Env; Variables: Variables }>, err: unkno
   return c.json({ error: err instanceof Error ? err.message : String(err) }, 500)
 }
 
+// A database that predates the cf_database_id column (POST /api/setup not re-run after upgrading)
+// fails the registry statements with "no such column". Point the admin at the fix instead of
+// leaking the raw D1 error.
+const MISSING_CF_COLUMN = /no such column: cf_database_id/i
+function missingColumnResponse(c: Context<{ Bindings: Env; Variables: Variables }>, err: unknown): Response | null {
+  if (err instanceof Error && MISSING_CF_COLUMN.test(err.message)) {
+    return c.json({ error: 'The database registry needs an upgrade. Re-run POST /api/setup.' }, 500)
+  }
+  return null
+}
+
 // Verifies a picked database uuid is a real account database and not the application's own.
 async function verifyCfDatabase(
   c: Context<{ Bindings: Env; Variables: Variables }>,
   cfDatabaseId: string
 ): Promise<Response | { name: string }> {
-  if (c.env.ZETA_APP_DB_ID && cfDatabaseId === c.env.ZETA_APP_DB_ID) {
+  const appId = appDbId(c.env)
+  if (appId && cfDatabaseId === appId) {
     return c.json({ error: 'The application database cannot be added as a query target.' }, 400)
   }
   let available: CfD1Database[]
@@ -275,12 +287,19 @@ admin.get('/d1/databases', async (c) => {
     return d1Error(c, err)
   }
   const T = tables(c.env)
-  const rows = await c.env.DB.prepare(
-    `SELECT id, cf_database_id FROM ${T.d1_databases} WHERE cf_database_id IS NOT NULL`
-  ).all<{
-    id: string
-    cf_database_id: string
-  }>()
+  let rows: D1Result<{ id: string; cf_database_id: string }>
+  try {
+    rows = await c.env.DB.prepare(
+      `SELECT id, cf_database_id FROM ${T.d1_databases} WHERE cf_database_id IS NOT NULL`
+    ).all<{
+      id: string
+      cf_database_id: string
+    }>()
+  } catch (err) {
+    const missing = missingColumnResponse(c, err)
+    if (missing) return missing
+    throw err
+  }
   const added = new Map(rows.results.map((r) => [r.cf_database_id, r.id]))
   return c.json({
     results: available.map((d) => ({
@@ -313,36 +332,42 @@ admin.post('/databases', async (c) => {
   if (verified instanceof Response) return verified
 
   const T = tables(c.env)
-  const dup = await c.env.DB.prepare(`SELECT id FROM ${T.d1_databases} WHERE cf_database_id = ?1`)
-    .bind(body.cf_database_id)
-    .first()
-  if (dup) return c.json({ error: 'This database is already registered' }, 409)
+  try {
+    const dup = await c.env.DB.prepare(`SELECT id FROM ${T.d1_databases} WHERE cf_database_id = ?1`)
+      .bind(body.cf_database_id)
+      .first()
+    if (dup) return c.json({ error: 'This database is already registered' }, 409)
 
-  const id = uuid()
-  await c.env.DB.prepare(
-    `INSERT INTO ${T.d1_databases} (id, name, description, binding_name, cf_database_id, is_active, created_at, created_by)
-     VALUES (?1, ?2, ?3, ?4, ?5, 1, ?6, ?7)`
-  )
-    .bind(
-      id,
-      body.name?.trim() || verified.name,
-      body.description ?? null,
-      `cf:${body.cf_database_id}`,
-      body.cf_database_id,
-      now(),
-      c.get('userId')
+    const id = uuid()
+    await c.env.DB.prepare(
+      `INSERT INTO ${T.d1_databases} (id, name, description, binding_name, cf_database_id, is_active, created_at, created_by)
+       VALUES (?1, ?2, ?3, ?4, ?5, 1, ?6, ?7)`
     )
-    .run()
+      .bind(
+        id,
+        body.name?.trim() || verified.name,
+        body.description ?? null,
+        `cf:${body.cf_database_id}`,
+        body.cf_database_id,
+        now(),
+        c.get('userId')
+      )
+      .run()
 
-  c.executionCtx.waitUntil(
-    audit(c.env, {
-      userId: c.get('userId'),
-      action: 'create_database',
-      resource: id,
-      ip: c.req.header('cf-connecting-ip'),
-    })
-  )
-  return c.json({ id }, 201)
+    c.executionCtx.waitUntil(
+      audit(c.env, {
+        userId: c.get('userId'),
+        action: 'create_database',
+        resource: id,
+        ip: c.req.header('cf-connecting-ip'),
+      })
+    )
+    return c.json({ id }, 201)
+  } catch (err) {
+    const missing = missingColumnResponse(c, err)
+    if (missing) return missing
+    throw err
+  }
 })
 
 admin.patch('/databases/:id', async (c) => {
@@ -364,10 +389,16 @@ admin.patch('/databases/:id', async (c) => {
     if (verified instanceof Response) return verified
 
     const T2 = tables(c.env)
-    const dup = await c.env.DB.prepare(`SELECT id FROM ${T2.d1_databases} WHERE cf_database_id = ?1 AND id != ?2`)
-      .bind(body.cf_database_id, c.req.param('id'))
-      .first()
-    if (dup) return c.json({ error: 'This database is already registered' }, 409)
+    try {
+      const dup = await c.env.DB.prepare(`SELECT id FROM ${T2.d1_databases} WHERE cf_database_id = ?1 AND id != ?2`)
+        .bind(body.cf_database_id, c.req.param('id'))
+        .first()
+      if (dup) return c.json({ error: 'This database is already registered' }, 409)
+    } catch (err) {
+      const missing = missingColumnResponse(c, err)
+      if (missing) return missing
+      throw err
+    }
 
     updates.push(`cf_database_id = ?${i++}`)
     bindings.push(body.cf_database_id)
@@ -389,9 +420,15 @@ admin.patch('/databases/:id', async (c) => {
   bindings.push(c.req.param('id'))
 
   const T = tables(c.env)
-  await c.env.DB.prepare(`UPDATE ${T.d1_databases} SET ${updates.join(', ')} WHERE id = ?${i}`)
-    .bind(...bindings)
-    .run()
+  try {
+    await c.env.DB.prepare(`UPDATE ${T.d1_databases} SET ${updates.join(', ')} WHERE id = ?${i}`)
+      .bind(...bindings)
+      .run()
+  } catch (err) {
+    const missing = missingColumnResponse(c, err)
+    if (missing) return missing
+    throw err
+  }
 
   c.executionCtx.waitUntil(
     audit(c.env, {

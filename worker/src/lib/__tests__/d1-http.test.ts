@@ -40,7 +40,7 @@ describe('listAccountD1Databases', () => {
       .mockResolvedValueOnce(
         jsonResponse({
           success: true,
-          result: makeRows(1, 100),
+          result: [{ uuid: APP_DB, name: 'zeta', created_at: 'x' }, ...makeRows(1, 99)],
           result_info: { page: 1, per_page: 100, total_count: 250 },
         })
       )
@@ -60,7 +60,7 @@ describe('listAccountD1Databases', () => {
       )
     vi.stubGlobal('fetch', fetchMock)
     const rows = await listAccountD1Databases(env())
-    expect(rows).toHaveLength(250)
+    expect(rows).toHaveLength(249) // 250 account databases minus the app DB
     expect(fetchMock).toHaveBeenCalledTimes(3)
   })
 
@@ -86,6 +86,39 @@ describe('listAccountD1Databases', () => {
       vi.fn().mockResolvedValue(jsonResponse({ success: false, errors: [{ code: 10000, message: 'slow down' }] }, 429))
     )
     await expect(listAccountD1Databases(env())).rejects.toMatchObject({ kind: 'rate_limit', status: 429 })
+  })
+
+  it('fails closed when ZETA_APP_DB_ID is not a database in the account', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        jsonResponse({
+          success: true,
+          result: [{ uuid: DB_1, name: 'analytics', created_at: 'x' }],
+          result_info: { page: 1, per_page: 100, total_count: 1 },
+        })
+      )
+    )
+    await expect(listAccountD1Databases(env())).rejects.toMatchObject({
+      kind: 'config',
+      status: 500,
+      message: 'ZETA_APP_DB_ID is not a database in this Cloudflare account.',
+    })
+  })
+
+  it('treats a trailing-newline ZETA_APP_DB_ID as the app DB', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        jsonResponse({
+          success: true,
+          result: [{ uuid: APP_DB, name: 'zeta', created_at: 'x' }],
+          result_info: { page: 1, per_page: 100, total_count: 1 },
+        })
+      )
+    )
+    const rows = await listAccountD1Databases(env({ ZETA_APP_DB_ID: `${APP_DB}\n` }))
+    expect(rows).toEqual([])
   })
 })
 
@@ -138,6 +171,17 @@ describe('queryD1Http', () => {
     vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new TypeError('fetch failed')))
     await expect(queryD1Http(env(), DB_1, 'SELECT 1')).rejects.toBeInstanceOf(D1HttpError)
     await expect(queryD1Http(env(), DB_1, 'SELECT 1')).rejects.toMatchObject({ kind: 'transport', status: 500 })
+  })
+
+  it('maps an aborted/timeout request to a transport error', async () => {
+    const abort = new Error('The operation was aborted due to timeout')
+    abort.name = 'AbortError'
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(abort))
+    await expect(queryD1Http(env(), DB_1, 'SELECT 1')).rejects.toMatchObject({
+      kind: 'transport',
+      status: 500,
+      message: 'Cloudflare API request timed out.',
+    })
   })
 
   it('fails closed when credentials are missing', async () => {

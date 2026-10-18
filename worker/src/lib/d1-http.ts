@@ -51,6 +51,14 @@ function accountAndToken(env: Env): { accountId: string; token: string } {
   return { accountId, token }
 }
 
+// The application database's UUID, trimmed so a value pasted with a trailing newline still matches
+// the uuid stored on registry rows. Used by every app-DB exclusion check, so they all compare the
+// same normalised string.
+export function appDbId(env: Env): string | undefined {
+  const v = env.ZETA_APP_DB_ID?.trim()
+  return v ? v : undefined
+}
+
 async function cfFetch(env: Env, path: string, init: RequestInit = {}): Promise<Response> {
   const { token } = accountAndToken(env)
   try {
@@ -93,8 +101,8 @@ function cfError(res: Response, body: CfResponse<unknown>): D1HttpError {
 // Lists every D1 database in the account (paginated), minus the application's own database.
 export async function listAccountD1Databases(env: Env): Promise<CfD1Database[]> {
   const { accountId } = accountAndToken(env)
-  const appDbId = env.ZETA_APP_DB_ID?.trim()
-  if (!appDbId) throw new D1HttpError(500, 'ZETA_APP_DB_ID is not configured on this Worker.', 'config')
+  const appId = appDbId(env)
+  if (!appId) throw new D1HttpError(500, 'ZETA_APP_DB_ID is not configured on this Worker.', 'config')
 
   const all: CfD1Database[] = []
   let page = 1
@@ -102,14 +110,20 @@ export async function listAccountD1Databases(env: Env): Promise<CfD1Database[]> 
     const res = await cfFetch(env, `/accounts/${accountId}/d1/database?page=${page}&per_page=${LIST_PER_PAGE}`)
     const body = (await res.json().catch(() => null)) as CfResponse<CfD1Database[]> | null
     if (!res.ok || !body || body.success === false) throw cfError(res, body ?? {})
-    const rows = (body.result ?? []).filter((d) => d.uuid && d.uuid !== appDbId)
-    all.push(...rows)
+    all.push(...(body.result ?? []))
     const info = body.result_info
     const total = info?.total_count ?? all.length
     if (!info || page * LIST_PER_PAGE >= total) break
     page++
   }
-  return all
+
+  // Fail closed on a mistyped ZETA_APP_DB_ID: the exclusion checks compare against this value, so
+  // if it is not actually a database in the account, the app DB could slip through as a query
+  // target. Require it to appear in the account's own list.
+  if (!all.some((d) => d.uuid === appId)) {
+    throw new D1HttpError(500, 'ZETA_APP_DB_ID is not a database in this Cloudflare account.', 'config')
+  }
+  return all.filter((d) => d.uuid !== appId)
 }
 
 // Runs one statement against a D1 database over the HTTP API. The caller has already classified

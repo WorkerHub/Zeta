@@ -118,8 +118,8 @@
 |------|----|
 | `APP_URL` | 你的 Worker 地址，例如 `https://zeta.yourname.workers.dev` 或自定义域名。请填写用户实际访问的 `https://` 地址：它是 CORS 唯一允许的来源、Passkey 的 RP ID、邮件链接的前缀，也是所有登录令牌的签发方/受众（之后修改会让所有用户重新登录） |
 | `TABLE_PREFIX` | *（可选）* 所有内部 D1 表的前缀，例如 `kp` → 表名变为 `kp_users`、`kp_settings` 等。必须在**调用 setup 接口之前**设置，初始化后不可更改。 |
-| `CF_ACCOUNT_ID` | 你的 Cloudflare Account ID（即 GitHub 中 `CLOUDFLARE_ACCOUNT_ID` 变量的同一个 32 位值）。 |
-| `ZETA_APP_DB_ID` | **本应用自身数据库**的 D1 Database ID（即 GitHub 中的 `D1_DATABASE_ID` 变量）。它会从添加列表里排除，也永远无法被查询。 |
+
+> `CF_ACCOUNT_ID` 与 `ZETA_APP_DB_ID` 会在部署时由 GitHub Variables `CLOUDFLARE_ACCOUNT_ID`、`D1_DATABASE_ID` 自动注入，**不要在这里手动设置**。你只需要配置上面的 `CF_D1_API_TOKEN`。
 
 > 以上配置完全隔离于 GitHub。`wrangler.toml` 中的 `keep_vars = true` 确保每次部署不会覆盖你在此处设置的值。
 
@@ -157,7 +157,7 @@ curl -X POST https://<你的域名>/api/setup \
 { "ok": true, "message": "Database initialised successfully. You can now register at /register — the first user becomes admin. On new installs registration then stays closed until an admin opens it in Admin → Settings." }
 ```
 
-> 该接口是幂等的，重复调用不会造成任何破坏，可安全地多次调用。**每次升级部署后请再调用一次**：它还会对旧版本创建的数据库执行 Schema 升级（例如让 `query_history` 在删除用户或数据库时保留记录——升级前删除用户或数据库会失败；以及创建 `rate_limits` 表，让登录 / 两步验证 / 邮件的限流计数精确生效——该表创建前会退回到近似的 KV 计数；以及在 `user_database_permissions` 表的外键仍指向不带前缀的 `users` / `d1_databases` 表时重建该表——修复前授权、撤销数据库权限以及删除用户或数据库都会报 `no such table` 错误。用户或数据库已不存在的权限记录会被丢弃，丢弃的行数会在响应的 `permissionsRepair` 字段中给出；以及为[查询结果保留](#查询结果保留)创建 `notebook_runs` 表并给 `users` 表添加 `notebook_run_limit` 列——升级前运行结果不会被保存，运行记录列表也无法加载；以及为运行记录编号：添加 `notebook_runs.seq` 和 `notebooks.last_run_seq` 列，把每个 Notebook 已有的运行记录按时间从早到晚从 1 开始编号，并建立唯一索引 `(notebook_id, seq)`——**部署带编号运行标签页的版本后，请再调用一次**：调用前查询仍可正常执行，但不会被保存，运行记录标签页也无法加载）。通过迁移文件创建的数据库可执行 `pnpm migrate:remote`（`0004_notebook_runs.sql`、`0005_notebook_run_seq.sql`）完成同样的升级。
+> 该接口是幂等的，重复调用不会造成任何破坏，可安全地多次调用。**每次升级部署后请再调用一次**：它还会对旧版本创建的数据库执行 Schema 升级（例如让 `query_history` 在删除用户或数据库时保留记录——升级前删除用户或数据库会失败；以及创建 `rate_limits` 表，让登录 / 两步验证 / 邮件的限流计数精确生效——该表创建前会退回到近似的 KV 计数；以及在 `user_database_permissions` 表的外键仍指向不带前缀的 `users` / `d1_databases` 表时重建该表——修复前授权、撤销数据库权限以及删除用户或数据库都会报 `no such table` 错误。用户或数据库已不存在的权限记录会被丢弃，丢弃的行数会在响应的 `permissionsRepair` 字段中给出；以及为[查询结果保留](#查询结果保留)创建 `notebook_runs` 表并给 `users` 表添加 `notebook_run_limit` 列——升级前运行结果不会被保存，运行记录列表也无法加载；以及为运行记录编号：添加 `notebook_runs.seq` 和 `notebooks.last_run_seq` 列，把每个 Notebook 已有的运行记录按时间从早到晚从 1 开始编号，并建立唯一索引 `(notebook_id, seq)`——**部署带编号运行标签页的版本后，请再调用一次**：调用前查询仍可正常执行，但不会被保存，运行记录标签页也无法加载；以及为[通过 HTTP 接口添加 D1 数据库](#接入更多-d1-数据库)添加 `d1_databases.cf_database_id` 列——升级前后台的添加/关联数据库会报 `no such column: cf_database_id`）。通过迁移文件创建的数据库可执行 `pnpm migrate:remote`（`0004_notebook_runs.sql`、`0005_notebook_run_seq.sql`、`0006_d1_cf_database_id.sql`）完成同样的升级。
 >
 > 旧版本使用的 `GET /api/setup/<SETUP_SECRET>` 已废弃：现在会返回 `405` 且不执行任何操作。如果曾经访问过旧 URL，建议轮换 `SETUP_SECRET`。
 
@@ -240,6 +240,9 @@ JWT_SECRET=dev-jwt-secret
 ENCRYPTION_KEY=0000000000000000000000000000000000000000000000000000000000000001
 SETUP_SECRET=dev-setup-secret
 APP_URL=http://localhost:8787
+CF_D1_API_TOKEN=<一个拥有 D1 → Edit 权限的 API Token>
+CF_ACCOUNT_ID=<你的 Cloudflare Account ID>
+ZETA_APP_DB_ID=<本应用自身数据库的 D1 Database ID>
 ```
 
 执行以下命令完成本地数据库初始化：
@@ -293,8 +296,8 @@ git config blame.ignoreRevsFile .git-blame-ignore-revs
 | `CF_D1_API_TOKEN` | 密钥 | 拥有 `D1 → Edit` 权限的 API Token — 列出并查询后台添加的 D1 数据库 |
 | `APP_URL` | 变量 | 部署的完整 URL，例如 `https://zeta.example.com`；同时作为 JWT 的 `iss`/`aud`，其他共用 `JWT_SECRET` 的部署签发的令牌会被拒绝 |
 | `TABLE_PREFIX` | 变量 | *（可选）* 内部表名前缀（例如 `kp`）。首次 setup 前设置，初始化后不可更改。 |
-| `CF_ACCOUNT_ID` | 变量 | 调用 D1 HTTP API 所用的 Cloudflare 账号 ID |
-| `ZETA_APP_DB_ID` | 变量 | 本应用自身数据库的 D1 数据库 ID；从查询目标中排除 |
+
+`CF_ACCOUNT_ID` 与 `ZETA_APP_DB_ID` 不在此处设置：`wrangler.toml` 的 `[vars]` 会在部署时从 GitHub Variables `CLOUDFLARE_ACCOUNT_ID`、`D1_DATABASE_ID` 自动注入。
 
 ---
 

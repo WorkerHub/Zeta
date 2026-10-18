@@ -280,4 +280,55 @@ describe('database registry over the D1 HTTP API', () => {
     expect(res.status).toBe(500)
     expect(((await res.json()) as { error: string }).error).toContain('CF_D1_API_TOKEN')
   })
+
+  it('rejects registering a database that is already registered', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        cfList([
+          { uuid: APP_DB, name: 'zeta' },
+          { uuid: DB_1, name: 'analytics' },
+        ])
+      )
+    )
+    const { db } = fakeD1((sql) => (sql.includes('WHERE cf_database_id = ?1') ? { id: 'existing' } : null))
+    const env = fakeEnv({ DB: db, CF_ACCOUNT_ID: 'acct', CF_D1_API_TOKEN: 'tok', ZETA_APP_DB_ID: APP_DB })
+    const res = await callWorker(
+      env,
+      '/api/admin/databases',
+      postJson({ cf_database_id: DB_1 }, { headers: await bearer(env, 'a1', 'admin') })
+    )
+    expect(res.status).toBe(409)
+  })
+
+  it('rejects re-linking to a database already registered elsewhere', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        cfList([
+          { uuid: APP_DB, name: 'zeta' },
+          { uuid: DB_1, name: 'analytics' },
+        ])
+      )
+    )
+    const { db } = fakeD1((sql) => (sql.includes('WHERE cf_database_id = ?1 AND id != ?2') ? { id: 'other' } : null))
+    const env = fakeEnv({ DB: db, CF_ACCOUNT_ID: 'acct', CF_D1_API_TOKEN: 'tok', ZETA_APP_DB_ID: APP_DB })
+    const res = await callWorker(
+      env,
+      '/api/admin/databases/r1',
+      postJson({ cf_database_id: DB_1 }, { method: 'PATCH', headers: await bearer(env, 'a1', 'admin') })
+    )
+    expect(res.status).toBe(409)
+  })
+
+  it('fails closed when ZETA_APP_DB_ID is not configured', async () => {
+    const env = fakeEnv({ DB: fakeD1().db, CF_ACCOUNT_ID: 'acct', CF_D1_API_TOKEN: 'tok', ZETA_APP_DB_ID: '' })
+    const res = await callWorker(
+      env,
+      '/api/admin/databases',
+      postJson({ cf_database_id: DB_1 }, { headers: await bearer(env, 'a1', 'admin') })
+    )
+    expect(res.status).toBe(500)
+    expect(((await res.json()) as { error: string }).error).toContain('ZETA_APP_DB_ID')
+  })
 })

@@ -1,5 +1,6 @@
 import type { D1Database } from '@cloudflare/workers-types'
 import type { Env, DatabaseRow } from '../types'
+import { appDbId } from './d1-http'
 
 // Bindings that hold the app's own data and must never be exposed to the SQL editor.
 const RESERVED_BINDINGS = new Set(['DB', 'KV', 'ASSETS'])
@@ -36,10 +37,11 @@ export type QueryTargetResult = { ok: true; target: QueryTarget } | { ok: false;
 // cannot prove a database is not the app DB, so it refuses to run.
 export function resolveQueryTarget(env: Env, db: DatabaseRow): QueryTargetResult {
   if (db.cf_database_id) {
-    if (!env.ZETA_APP_DB_ID) {
+    const appId = appDbId(env)
+    if (!appId) {
       return { ok: false, error: 'ZETA_APP_DB_ID is not configured on this Worker.' }
     }
-    if (db.cf_database_id === env.ZETA_APP_DB_ID) {
+    if (db.cf_database_id === appId) {
       return { ok: false, error: 'This database is the application database and cannot be queried.' }
     }
     return { ok: true, target: { kind: 'http', databaseId: db.cf_database_id } }

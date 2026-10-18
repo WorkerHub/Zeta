@@ -5,6 +5,10 @@ compatibility_flags = ["nodejs_compat"]
 account_id = "CLOUDFLARE_ACCOUNT_ID_PLACEHOLDER"
 keep_vars = true
 
+[vars]
+CF_ACCOUNT_ID = "CF_ACCOUNT_ID_PLACEHOLDER"
+ZETA_APP_DB_ID = "ZETA_APP_DB_ID_PLACEHOLDER"
+
 [assets]
 directory = "../web/dist"
 binding = "ASSETS"
@@ -22,6 +26,7 @@ binding = "KV"
 id = "KV_NAMESPACE_ID_PLACEHOLDER"
 
 # Secrets – set via dashboard or `wrangler secret put`:
-#   JWT_SECRET       – random 64-char string
-#   ENCRYPTION_KEY   – 64-char hex (32 bytes) for AES-GCM TOTP encryption
-#   SETUP_SECRET     – random string used to protect POST /api/setup
+#   JWT_SECRET        – random 64-char string
+#   ENCRYPTION_KEY    – 64-char hex (32 bytes) for AES-GCM TOTP encryption
+#   SETUP_SECRET      – random string used to protect POST /api/setup
+#   CF_D1_API_TOKEN   – API token with "D1 → Edit" permission (lists + queries target D1s)

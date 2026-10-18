@@ -118,8 +118,8 @@ Go to **Workers & Pages → zeta → Settings → Variables and Secrets**:
 |------|-------|
 | `APP_URL` | Your Worker URL, e.g. `https://zeta.yourname.workers.dev` or your custom domain. Use the exact `https://` URL users open: it is the only origin CORS allows, the passkey RP ID, the base of email links and the issuer/audience of every login token (changing it later signs everybody out) |
 | `TABLE_PREFIX` | *(Optional)* Prefix for all internal D1 tables, e.g. `kp` → tables become `kp_users`, `kp_settings`, etc. Must be set **before** calling the setup endpoint. Cannot be changed after initialisation. |
-| `CF_ACCOUNT_ID` | Your Cloudflare Account ID (the same 32-char value used as the GitHub `CLOUDFLARE_ACCOUNT_ID` variable). |
-| `ZETA_APP_DB_ID` | The D1 Database ID of *this app's own* database (the GitHub `D1_DATABASE_ID` variable). It is excluded from the add-a-database list and can never be queried. |
+
+> `CF_ACCOUNT_ID` and `ZETA_APP_DB_ID` are injected automatically at deploy time from the GitHub Variables `CLOUDFLARE_ACCOUNT_ID` and `D1_DATABASE_ID` — do **not** set them here. You only configure `CF_D1_API_TOKEN` above.
 
 > These are kept out of GitHub entirely. The `keep_vars = true` setting in `wrangler.toml` ensures each deployment never overwrites values you set here.
 
@@ -157,7 +157,7 @@ Expected response:
 { "ok": true, "message": "Database initialised successfully. You can now register at /register — the first user becomes admin. On new installs registration then stays closed until an admin opens it in Admin → Settings." }
 ```
 
-> The endpoint is idempotent — safe to call multiple times. **Re-run it after every upgrade**: it also applies schema upgrades to databases created by earlier versions (e.g. making `query_history` keep rows when a user or database is deleted — until then, deleting users or databases fails — and creating the `rate_limits` table that makes login / 2FA / email rate limits exact; until it exists they fall back to approximate KV counters; and rebuilding a `user_database_permissions` table whose foreign keys still point at unprefixed `users` / `d1_databases` tables — until then, granting or revoking database access and deleting users or databases fail with `no such table`. Permission rows whose user or database no longer exists are dropped; the response reports how many under `permissionsRepair`; and creating the `notebook_runs` table plus the `users.notebook_run_limit` column for [saved query results](#saved-query-results) — until then, runs are not saved and the list of saved runs fails to load; and numbering saved runs: adding `notebook_runs.seq` and `notebooks.last_run_seq`, numbering the existing runs of each notebook from 1 (oldest first) and adding a unique `(notebook_id, seq)` index — **after deploying the version with numbered run tabs, call it once more**: until then, queries still run but are not saved, and the run tabs fail to load). Databases created from the migrations get the same through `pnpm migrate:remote` (`0004_notebook_runs.sql`, `0005_notebook_run_seq.sql`).
+> The endpoint is idempotent — safe to call multiple times. **Re-run it after every upgrade**: it also applies schema upgrades to databases created by earlier versions (e.g. making `query_history` keep rows when a user or database is deleted — until then, deleting users or databases fails — and creating the `rate_limits` table that makes login / 2FA / email rate limits exact; until it exists they fall back to approximate KV counters; and rebuilding a `user_database_permissions` table whose foreign keys still point at unprefixed `users` / `d1_databases` tables — until then, granting or revoking database access and deleting users or databases fail with `no such table`. Permission rows whose user or database no longer exists are dropped; the response reports how many under `permissionsRepair`; and creating the `notebook_runs` table plus the `users.notebook_run_limit` column for [saved query results](#saved-query-results) — until then, runs are not saved and the list of saved runs fails to load; and numbering saved runs: adding `notebook_runs.seq` and `notebooks.last_run_seq`, numbering the existing runs of each notebook from 1 (oldest first) and adding a unique `(notebook_id, seq)` index — **after deploying the version with numbered run tabs, call it once more**: until then, queries still run but are not saved, and the run tabs fail to load; and adding `d1_databases.cf_database_id` for [adding D1 databases over the HTTP API](#adding-a-queryable-d1-database) — until then, the admin panel's add/link database flows fail with `no such column: cf_database_id`). Databases created from the migrations get the same through `pnpm migrate:remote` (`0004_notebook_runs.sql`, `0005_notebook_run_seq.sql`, `0006_d1_cf_database_id.sql`).
 >
 > Earlier versions used `GET /api/setup/<SETUP_SECRET>`. That form is gone: it now returns `405` and does nothing. If you ever opened the old URL, consider rotating `SETUP_SECRET`.
 
@@ -240,6 +240,9 @@ JWT_SECRET=dev-jwt-secret
 ENCRYPTION_KEY=0000000000000000000000000000000000000000000000000000000000000001
 SETUP_SECRET=dev-setup-secret
 APP_URL=http://localhost:8787
+CF_D1_API_TOKEN=<a D1 → Edit API token>
+CF_ACCOUNT_ID=<your Cloudflare Account ID>
+ZETA_APP_DB_ID=<the D1 Database ID of this app's own database>
 ```
 
 Initialise the local database:
@@ -293,8 +296,8 @@ git config blame.ignoreRevsFile .git-blame-ignore-revs
 | `CF_D1_API_TOKEN` | Secret | API token with `D1 → Edit` permission — lists and queries the D1 databases added in the admin panel |
 | `APP_URL` | Variable | Full URL of your deployment; also the JWT `iss`/`aud`, so tokens from another deployment sharing `JWT_SECRET` are rejected |
 | `TABLE_PREFIX` | Variable | *(Optional)* Prefix for internal tables (e.g. `kp`). Set before first setup run. Immutable after initialisation. |
-| `CF_ACCOUNT_ID` | Variable | Cloudflare account ID used to call the D1 HTTP API |
-| `ZETA_APP_DB_ID` | Variable | This app's own D1 database ID; excluded from query targets |
+
+`CF_ACCOUNT_ID` and `ZETA_APP_DB_ID` are not set here: `wrangler.toml`'s `[vars]` injects them at deploy time from the GitHub Variables `CLOUDFLARE_ACCOUNT_ID` and `D1_DATABASE_ID`.
 
 ---
 
