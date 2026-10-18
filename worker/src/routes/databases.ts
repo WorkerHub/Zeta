@@ -48,7 +48,7 @@ databases.get('/', async (c) => {
       id: db.id,
       name: db.name,
       description: db.description,
-      ...(role === 'admin' ? { binding_name: db.binding_name } : {}),
+      ...(role === 'admin' ? { binding_name: db.binding_name, cf_database_id: db.cf_database_id } : {}),
       permission: role === 'admin' ? 'write_drop' : (permMap.get(db.id) ?? 'read'),
     }))
   )

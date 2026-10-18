@@ -183,7 +183,7 @@ export const translations: Record<Locale, Record<string, string>> = {
     // Admin Databases
     'admin_db.add_database': 'Add database',
     'admin_db.register_title': 'Register a D1 database',
-    'admin_db.register_desc': "The binding must already exist in your Worker's wrangler.toml.",
+    'admin_db.register_desc': 'Pick a D1 database from your Cloudflare account. No binding or redeploy needed.',
     'admin_db.display_name': 'Display name',
     'admin_db.binding_name': 'Binding name',
     'admin_db.description': 'Description (optional)',
@@ -209,6 +209,15 @@ export const translations: Record<Locale, Record<string, string>> = {
     'admin_db.confirm_delete': 'Delete database "{name}" from registry? This does not delete the actual D1 database.',
     'admin_db.name_placeholder': 'My Database',
     'admin_db.toggle_active': 'Toggle active',
+    'admin_db.cf_database': 'Cloudflare D1 database',
+    'admin_db.select_database': 'Select a database…',
+    'admin_db.cf_database_id': 'Database ID',
+    'admin_db.legacy_binding': 'via binding {name}',
+    'admin_db.link': 'Link',
+    'admin_db.link_title': 'Link database',
+    'admin_db.link_desc':
+      'This database still runs through its Worker binding. Link it to a Cloudflare database to switch it to the D1 HTTP API; permissions, history and saved runs are kept.',
+    'admin_db.no_available': 'No unregistered D1 databases found in this account.',
 
     // Admin Settings
     'admin_settings.save_changes': 'Save changes',
@@ -499,7 +508,7 @@ export const translations: Record<Locale, Record<string, string>> = {
     // Admin Databases
     'admin_db.add_database': '添加数据库',
     'admin_db.register_title': '注册 D1 数据库',
-    'admin_db.register_desc': '绑定名称必须已存在于 Worker 的 wrangler.toml 中。',
+    'admin_db.register_desc': '从 Cloudflare 账号中选择一个 D1 数据库，无需绑定或重新部署。',
     'admin_db.display_name': '显示名称',
     'admin_db.binding_name': '绑定名称',
     'admin_db.description': '描述（可选）',
@@ -525,6 +534,15 @@ export const translations: Record<Locale, Record<string, string>> = {
     'admin_db.confirm_delete': '从注册表中删除数据库"{name}"？这不会删除实际的 D1 数据库。',
     'admin_db.name_placeholder': '我的数据库',
     'admin_db.toggle_active': '切换启用状态',
+    'admin_db.cf_database': 'Cloudflare D1 数据库',
+    'admin_db.select_database': '选择数据库…',
+    'admin_db.cf_database_id': '数据库 ID',
+    'admin_db.legacy_binding': '通过绑定 {name}',
+    'admin_db.link': '关联',
+    'admin_db.link_title': '关联数据库',
+    'admin_db.link_desc':
+      '该数据库仍通过 Worker 绑定运行。将其关联到某个 Cloudflare 数据库即可切换为 D1 HTTP API；权限、历史与已保存的运行记录都会保留。',
+    'admin_db.no_available': '该账号中没有未注册的 D1 数据库。',
 
     // Admin Settings
     'admin_settings.save_changes': '保存更改',

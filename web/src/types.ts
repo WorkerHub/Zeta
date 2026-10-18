@@ -19,6 +19,7 @@ export interface Database {
   name: string
   description: string | null
   binding_name?: string
+  cf_database_id?: string | null
   permission: DbPermission
 }
 
@@ -28,8 +29,18 @@ export interface AdminDatabase {
   name: string
   description: string | null
   binding_name: string
+  cf_database_id: string | null
   is_active: number
   created_at: number
+}
+
+// A Cloudflare account D1 database as returned by GET /admin/d1/databases
+export interface CfD1Database {
+  uuid: string
+  name: string
+  created_at: string
+  added: boolean
+  database_id: string | null
 }
 
 export interface DatabaseGrant {

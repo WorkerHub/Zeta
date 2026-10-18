@@ -63,6 +63,7 @@ describe('setup endpoint', () => {
       { name: 'notebook_run_limit', notnull: 0 },
       { name: 'last_run_seq', notnull: 1 },
       { name: 'seq', notnull: 0 },
+      { name: 'cf_database_id', notnull: 0 },
     ]
     const foreignKeys = (onDelete: string) => [
       { from: 'user_id', table: 'users', on_delete: onDelete },
@@ -127,6 +128,56 @@ describe('setup endpoint', () => {
       expect(sqls.find((q) => q.startsWith('CREATE TABLE IF NOT EXISTS kp_query_history_new'))).toContain(
         'REFERENCES kp_users(id)'
       )
+    })
+  })
+
+  describe('d1_databases cf_database_id upgrade', () => {
+    // Every table is up-to-date except d1_databases, which predates the cf_database_id column.
+    const upToDate = [
+      { name: 'id', notnull: 0 },
+      { name: 'user_id', notnull: 0 },
+      { name: 'database_id', notnull: 0 },
+      { name: 'notebook_run_limit', notnull: 0 },
+      { name: 'last_run_seq', notnull: 1 },
+      { name: 'seq', notnull: 0 },
+      { name: 'cf_database_id', notnull: 0 },
+    ]
+
+    it('adds cf_database_id when it is missing', async () => {
+      const { db, calls } = fakeD1((sql) => {
+        if (!sql.startsWith('PRAGMA table_info')) return null
+        return sql.includes('d1_databases')
+          ? [
+              { name: 'id', notnull: 0 },
+              { name: 'binding_name', notnull: 1 },
+            ]
+          : upToDate
+      })
+      const res = await callWorker(fakeEnv({ DB: db }), '/api/setup', postJson({ secret: 'test-setup-secret' }))
+      expect(res.status).toBe(200)
+      expect(await res.json()).toMatchObject({ ok: true, upgraded: [expect.stringContaining('cf_database_id')] })
+      expect(calls.some((c) => c.sql === 'ALTER TABLE d1_databases ADD COLUMN cf_database_id TEXT')).toBe(true)
+    })
+
+    it('leaves an up-to-date d1_databases table alone', async () => {
+      const { db, calls } = fakeD1((sql) => (sql.startsWith('PRAGMA table_info') ? upToDate : null))
+      const res = await callWorker(fakeEnv({ DB: db }), '/api/setup', postJson({ secret: 'test-setup-secret' }))
+      expect(await res.json()).toMatchObject({ ok: true })
+      expect(calls.some((c) => c.sql.includes('ADD COLUMN cf_database_id'))).toBe(false)
+    })
+
+    it('respects TABLE_PREFIX', async () => {
+      const { db, calls } = fakeD1((sql) => {
+        if (!sql.startsWith('PRAGMA table_info')) return null
+        return sql.includes('kp_d1_databases') ? [{ name: 'id', notnull: 0 }] : upToDate
+      })
+      const res = await callWorker(
+        fakeEnv({ DB: db, TABLE_PREFIX: 'kp' }),
+        '/api/setup',
+        postJson({ secret: 'test-setup-secret' })
+      )
+      expect(res.status).toBe(200)
+      expect(calls.some((c) => c.sql === 'ALTER TABLE kp_d1_databases ADD COLUMN cf_database_id TEXT')).toBe(true)
     })
   })
 })

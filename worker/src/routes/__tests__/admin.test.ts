@@ -1,5 +1,7 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, afterEach, vi } from 'vitest'
 import { bearer, callWorker, fakeD1, fakeEnv, postJson } from './fakes'
+
+afterEach(() => vi.unstubAllGlobals())
 
 describe('POST /api/admin/settings/test-email', () => {
   it('rate-limits test emails per admin', async () => {
@@ -134,5 +136,148 @@ describe('PATCH /api/admin/settings resend api key', () => {
       if (typeof expected === 'string') expect(saved.api_key).toBe(expected)
       else expect(saved.api_key).toMatch(expected)
     }
+  })
+})
+
+describe('database registry over the D1 HTTP API', () => {
+  const APP_DB = '11111111-1111-4111-8111-111111111111'
+  const DB_1 = '22222222-2222-4222-8222-222222222222'
+  const DB_2 = '33333333-3333-4333-8333-333333333333'
+
+  const cfList = (rows: Array<{ uuid: string; name: string }>) =>
+    new Response(
+      JSON.stringify({
+        success: true,
+        result: rows.map((r) => ({ ...r, created_at: 'x' })),
+        result_info: { page: 1, per_page: 100, total_count: rows.length },
+      }),
+      { status: 200, headers: { 'Content-Type': 'application/json' } }
+    )
+
+  const cfEnv = (handler?: Parameters<typeof fakeD1>[0]) =>
+    fakeEnv({
+      DB: fakeD1(handler).db,
+      CF_ACCOUNT_ID: 'acct',
+      CF_D1_API_TOKEN: 'tok',
+      ZETA_APP_DB_ID: APP_DB,
+    })
+
+  it('lists account databases, excluding the app DB and marking added', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        cfList([
+          { uuid: APP_DB, name: 'zeta' },
+          { uuid: DB_1, name: 'analytics' },
+          { uuid: DB_2, name: 'logs' },
+        ])
+      )
+    )
+    const { db } = fakeD1((sql) =>
+      sql.includes('WHERE cf_database_id IS NOT NULL') ? [{ id: 'r1', cf_database_id: DB_1 }] : null
+    )
+    const env = fakeEnv({ DB: db, CF_ACCOUNT_ID: 'acct', CF_D1_API_TOKEN: 'tok', ZETA_APP_DB_ID: APP_DB })
+    const res = await callWorker(env, '/api/admin/d1/databases', { headers: await bearer(env, 'a1', 'admin') })
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as { results: Array<Record<string, unknown>> }
+    expect(body.results).toEqual([
+      { uuid: DB_1, name: 'analytics', created_at: 'x', added: true, database_id: 'r1' },
+      { uuid: DB_2, name: 'logs', created_at: 'x', added: false, database_id: null },
+    ])
+  })
+
+  it('registers a database picked from the account list', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        cfList([
+          { uuid: APP_DB, name: 'zeta' },
+          { uuid: DB_1, name: 'analytics' },
+        ])
+      )
+    )
+    const { db, calls } = fakeD1()
+    const env = fakeEnv({ DB: db, CF_ACCOUNT_ID: 'acct', CF_D1_API_TOKEN: 'tok', ZETA_APP_DB_ID: APP_DB })
+    const res = await callWorker(
+      env,
+      '/api/admin/databases',
+      postJson({ cf_database_id: DB_1 }, { headers: await bearer(env, 'a1', 'admin') })
+    )
+    expect(res.status).toBe(201)
+    const insert = calls.find((c) => c.sql.startsWith('INSERT INTO d1_databases'))
+    expect(insert).toBeTruthy()
+    expect(insert!.args[1]).toBe('analytics') // default display name from the CF list
+    expect(insert!.args[3]).toBe(`cf:${DB_1}`) // synthetic binding_name
+    expect(insert!.args[4]).toBe(DB_1) // cf_database_id
+  })
+
+  it('refuses to register the application database', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        cfList([
+          { uuid: APP_DB, name: 'zeta' },
+          { uuid: DB_1, name: 'analytics' },
+        ])
+      )
+    )
+    const { db, calls } = fakeD1()
+    const env = fakeEnv({ DB: db, CF_ACCOUNT_ID: 'acct', CF_D1_API_TOKEN: 'tok', ZETA_APP_DB_ID: APP_DB })
+    const res = await callWorker(
+      env,
+      '/api/admin/databases',
+      postJson({ cf_database_id: APP_DB }, { headers: await bearer(env, 'a1', 'admin') })
+    )
+    expect(res.status).toBe(400)
+    expect(calls.some((c) => c.sql.startsWith('INSERT INTO d1_databases'))).toBe(false)
+  })
+
+  it('rejects a database id not present in the account', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        cfList([
+          { uuid: APP_DB, name: 'zeta' },
+          { uuid: DB_1, name: 'analytics' },
+        ])
+      )
+    )
+    const env = cfEnv()
+    const res = await callWorker(
+      env,
+      '/api/admin/databases',
+      postJson({ cf_database_id: DB_2 }, { headers: await bearer(env, 'a1', 'admin') })
+    )
+    expect(res.status).toBe(404)
+  })
+
+  it('re-links a legacy database to a cf_database_id', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        cfList([
+          { uuid: APP_DB, name: 'zeta' },
+          { uuid: DB_1, name: 'analytics' },
+        ])
+      )
+    )
+    const { db, calls } = fakeD1()
+    const env = fakeEnv({ DB: db, CF_ACCOUNT_ID: 'acct', CF_D1_API_TOKEN: 'tok', ZETA_APP_DB_ID: APP_DB })
+    const res = await callWorker(
+      env,
+      '/api/admin/databases/r1',
+      postJson({ cf_database_id: DB_1 }, { method: 'PATCH', headers: await bearer(env, 'a1', 'admin') })
+    )
+    expect(res.status).toBe(200)
+    const update = calls.find((c) => c.sql.startsWith('UPDATE d1_databases'))
+    expect(update).toBeTruthy()
+    expect(update!.args[0]).toBe(DB_1)
+  })
+
+  it('returns a clear error when the API token is not configured', async () => {
+    const env = fakeEnv({ DB: fakeD1().db, CF_ACCOUNT_ID: 'acct', CF_D1_API_TOKEN: '', ZETA_APP_DB_ID: APP_DB })
+    const res = await callWorker(env, '/api/admin/d1/databases', { headers: await bearer(env, 'a1', 'admin') })
+    expect(res.status).toBe(500)
+    expect(((await res.json()) as { error: string }).error).toContain('CF_D1_API_TOKEN')
   })
 })

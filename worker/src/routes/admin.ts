@@ -1,4 +1,4 @@
-import { Hono } from 'hono'
+import { Hono, type Context } from 'hono'
 import type { Env, Variables, UserRow, DatabaseRow } from '../types'
 import { requireAdmin } from '../middleware/auth'
 import { uuid } from '../lib/id'
@@ -6,7 +6,7 @@ import { now, setSetting, getSettings, audit, tables } from '../lib/db'
 import { hashPassword, checkRateLimit } from '../lib/auth'
 import { KV } from '../lib/kv'
 import { sealSecret, sealLegacySecret } from '../lib/secrets'
-import { resolveQueryBinding } from '../lib/bindings'
+import { listAccountD1Databases, D1HttpError, type CfD1Database } from '../lib/d1-http'
 import { sendEmail, isValidEmail } from '../lib/email'
 import { MAX_RUN_LIMIT, MAX_RUN_QUOTA_MB, parseBoundedInt, pruneRuns } from '../lib/runs'
 
@@ -233,10 +233,64 @@ admin.delete('/users/:id', async (c) => {
 
 // ── Database registry ─────────────────────────────────────────────────────────
 
+// Maps a D1 HTTP API error to an admin-facing response. These routes are admin-only, so the full
+// detail (missing credential, invalid token, rate limit) is shown verbatim.
+function d1Error(c: Context<{ Bindings: Env; Variables: Variables }>, err: unknown) {
+  if (err instanceof D1HttpError) return c.json({ error: err.message }, err.status as 400)
+  return c.json({ error: err instanceof Error ? err.message : String(err) }, 500)
+}
+
+// Verifies a picked database uuid is a real account database and not the application's own.
+async function verifyCfDatabase(
+  c: Context<{ Bindings: Env; Variables: Variables }>,
+  cfDatabaseId: string
+): Promise<Response | { name: string }> {
+  if (c.env.ZETA_APP_DB_ID && cfDatabaseId === c.env.ZETA_APP_DB_ID) {
+    return c.json({ error: 'The application database cannot be added as a query target.' }, 400)
+  }
+  let available: CfD1Database[]
+  try {
+    available = await listAccountD1Databases(c.env)
+  } catch (err) {
+    return d1Error(c, err)
+  }
+  const cf = available.find((d) => d.uuid === cfDatabaseId)
+  if (!cf) return c.json({ error: 'Database not found in this Cloudflare account.' }, 404)
+  return { name: cf.name }
+}
+
 admin.get('/databases', async (c) => {
   const T = tables(c.env)
   const rows = await c.env.DB.prepare(`SELECT * FROM ${T.d1_databases} ORDER BY name`).all<DatabaseRow>()
   return c.json({ results: rows.results })
+})
+
+// The Cloudflare account's D1 databases (minus the app DB), each annotated with whether it is
+// already registered as a query target and, if so, the registry row's id.
+admin.get('/d1/databases', async (c) => {
+  let available: CfD1Database[]
+  try {
+    available = await listAccountD1Databases(c.env)
+  } catch (err) {
+    return d1Error(c, err)
+  }
+  const T = tables(c.env)
+  const rows = await c.env.DB.prepare(
+    `SELECT id, cf_database_id FROM ${T.d1_databases} WHERE cf_database_id IS NOT NULL`
+  ).all<{
+    id: string
+    cf_database_id: string
+  }>()
+  const added = new Map(rows.results.map((r) => [r.cf_database_id, r.id]))
+  return c.json({
+    results: available.map((d) => ({
+      uuid: d.uuid,
+      name: d.name,
+      created_at: d.created_at,
+      added: added.has(d.uuid),
+      database_id: added.get(d.uuid) ?? null,
+    })),
+  })
 })
 
 admin.post('/databases', async (c) => {
@@ -244,29 +298,40 @@ admin.post('/databases', async (c) => {
     .json<{
       name?: string
       description?: string
-      binding_name?: string
+      cf_database_id?: string
     }>()
     .catch(() => null)
-  if (!body?.name || !body.binding_name) {
-    return c.json({ error: 'name and binding_name are required' }, 400)
+  if (typeof body?.cf_database_id !== 'string' || !body.cf_database_id) {
+    return c.json({ error: 'cf_database_id is required' }, 400)
+  }
+  if (!/^[0-9a-fA-F-]{36}$/.test(body.cf_database_id)) {
+    return c.json({ error: 'Invalid cf_database_id' }, 400)
   }
 
-  // Reject reserved/malformed names and make sure the binding is a D1 database on this Worker
-  const binding = resolveQueryBinding(c.env, body.binding_name)
-  if (!binding.ok) return c.json({ error: binding.error }, 400)
+  // Verify the database exists in the account and is not the application's own database
+  const verified = await verifyCfDatabase(c, body.cf_database_id)
+  if (verified instanceof Response) return verified
 
   const T = tables(c.env)
-  const dup = await c.env.DB.prepare(`SELECT id FROM ${T.d1_databases} WHERE binding_name = ?1`)
-    .bind(body.binding_name)
+  const dup = await c.env.DB.prepare(`SELECT id FROM ${T.d1_databases} WHERE cf_database_id = ?1`)
+    .bind(body.cf_database_id)
     .first()
-  if (dup) return c.json({ error: 'This binding is already registered' }, 409)
+  if (dup) return c.json({ error: 'This database is already registered' }, 409)
 
   const id = uuid()
   await c.env.DB.prepare(
-    `INSERT INTO ${T.d1_databases} (id, name, description, binding_name, is_active, created_at, created_by)
-     VALUES (?1, ?2, ?3, ?4, 1, ?5, ?6)`
+    `INSERT INTO ${T.d1_databases} (id, name, description, binding_name, cf_database_id, is_active, created_at, created_by)
+     VALUES (?1, ?2, ?3, ?4, ?5, 1, ?6, ?7)`
   )
-    .bind(id, body.name, body.description ?? null, body.binding_name, now(), c.get('userId'))
+    .bind(
+      id,
+      body.name?.trim() || verified.name,
+      body.description ?? null,
+      `cf:${body.cf_database_id}`,
+      body.cf_database_id,
+      now(),
+      c.get('userId')
+    )
     .run()
 
   c.executionCtx.waitUntil(
@@ -281,13 +346,32 @@ admin.post('/databases', async (c) => {
 })
 
 admin.patch('/databases/:id', async (c) => {
-  const body = await c.req.json<{ name?: string; description?: string; is_active?: boolean }>().catch(() => null)
+  const body = await c.req
+    .json<{ name?: string; description?: string; is_active?: boolean; cf_database_id?: string }>()
+    .catch(() => null)
   if (!body) return c.json({ error: 'Invalid body' }, 400)
 
   const updates: string[] = []
   const bindings: unknown[] = []
   let i = 1
 
+  if (body.cf_database_id !== undefined) {
+    if (typeof body.cf_database_id !== 'string' || !/^[0-9a-fA-F-]{36}$/.test(body.cf_database_id)) {
+      return c.json({ error: 'Invalid cf_database_id' }, 400)
+    }
+    // Re-linking a legacy row to a real account database (migration): verify it and refuse the app DB
+    const verified = await verifyCfDatabase(c, body.cf_database_id)
+    if (verified instanceof Response) return verified
+
+    const T2 = tables(c.env)
+    const dup = await c.env.DB.prepare(`SELECT id FROM ${T2.d1_databases} WHERE cf_database_id = ?1 AND id != ?2`)
+      .bind(body.cf_database_id, c.req.param('id'))
+      .first()
+    if (dup) return c.json({ error: 'This database is already registered' }, 409)
+
+    updates.push(`cf_database_id = ?${i++}`)
+    bindings.push(body.cf_database_id)
+  }
   if (body.name) {
     updates.push(`name = ?${i++}`)
     bindings.push(body.name)

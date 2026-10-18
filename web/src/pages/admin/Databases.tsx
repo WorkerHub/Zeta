@@ -1,17 +1,21 @@
 import { useState, useEffect, useCallback } from 'react'
-import { Plus, Trash2, Power, Users } from 'lucide-react'
+import { Plus, Trash2, Power, Users, Link2 } from 'lucide-react'
 import { adminApi } from '../../lib/api'
 import { useLocale } from '../../hooks/useLocale'
-import type { AdminDatabase, DatabaseGrant } from '../../types'
+import type { AdminDatabase, CfD1Database, DatabaseGrant } from '../../types'
 
 export default function AdminDatabases() {
   const { t } = useLocale()
   const [databases, setDatabases] = useState<AdminDatabase[]>([])
+  const [available, setAvailable] = useState<CfD1Database[]>([])
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(true)
   const [showAdd, setShowAdd] = useState(false)
-  const [newDb, setNewDb] = useState({ name: '', description: '', binding_name: '' })
+  const [newDb, setNewDb] = useState({ name: '', description: '', cf_database_id: '' })
   const [addError, setAddError] = useState('')
+  const [linking, setLinking] = useState<AdminDatabase | null>(null)
+  const [linkCfId, setLinkCfId] = useState('')
+  const [linkError, setLinkError] = useState('')
   const [selectedDb, setSelectedDb] = useState<AdminDatabase | null>(null)
   const [permissions, setPermissions] = useState<DatabaseGrant[]>([])
   const [allUsers, setAllUsers] = useState<Array<{ id: string; email: string; name: string }>>([])
@@ -44,15 +48,59 @@ export default function AdminDatabases() {
     load()
   }, [load])
 
+  // Fetches the account's D1 databases (app DB already excluded) for the add and link pickers.
+  async function loadAvailable(): Promise<void> {
+    const res = await adminApi.listD1Databases()
+    setAvailable(res.results)
+  }
+
+  function toggleAdd() {
+    const opening = !showAdd
+    setShowAdd(opening)
+    setAddError('')
+    if (opening) {
+      setNewDb({ name: '', description: '', cf_database_id: '' })
+      loadAvailable().catch((err) => setAddError(err instanceof Error ? err.message : t('errors.generic')))
+    }
+  }
+
   async function addDatabase() {
     setAddError('')
     try {
-      await adminApi.createDatabase(newDb)
+      await adminApi.createDatabase({
+        cf_database_id: newDb.cf_database_id,
+        name: newDb.name || undefined,
+        description: newDb.description || undefined,
+      })
       setShowAdd(false)
-      setNewDb({ name: '', description: '', binding_name: '' })
+      setNewDb({ name: '', description: '', cf_database_id: '' })
       load()
     } catch (err) {
       setAddError(err instanceof Error ? err.message : t('errors.generic'))
+    }
+  }
+
+  async function startLink(db: AdminDatabase) {
+    setLinking(db)
+    setLinkCfId('')
+    setLinkError('')
+    try {
+      await loadAvailable()
+    } catch (err) {
+      setLinkError(err instanceof Error ? err.message : t('errors.generic'))
+    }
+  }
+
+  async function confirmLink() {
+    if (!linking || !linkCfId) return
+    setLinkError('')
+    try {
+      await adminApi.updateDatabase(linking.id, { cf_database_id: linkCfId })
+      setLinking(null)
+      setLinkCfId('')
+      load()
+    } catch (err) {
+      setLinkError(err instanceof Error ? err.message : t('errors.generic'))
     }
   }
 
@@ -100,11 +148,13 @@ export default function AdminDatabases() {
     })
   }
 
+  const availableOptions = available.filter((d) => !d.added)
+
   return (
     <div className="p-4 sm:p-6 max-w-5xl">
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-lg font-semibold text-zinc-900 dark:text-zinc-100">{t('admin.databases')}</h1>
-        <button type="button" onClick={() => setShowAdd(!showAdd)} className="btn-primary btn-sm gap-1.5">
+        <button type="button" onClick={toggleAdd} className="btn-primary btn-sm gap-1.5">
           <Plus size={13} /> {t('admin_db.add_database')}
         </button>
       </div>
@@ -117,6 +167,27 @@ export default function AdminDatabases() {
           <h2 className="text-sm font-semibold text-zinc-700 dark:text-zinc-300">{t('admin_db.register_title')}</h2>
           <p className="text-xs text-zinc-500">{t('admin_db.register_desc')}</p>
           <div className="grid sm:grid-cols-2 gap-4">
+            <div className="sm:col-span-2">
+              <label htmlFor="db-cf" className="label">
+                {t('admin_db.cf_database')}
+              </label>
+              <select
+                id="db-cf"
+                className="input"
+                value={newDb.cf_database_id}
+                onChange={(e) => setNewDb({ ...newDb, cf_database_id: e.target.value })}
+              >
+                <option value="">{t('admin_db.select_database')}</option>
+                {availableOptions.map((d) => (
+                  <option key={d.uuid} value={d.uuid}>
+                    {d.name} ({d.uuid})
+                  </option>
+                ))}
+              </select>
+              {availableOptions.length === 0 && (
+                <p className="mt-1 text-xs text-zinc-500">{t('admin_db.no_available')}</p>
+              )}
+            </div>
             <div>
               <label htmlFor="db-display-name" className="label">
                 {t('admin_db.display_name')}
@@ -131,19 +202,6 @@ export default function AdminDatabases() {
               />
             </div>
             <div>
-              <label htmlFor="db-binding-name" className="label">
-                {t('admin_db.binding_name')}
-              </label>
-              <input
-                id="db-binding-name"
-                type="text"
-                className="input font-mono"
-                value={newDb.binding_name}
-                onChange={(e) => setNewDb({ ...newDb, binding_name: e.target.value.toUpperCase() })}
-                placeholder="QUERY_DB_1"
-              />
-            </div>
-            <div className="sm:col-span-2">
               <label htmlFor="db-description" className="label">
                 {t('admin_db.description')}
               </label>
@@ -162,13 +220,35 @@ export default function AdminDatabases() {
             <button type="button" onClick={() => setShowAdd(false)} className="btn-secondary">
               {t('admin_db.cancel')}
             </button>
-            <button
-              type="button"
-              onClick={addDatabase}
-              className="btn-primary"
-              disabled={!newDb.name || !newDb.binding_name}
-            >
+            <button type="button" onClick={addDatabase} className="btn-primary" disabled={!newDb.cf_database_id}>
               {t('admin_db.register')}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Link (migration) form */}
+      {linking && (
+        <div className="card p-5 mb-4 space-y-4">
+          <h2 className="text-sm font-semibold text-zinc-700 dark:text-zinc-300">
+            {t('admin_db.link_title')} — <span className="text-zinc-900 dark:text-zinc-100">{linking.name}</span>
+          </h2>
+          <p className="text-xs text-zinc-500">{t('admin_db.link_desc')}</p>
+          <select className="input" value={linkCfId} onChange={(e) => setLinkCfId(e.target.value)}>
+            <option value="">{t('admin_db.select_database')}</option>
+            {availableOptions.map((d) => (
+              <option key={d.uuid} value={d.uuid}>
+                {d.name} ({d.uuid})
+              </option>
+            ))}
+          </select>
+          {linkError && <p className="text-sm text-red-400">{linkError}</p>}
+          <div className="flex gap-3">
+            <button type="button" onClick={() => setLinking(null)} className="btn-secondary">
+              {t('admin_db.cancel')}
+            </button>
+            <button type="button" onClick={confirmLink} className="btn-primary" disabled={!linkCfId}>
+              {t('admin_db.link')}
             </button>
           </div>
         </div>
@@ -186,7 +266,7 @@ export default function AdminDatabases() {
               <tr className="border-b border-zinc-200 dark:border-zinc-800 bg-zinc-100/50 dark:bg-zinc-800/30">
                 <th className="text-left px-4 py-3 text-xs font-medium text-zinc-500">{t('admin_db.name')}</th>
                 <th className="text-left px-4 py-3 text-xs font-medium text-zinc-500 hidden md:table-cell">
-                  {t('admin_db.binding')}
+                  {t('admin_db.cf_database_id')}
                 </th>
                 <th className="text-left px-4 py-3 text-xs font-medium text-zinc-500">{t('admin_db.status')}</th>
                 <th className="px-4 py-3" />
@@ -203,9 +283,15 @@ export default function AdminDatabases() {
                     {db.description && <p className="text-xs text-zinc-500">{db.description}</p>}
                   </td>
                   <td className="px-4 py-3 hidden md:table-cell">
-                    <code className="text-xs text-amber-400 font-mono bg-amber-400/10 px-1.5 py-0.5 rounded">
-                      {db.binding_name}
-                    </code>
+                    {db.cf_database_id ? (
+                      <code className="text-xs text-amber-400 font-mono bg-amber-400/10 px-1.5 py-0.5 rounded">
+                        {db.cf_database_id}
+                      </code>
+                    ) : (
+                      <span className="badge badge-zinc">
+                        {t('admin_db.legacy_binding', { name: db.binding_name })}
+                      </span>
+                    )}
                   </td>
                   <td className="px-4 py-3">
                     <span className={`badge ${db.is_active ? 'badge-green' : 'badge-zinc'}`}>
@@ -214,6 +300,16 @@ export default function AdminDatabases() {
                   </td>
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-1 justify-end">
+                      {!db.cf_database_id && (
+                        <button
+                          type="button"
+                          onClick={() => startLink(db)}
+                          className="btn-ghost btn-sm gap-1"
+                          title={t('admin_db.link')}
+                        >
+                          <Link2 size={13} /> {t('admin_db.link')}
+                        </button>
+                      )}
                       <button type="button" onClick={() => loadPermissions(db)} className="btn-ghost btn-sm gap-1">
                         <Users size={13} /> {t('admin_db.permissions')}
                       </button>

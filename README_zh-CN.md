@@ -46,7 +46,7 @@
 | 运行时 | Cloudflare Workers |
 | API 框架 | Hono.js v4 |
 | 应用数据库 | D1 (SQLite) — 用户、Notebook、设置、查询历史 |
-| 查询目标 | 额外绑定的 D1 数据库 |
+| 查询目标 | 额外的 D1 数据库（通过 Cloudflare D1 HTTP API 访问） |
 | 会话 / 2FA 状态 | Cloudflare KV |
 | 前端 | React 19 + Vite + Tailwind CSS v4 |
 
@@ -110,6 +110,7 @@
 | `JWT_SECRET` | 任意 64 位随机字符串，例如 `openssl rand -hex 32` |
 | `ENCRYPTION_KEY` | 64 位十六进制（32 字节），例如 `openssl rand -hex 32`。会严格校验：其他取值（口令、较短的密钥等）会被直接拒绝，而不是悄悄生成一个弱密钥 |
 | `SETUP_SECRET` | 任意随机字符串，例如 `openssl rand -hex 16` |
+| `CF_D1_API_TOKEN` | 拥有 **D1 → Edit** 权限的 Cloudflare API Token（账号级）。运行时用它列出并查询你在后台添加的 D1 数据库。注意：这是与部署用的 GitHub `CLOUDFLARE_API_TOKEN` 不同的另一个 Token。 |
 
 **变量（Text 类型）**：
 
@@ -117,6 +118,8 @@
 |------|----|
 | `APP_URL` | 你的 Worker 地址，例如 `https://zeta.yourname.workers.dev` 或自定义域名。请填写用户实际访问的 `https://` 地址：它是 CORS 唯一允许的来源、Passkey 的 RP ID、邮件链接的前缀，也是所有登录令牌的签发方/受众（之后修改会让所有用户重新登录） |
 | `TABLE_PREFIX` | *（可选）* 所有内部 D1 表的前缀，例如 `kp` → 表名变为 `kp_users`、`kp_settings` 等。必须在**调用 setup 接口之前**设置，初始化后不可更改。 |
+| `CF_ACCOUNT_ID` | 你的 Cloudflare Account ID（即 GitHub 中 `CLOUDFLARE_ACCOUNT_ID` 变量的同一个 32 位值）。 |
+| `ZETA_APP_DB_ID` | **本应用自身数据库**的 D1 Database ID（即 GitHub 中的 `D1_DATABASE_ID` 变量）。它会从添加列表里排除，也永远无法被查询。 |
 
 > 以上配置完全隔离于 GitHub。`wrangler.toml` 中的 `keep_vars = true` 确保每次部署不会覆盖你在此处设置的值。
 
@@ -173,22 +176,14 @@ curl -X POST https://<你的域名>/api/setup \
 
 ## 接入更多 D1 数据库
 
-D1 数据库通过 GitHub Actions Variables 在部署时自动注入 Worker，**无需修改任何文件**。
+D1 数据库现在从管理后台直接添加——**无需绑定，也无需重新部署**。Worker 通过 Cloudflare D1 HTTP API 访问它们，凭据是第三步配置的 `CF_D1_API_TOKEN`（密钥）与 `CF_ACCOUNT_ID`（变量）。
 
-1. 在 GitHub 仓库 → **Settings → Secrets and variables → Actions → Variables** 中添加两个变量：
+1. 在**管理后台 → 数据库**中点击**添加数据库**。
+2. 从账号的 D1 数据库列表中选择一个（Zeta 自身的应用库已被排除）。
+3. 可选地填写显示名称和描述，然后注册。
+4. 在**管理后台 → 数据库 → 权限**中为用户分配 `read`（只读）或 `write`（读写）权限。
 
-   | 名称 | 值 |
-   |------|----|
-   | `QUERY_DB_N_NAME` | D1 数据库名称（例如 `my-app-db`） |
-   | `QUERY_DB_N_ID` | D1 数据库 ID（Cloudflare 控制台中的 UUID） |
-
-   将 `N` 替换为 1 到 10 之间的数字（例如 `QUERY_DB_1_NAME`、`QUERY_DB_1_ID`），编号无需连续。
-
-2. 推送到 `main`（或手动触发 **workflow_dispatch**）— Actions 工作流会自动为所有已配置的 `QUERY_DB_N` 变量对追加对应的 `[[d1_databases]]` 绑定。
-
-3. 在**管理后台 → 数据库**中点击**添加数据库**，输入绑定名称（例如 `QUERY_DB_1`）。
-
-4. 在**数据库 → 权限**中为需要访问的用户分配权限（只读 / 读写）。
+> **迁移旧的绑定式数据库。** 用旧的绑定方式注册的数据库，在你重新关联之前仍会通过 Worker 绑定运行。在**管理后台 → 数据库**中，对仍显示「通过绑定」的数据库点击**关联**，从列表中选择对应的 Cloudflare 数据库即可。权限、查询历史与已保存的运行记录都会保留。全部关联完成后，可以删除 GitHub 里的 `QUERY_DB_N_*` Actions 变量——它们已不再需要。
 
 ---
 
@@ -285,8 +280,8 @@ git config blame.ignoreRevsFile .git-blame-ignore-revs
 | `D1_DATABASE_NAME` | Variable | D1 数据库名称（例如 `zeta-db`） |
 | `D1_DATABASE_ID` | Variable | D1 数据库 ID |
 | `KV_NAMESPACE_ID` | Variable | KV 命名空间 ID |
-| `QUERY_DB_N_NAME` | Variable | 第 N 个查询数据库的名称（N 为 1–10），例如 `QUERY_DB_1_NAME` |
-| `QUERY_DB_N_ID` | Variable | 第 N 个查询数据库的 ID（N 为 1–10），例如 `QUERY_DB_1_ID` |
+| `QUERY_DB_N_NAME` | Variable | *（旧版）* 第 N 个查询数据库的名称（N 为 1–10），例如 `QUERY_DB_1_NAME` — 仅仍走绑定的数据库需要 |
+| `QUERY_DB_N_ID` | Variable | *（旧版）* 第 N 个查询数据库的 ID（N 为 1–10），例如 `QUERY_DB_1_ID` — 仅仍走绑定的数据库需要 |
 
 ### Cloudflare 控制台（手动配置）
 
@@ -295,8 +290,11 @@ git config blame.ignoreRevsFile .git-blame-ignore-revs
 | `JWT_SECRET` | 密钥 | 签发访问令牌和刷新令牌（HS256） |
 | `ENCRYPTION_KEY` | 密钥 | 64 位十六进制（严格校验）— TOTP 密钥及 SMTP/Resend 凭据的 AES-GCM 加密密钥 |
 | `SETUP_SECRET` | 密钥 | 保护 `POST /api/setup` 初始化端点 |
+| `CF_D1_API_TOKEN` | 密钥 | 拥有 `D1 → Edit` 权限的 API Token — 列出并查询后台添加的 D1 数据库 |
 | `APP_URL` | 变量 | 部署的完整 URL，例如 `https://zeta.example.com`；同时作为 JWT 的 `iss`/`aud`，其他共用 `JWT_SECRET` 的部署签发的令牌会被拒绝 |
 | `TABLE_PREFIX` | 变量 | *（可选）* 内部表名前缀（例如 `kp`）。首次 setup 前设置，初始化后不可更改。 |
+| `CF_ACCOUNT_ID` | 变量 | 调用 D1 HTTP API 所用的 Cloudflare 账号 ID |
+| `ZETA_APP_DB_ID` | 变量 | 本应用自身数据库的 D1 数据库 ID；从查询目标中排除 |
 
 ---
 
@@ -309,7 +307,7 @@ git config blame.ignoreRevsFile .git-blame-ignore-revs
 | `POST /api/auth/*` | 注册、登录、注销、令牌刷新、邮件验证、密码重置、2FA（TOTP / 邮件 OTP / Passkey） |
 | `GET/PATCH /api/profile/*` | 个人信息、修改密码、TOTP 设置/确认/删除、Passkey 注册/删除。删除 TOTP 或 Passkey 需在 JSON 请求体中提供 `{"currentPassword": "..."}` |
 | `GET /api/databases` | 列出当前用户可访问的数据库 |
-| `POST /api/query` | 对绑定的 D1 数据库执行 SQL（多条语句用 `/batch`）。读查询最多返回 5000 行，超出时返回 `truncated: true`。带上 `notebookId` 时，这次运行会保存到该 Notebook 下，响应中附带 `run_id` / `seq`（运行编号）/ `executed_at` |
+| `POST /api/query` | 对可查询的 D1 数据库执行 SQL（多条语句用 `/batch`）。后台添加的数据库走 D1 HTTP API 执行，旧库在重新关联前仍走 Worker 绑定。读查询最多返回 5000 行，超出时返回 `truncated: true`。带上 `notebookId` 时，这次运行会保存到该 Notebook 下，响应中附带 `run_id` / `seq`（运行编号）/ `executed_at` |
 | `GET /api/query/history` | 查询执行历史（可按数据库过滤） |
 | `GET/POST/PATCH/DELETE /api/notebooks` | SQL Notebook 的增删改查（每用户，最多 20 个） |
 | `GET/DELETE /api/notebooks/:id/runs[/:runId]` | Notebook 的运行记录：列表（按编号 `seq` 从大到小，支持 `limit`，以及 `before=<seq>` 或 `offset` 翻页）、读取单条及其结果、删除单条、清空全部 |
