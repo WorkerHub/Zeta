@@ -259,9 +259,11 @@ function kvFallback(err: unknown): void {
   console.warn('rate_limits table missing, using approximate KV counters. Re-run POST /api/setup.')
 }
 
-// Records one hit against `key` and returns the count in the current window, this hit included.
-async function hitCounter(env: Env, key: string, ttl: number): Promise<number> {
+// Records one hit against `key` and returns the count in the current window (this hit included)
+// together with the window's expiry, so callers can report an exact Retry-After.
+async function hitCounter(env: Env, key: string, ttl: number): Promise<{ count: number; expiresAt: number }> {
   const ts = Math.floor(Date.now() / 1000)
+  const expiresAt = ts + ttl
   try {
     const T = tables(env)
     const row = await env.DB.prepare(
@@ -269,21 +271,21 @@ async function hitCounter(env: Env, key: string, ttl: number): Promise<number> {
        ON CONFLICT(key) DO UPDATE SET
          count = CASE WHEN expires_at <= ?3 THEN 1 ELSE count + 1 END,
          expires_at = CASE WHEN expires_at <= ?3 THEN ?2 ELSE expires_at END
-       RETURNING count`
+       RETURNING count, expires_at`
     )
-      .bind(key, ts + ttl, ts)
-      .first<{ count: number }>()
+      .bind(key, expiresAt, ts)
+      .first<{ count: number; expires_at: number }>()
     if (!row) throw new Error('rate_limits upsert returned no row')
     // Expired rows are otherwise only reset on their next hit; sweep them now and then.
     if (Math.random() < 0.01) {
       await env.DB.prepare(`DELETE FROM ${T.rate_limits} WHERE expires_at <= ?1`).bind(ts).run()
     }
-    return row.count
+    return { count: row.count, expiresAt: row.expires_at }
   } catch (err) {
     kvFallback(err)
     const count = parseInt((await env.KV.get(key)) ?? '0', 10) + 1
     await env.KV.put(key, String(count), { expirationTtl: ttl })
-    return count
+    return { count, expiresAt }
   }
 }
 
@@ -311,7 +313,7 @@ async function clearCounter(env: Env, key: string): Promise<void> {
 
 // Counts one attempt and returns false once more than `limit` were made in the window.
 export async function checkRateLimit(env: Env, key: string, limit: number, ttl: number): Promise<boolean> {
-  return (await hitCounter(env, key, ttl)) <= limit
+  return (await hitCounter(env, key, ttl)).count <= limit
 }
 
 const LOGIN_WINDOW = 15 * 60
@@ -324,7 +326,7 @@ export async function beginLoginAttempt(env: Env, ip: string, email: string): Pr
     hitCounter(env, KV.loginAttempts(ip), LOGIN_WINDOW),
     hitCounter(env, KV.loginAttempts(`acct:${email}`), LOGIN_WINDOW),
   ])
-  return byIp <= 20 && byAccount <= 10
+  return byIp.count <= 20 && byAccount.count <= 10
 }
 
 // Clears the account counter and gives the IP its reserved attempt back: only failures count
@@ -350,6 +352,17 @@ export async function checkEmailRateLimit(env: Env, ip: string): Promise<boolean
 
 export async function checkRegisterRateLimit(env: Env, ip: string): Promise<boolean> {
   return checkRateLimit(env, KV.registerAttempts(ip), 5, 15 * 60)
+}
+
+const SETUP_WINDOW = 15 * 60
+const SETUP_LIMIT = 10
+
+// Counts a setup attempt by IP and reports how many seconds remain in the current window once the
+// limit is exceeded (0 while still allowed), so the caller can send an exact Retry-After header.
+export async function checkSetupRateLimit(env: Env, ip: string): Promise<{ allowed: boolean; retryAfter: number }> {
+  const { count, expiresAt } = await hitCounter(env, KV.setupAttempts(ip), SETUP_WINDOW)
+  if (count <= SETUP_LIMIT) return { allowed: true, retryAfter: 0 }
+  return { allowed: false, retryAfter: Math.max(0, expiresAt - Math.floor(Date.now() / 1000)) }
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────────

@@ -1,7 +1,8 @@
 import { Hono } from 'hono'
 import type { D1Database } from '@cloudflare/workers-types'
 import type { Env, Variables } from '../types'
-import { now, tables } from '../lib/db'
+import { getSetting, now, tables } from '../lib/db'
+import { checkSetupRateLimit } from '../lib/auth'
 
 const setup = new Hono<{ Bindings: Env; Variables: Variables }>()
 
@@ -352,6 +353,22 @@ async function secretsMatch(a: string, b: string): Promise<boolean> {
   return diff === 0
 }
 
+// ── GET /api/setup/state ──────────────────────────────────────────────────────
+
+// Public and unauthenticated: only reports whether the setup page is enabled, leaking nothing else
+// (not whether the database is initialised, its schema, or its version). A missing settings table
+// (database not yet initialised) and a missing row both mean the default: enabled. Registered
+// before the GET '/*' 405 fallback below so it is not swallowed by it.
+setup.get('/state', async (c) => {
+  let value: string | null = null
+  try {
+    value = await getSetting(c.env, 'setup_page_enabled')
+  } catch {
+    // settings table does not exist yet — the database has not been initialised
+  }
+  return c.json({ enabled: value !== '0' })
+})
+
 // ── GET /api/setup/* (legacy) ─────────────────────────────────────────────────
 
 // The old GET /api/setup/:secret form put the secret in the URL (history, logs, Referer).
@@ -363,6 +380,14 @@ setup.get('/*', (c) =>
 // ── POST /api/setup ───────────────────────────────────────────────────────────
 
 setup.post('/', async (c) => {
+  // Rate-limit by source IP before anything else — including the secret comparison — so a wrong
+  // secret cannot be brute-forced unthrottled. Success and failure both count.
+  const ip = c.req.header('cf-connecting-ip') ?? 'unknown'
+  const { allowed, retryAfter } = await checkSetupRateLimit(c.env, ip)
+  if (!allowed) {
+    return c.json({ error: 'Too many setup attempts. Try again later.' }, 429, { 'Retry-After': String(retryAfter) })
+  }
+
   const expected = c.env.SETUP_SECRET
 
   // SETUP_SECRET must be set; reject if missing or mismatched
