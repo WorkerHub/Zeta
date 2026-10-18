@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { Plus, Trash2, Power, Users, Link2 } from 'lucide-react'
+import { Plus, Trash2, Power, Users, Link2, ChevronDown } from 'lucide-react'
 import { adminApi } from '../../lib/api'
 import { useLocale } from '../../hooks/useLocale'
 import type { AdminDatabase, CfD1Database, DatabaseGrant } from '../../types'
@@ -171,19 +171,26 @@ export default function AdminDatabases() {
               <label htmlFor="db-cf" className="label">
                 {t('admin_db.cf_database')}
               </label>
-              <select
-                id="db-cf"
-                className="input"
-                value={newDb.cf_database_id}
-                onChange={(e) => setNewDb({ ...newDb, cf_database_id: e.target.value })}
-              >
-                <option value="">{t('admin_db.select_database')}</option>
-                {availableOptions.map((d) => (
-                  <option key={d.uuid} value={d.uuid}>
-                    {d.name} ({d.uuid})
-                  </option>
-                ))}
-              </select>
+              <div className="relative">
+                <select
+                  id="db-cf"
+                  className="input appearance-none pr-9"
+                  value={newDb.cf_database_id}
+                  onChange={(e) => setNewDb({ ...newDb, cf_database_id: e.target.value })}
+                >
+                  <option value="">{t('admin_db.select_database')}</option>
+                  {availableOptions.map((d) => (
+                    <option key={d.uuid} value={d.uuid}>
+                      {d.name} ({d.uuid})
+                    </option>
+                  ))}
+                </select>
+                <ChevronDown
+                  size={14}
+                  aria-hidden="true"
+                  className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-zinc-400 dark:text-zinc-500"
+                />
+              </div>
               {availableOptions.length === 0 && (
                 <p className="mt-1 text-xs text-zinc-500">{t('admin_db.no_available')}</p>
               )}
