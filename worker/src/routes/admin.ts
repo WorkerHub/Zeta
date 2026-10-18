@@ -9,6 +9,7 @@ import { sealSecret, sealLegacySecret } from '../lib/secrets'
 import { listAccountD1Databases, D1HttpError, appDbId, type CfD1Database } from '../lib/d1-http'
 import { sendEmail, isValidEmail } from '../lib/email'
 import { MAX_RUN_LIMIT, MAX_RUN_QUOTA_MB, parseBoundedInt, pruneRuns } from '../lib/runs'
+import { runSetup } from '../lib/setup'
 
 const admin = new Hono<{ Bindings: Env; Variables: Variables }>()
 admin.use('*', requireAdmin)
@@ -708,6 +709,22 @@ admin.post('/settings/test-email', async (c) => {
   }
 
   return c.json({ success: true })
+})
+
+// ── Database setup / upgrade ──────────────────────────────────────────────────
+
+// Runs the same schema initialisation + upgrade routine as POST /api/setup, but keyed to the
+// admin session instead of SETUP_SECRET (and not rate-limited per IP — the admin is already
+// authenticated). Because no admin account exists before the database is initialised, this only
+// applies to the "check & upgrade" case after first-time setup: the initial setup still happens
+// through the `/setup` page or `curl POST /api/setup`.
+admin.post('/setup', async (c) => {
+  const result = await runSetup(c.env)
+  if (!result.ok) {
+    console.error('POST /api/admin/setup failed', result.errors)
+    return c.json(result, 500)
+  }
+  return c.json(result)
 })
 
 export default admin
