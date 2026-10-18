@@ -139,6 +139,29 @@ describe('PATCH /api/admin/settings resend api key', () => {
   })
 })
 
+describe('PATCH /api/admin/settings setup_page_enabled', () => {
+  const patch = (body: unknown, headers: Record<string, string>) => postJson(body, { method: 'PATCH', headers })
+
+  it('saves only the valid 0 / 1 values', async () => {
+    const { db, calls } = fakeD1()
+    const env = fakeEnv({ DB: db })
+    const headers = await bearer(env, 'admin-1', 'admin')
+    for (const value of ['0', '1', 'true', 'yes', '2']) {
+      await callWorker(env, '/api/admin/settings', patch({ setup_page_enabled: value }, headers))
+    }
+    const writes = calls.filter((c) => c.sql.startsWith('INSERT INTO settings') && c.args[0] === 'setup_page_enabled')
+    expect(writes.map((w) => w.args[1])).toEqual(['0', '1'])
+  })
+
+  it('returns the default 1 via GET when the row is absent', async () => {
+    const { db } = fakeD1(() => null)
+    const env = fakeEnv({ DB: db })
+    const res = await callWorker(env, '/api/admin/settings', { headers: await bearer(env, 'admin-1', 'admin') })
+    expect(res.status).toBe(200)
+    expect(((await res.json()) as { setup_page_enabled?: string }).setup_page_enabled).toBe('1')
+  })
+})
+
 describe('database registry over the D1 HTTP API', () => {
   const APP_DB = '11111111-1111-4111-8111-111111111111'
   const DB_1 = '22222222-2222-4222-8222-222222222222'

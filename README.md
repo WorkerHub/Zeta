@@ -157,6 +157,8 @@ Expected response:
 { "ok": true, "message": "Database initialised successfully. You can now register at /register — the first user becomes admin. On new installs registration then stays closed until an admin opens it in Admin → Settings." }
 ```
 
+> There is also a setup page at `/setup` that most users will find easier than a terminal: it submits the same `POST /api/setup` request with the secret, so it is guarded by the same rate limit. An admin can hide the page in **Admin → Settings** (`setup_page_enabled`, on by default) — the switch only hides the page; `POST /api/setup` keeps working with the secret, as the recovery channel. `POST /api/setup` is rate-limited to **10 attempts per 15 minutes per IP** (beyond that it answers `429` with a `Retry-After` header); the attempt is counted before the secret is checked.
+
 > The endpoint is idempotent — safe to call multiple times. **Re-run it after every upgrade**: it also applies schema upgrades to databases created by earlier versions (e.g. making `query_history` keep rows when a user or database is deleted — until then, deleting users or databases fails — and creating the `rate_limits` table that makes login / 2FA / email rate limits exact; until it exists they fall back to approximate KV counters; and rebuilding a `user_database_permissions` table whose foreign keys still point at unprefixed `users` / `d1_databases` tables — until then, granting or revoking database access and deleting users or databases fail with `no such table`. Permission rows whose user or database no longer exists are dropped; the response reports how many under `permissionsRepair`; and creating the `notebook_runs` table plus the `users.notebook_run_limit` column for [saved query results](#saved-query-results) — until then, runs are not saved and the list of saved runs fails to load; and numbering saved runs: adding `notebook_runs.seq` and `notebooks.last_run_seq`, numbering the existing runs of each notebook from 1 (oldest first) and adding a unique `(notebook_id, seq)` index — **after deploying the version with numbered run tabs, call it once more**: until then, queries still run but are not saved, and the run tabs fail to load; and adding `d1_databases.cf_database_id` for [adding D1 databases over the HTTP API](#adding-a-queryable-d1-database) — until then, the admin panel's add/link database flows fail with `no such column: cf_database_id`). Databases created from the migrations get the same through `pnpm migrate:remote` (`0004_notebook_runs.sql`, `0005_notebook_run_seq.sql`, `0006_d1_cf_database_id.sql`).
 >
 > Earlier versions used `GET /api/setup/<SETUP_SECRET>`. That form is gone: it now returns `405` and does nothing. If you ever opened the old URL, consider rotating `SETUP_SECRET`.
@@ -314,7 +316,8 @@ All endpoints live under `/api/`. Authentication uses short-lived JWT access tok
 | `GET/DELETE /api/notebooks/:id/runs[/:runId]` | A notebook's saved runs: list (highest number `seq` first, `limit` plus `before=<seq>` or `offset`), read one with its results, delete one, or clear all |
 | `GET/PUT /api/profile/run-settings` | The user's own run limit (`run_limit`, `null` follows the admin limit) and storage usage |
 | `GET/POST/PATCH/DELETE /api/admin/*` | Admin-only: users, databases, permissions, settings |
-| `POST /api/setup` | Idempotent schema initialisation (JSON body `{"secret": "<SETUP_SECRET>"}`) |
+| `POST /api/setup` | Idempotent schema initialisation (JSON body `{"secret": "<SETUP_SECRET>"}`). Rate-limited to 10 attempts / 15 min per IP |
+| `GET /api/setup/state` | Public: `{"enabled": boolean}` — whether the `/setup` page is enabled |
 | `GET /api/health` | Health check |
 
 ---
