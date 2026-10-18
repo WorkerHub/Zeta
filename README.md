@@ -192,6 +192,21 @@ D1 databases are injected into the Worker at deploy time via GitHub Actions Vari
 
 ---
 
+## MySQL Compatibility
+
+The SQL editor accepts a small set of MySQL introspection statements and rewrites them into read-only SQLite queries, so familiar MySQL commands work against D1 databases:
+
+| MySQL statement | Returns | Notes |
+|-----------------|---------|-------|
+| `SHOW TABLES` | `name` | Tables and views of the current database, excluding `sqlite_*` and `_cf_*` internal tables |
+| `DESCRIBE tbl` / `DESC tbl` / `SHOW COLUMNS FROM tbl` | `Field`, `Type`, `Null`, `Key`, `Default`, `Extra` | `Null` is `YES`/`NO`; `Key` is `PRI` for primary-key columns and `''` otherwise; `Default` is SQLite's raw default expression |
+| `SHOW CREATE TABLE tbl` | `Table`, `Create Table` | The original `CREATE TABLE` DDL |
+| `SHOW INDEX FROM tbl` (also `SHOW INDEXES` / `SHOW KEYS`) | `Table`, `Non_unique`, `Key_name`, `Seq_in_index`, `Column_name`, `Collation`, `Cardinality`, `Sub_part`, `Packed`, `Null`, `Index_type`, `Comment`, `Index_comment`, `Visible`, `Expression` | `Key_name` is `PRIMARY` for the primary key; `Cardinality` and `Expression` are `NULL` |
+
+Statements are matched case-insensitively and accept a trailing `;`; table names may be backtick-quoted, double-quoted or unquoted. The rewrite is read-only — a `read`-only user can run these, the 5,000-row cap still applies, and the original statement is what appears in query history and saved runs. `SHOW DATABASES` is not supported (each connection is bound to a single database) and returns a clear error; other `SHOW …` forms and any unrecognised syntax fall through to the normal path unchanged.
+
+---
+
 ## Saved Query Results
 
 Every run of a notebook (one statement or several) is stored in the app database (`notebook_runs`) together with its results. Above the results, a notebook's runs are shown as tabs numbered from right to left — `… #5 #4 #3 #2 #1`, the newest on the left and selected when the notebook opens. The strip scrolls sideways (trackpad, touch, mouse wheel) and loads older runs on reaching its right end; hovering a tab shows when the run ran, its database, row count and SQL. A tab's × deletes that run right away (Delete / Backspace on a focused tab does the same, ←/→ switch tabs). **History** in the top bar opens a drawer with every run of the notebook: pick one to read its SQL and results, delete a single run, or clear them all after a confirmation; older runs load as the list is scrolled. The drawer opens at half the window width, and dragging its left edge (or moving it with the arrow keys) resizes it. A run's number never changes and is never reused: deleting or pruning runs leaves gaps (the oldest run left may be #37), and each notebook counts on its own.

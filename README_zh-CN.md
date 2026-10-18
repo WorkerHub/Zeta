@@ -192,6 +192,21 @@ D1 数据库通过 GitHub Actions Variables 在部署时自动注入 Worker，**
 
 ---
 
+## MySQL 兼容写法
+
+SQL 编辑器支持少量 MySQL 的查看语句，会自动转换成等价的只读 SQLite 查询，让习惯 MySQL 的命令能在 D1 数据库上直接使用：
+
+| MySQL 语句 | 返回列 | 说明 |
+|-----------|--------|------|
+| `SHOW TABLES` | `name` | 当前库的表和视图，排除 `sqlite_*`、`_cf_*` 开头的内部表 |
+| `DESCRIBE 表名` / `DESC 表名` / `SHOW COLUMNS FROM 表名` | `Field`、`Type`、`Null`、`Key`、`Default`、`Extra` | `Null` 为 `YES`/`NO`；`Key` 主键列为 `PRI`，否则为空字符串；`Default` 为 SQLite 的原始默认值表达式 |
+| `SHOW CREATE TABLE 表名` | `Table`、`Create Table` | 原始的 `CREATE TABLE` 建表语句 |
+| `SHOW INDEX FROM 表名`（也可写 `SHOW INDEXES` / `SHOW KEYS`） | `Table`、`Non_unique`、`Key_name`、`Seq_in_index`、`Column_name`、`Collation`、`Cardinality`、`Sub_part`、`Packed`、`Null`、`Index_type`、`Comment`、`Index_comment`、`Visible`、`Expression` | `Key_name` 主键为 `PRIMARY`；`Cardinality`、`Expression` 为 `NULL` |
+
+这些语句不区分大小写，允许末尾加分号；表名支持反引号、双引号和不加引号三种写法。转换结果是只读的——只有 `read` 权限的用户也可以执行，5000 行上限同样生效，查询历史和运行记录中保存的是你原本输入的语句。`SHOW DATABASES` 不受支持（每个连接只绑定一个数据库），会返回明确的错误提示；其他 `SHOW …` 写法以及任何无法识别的语法会原样交给原有流程处理。
+
+---
+
 ## 查询结果保留
 
 每次运行 Notebook（单条或多条语句）都会连同结果保存到应用数据库的 `notebook_runs` 表中。结果上方以标签页显示该 Notebook 的运行记录，编号从右到左排列：`… #5 #4 #3 #2 #1`，最新一次在最左边，打开 Notebook 时默认选中它。标签栏可以左右滑动（触控板、触屏、鼠标滚轮均可），滑到最右端会继续加载更早的记录；鼠标悬停在标签上可查看运行时间、数据库、行数和 SQL 摘要。点标签上的 × 立即删除该条记录（键盘聚焦标签时按 Delete / Backspace 效果相同，←/→ 切换标签）。顶部的「历史」按钮会打开侧边抽屉，列出该 Notebook 的全部运行记录：选中一条即可查看它的 SQL 和结果、删除单条记录，或点「清空全部」并确认后清空全部记录；列表滚动到底部会继续加载更早的记录。抽屉默认占窗口宽度的一半，拖动它的左边缘（或用方向键）即可调整宽度。每次运行的编号固定不变且不会重复使用：删除或自动清理后编号会出现空缺（例如最早的一条是 #37），各 Notebook 分别编号。
