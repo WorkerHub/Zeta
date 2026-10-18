@@ -68,6 +68,18 @@ export class ApiError extends Error {
   }
 }
 
+// A failed POST /api/setup carries a `Retry-After` header when rate limited (429); surface it so
+// the setup page can tell the user how long to wait.
+export class SetupApiError extends ApiError {
+  constructor(
+    message: string,
+    status: number,
+    public readonly retryAfter: string | null
+  ) {
+    super(message, status)
+  }
+}
+
 let refreshPromise: Promise<boolean> | null = null
 
 async function tryRefresh(): Promise<boolean> {
@@ -239,6 +251,39 @@ export const queryApi = {
       method: 'POST',
       body: JSON.stringify(body),
     }),
+}
+
+// ── Setup endpoints ───────────────────────────────────────────────────────────
+
+// These are public (no auth) and need the raw response/status/headers, so they use fetch directly
+// instead of apiFetch (whose 401 handling and JSON-only errors don't apply here).
+export const setupApi = {
+  // GET /api/setup/state → { enabled: boolean }. Throws on network/5xx so the page can fall back
+  // to "treat as available" instead of a blank screen.
+  state: async (): Promise<{ enabled: boolean }> => {
+    const res = await fetch('/api/setup/state', { credentials: 'include' })
+    if (!res.ok) throw new Error(`Setup state unavailable (${res.status})`)
+    return (await res.json()) as { enabled: boolean }
+  },
+
+  // POST /api/setup — the secret travels only in the JSON body, never the URL.
+  run: async (secret: string): Promise<{ ok: true; message: string; upgraded?: string[] }> => {
+    const res = await fetch('/api/setup', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ secret }),
+      credentials: 'include',
+    })
+    const retryAfter = res.headers.get('Retry-After')
+    const body = (await res.json().catch(() => ({}))) as {
+      ok?: boolean
+      message?: string
+      upgraded?: string[]
+      error?: string
+    }
+    if (!res.ok) throw new SetupApiError(body.error ?? res.statusText, res.status, retryAfter)
+    return { ok: true, message: body.message ?? '', upgraded: body.upgraded }
+  },
 }
 
 // ── Admin endpoints ───────────────────────────────────────────────────────────

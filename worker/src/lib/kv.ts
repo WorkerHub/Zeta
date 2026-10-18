@@ -29,4 +29,6 @@ export const KV = {
   registerAttempts: (ip: string) => `register_attempts:${ip}`,
   // Admin test-email rate limiting (15min TTL)
   testEmailAttempts: (userId: string) => `test_email_attempts:${userId}`,
+  // Setup endpoint rate limiting (15min TTL)
+  setupAttempts: (ip: string) => `setup_attempts:${ip}`,
 }

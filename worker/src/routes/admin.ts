@@ -548,10 +548,13 @@ const EXPOSED_SETTINGS = [
   'app_name',
   'notebook_run_limit',
   'run_storage_quota_mb',
+  'setup_page_enabled',
 ]
 
 admin.get('/settings', async (c) => {
   const cfg = await getSettings(c.env, EXPOSED_SETTINGS)
+  // The setup-page toggle defaults to enabled on deployments that predate it (its row is absent).
+  if (cfg.setup_page_enabled === undefined) cfg.setup_page_enabled = '1'
   // Opportunistically encrypt secrets still stored as plaintext by older versions
   for (const [key, field] of [
     ['smtp_config', 'password'],
@@ -583,6 +586,8 @@ admin.get('/settings', async (c) => {
 })
 
 const BOOLEAN_SETTINGS = new Set(['registration_enabled', 'require_email_verification', 'enforce_2fa'])
+// Settings whose values are stored as '0' / '1' (on/off) rather than 'true' / 'false'.
+const ENUM_SETTINGS: Record<string, readonly string[]> = { setup_page_enabled: ['0', '1'] }
 // Limits on saved notebook runs (see lib/runs.ts): integer ranges
 const RUN_SETTINGS: Record<string, number> = {
   notebook_run_limit: MAX_RUN_LIMIT,
@@ -624,6 +629,8 @@ admin.patch('/settings', async (c) => {
 
     const v = String(value)
     if (BOOLEAN_SETTINGS.has(key) && v !== 'true' && v !== 'false') continue
+    const enumValues = ENUM_SETTINGS[key]
+    if (enumValues && !enumValues.includes(v)) continue
     if (key === 'email_provider' && !VALID_EMAIL_PROVIDERS.includes(v)) continue
     if (key in RUN_SETTINGS) {
       const n = String(parseBoundedInt(v, 1, RUN_SETTINGS[key]!))

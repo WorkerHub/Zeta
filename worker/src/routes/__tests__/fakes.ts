@@ -22,7 +22,7 @@ function rateLimitTable() {
           ? { count: 1, expires_at: expiresAt }
           : { count: row.count + 1, expires_at: row.expires_at }
       rows.set(key, next)
-      return { count: next.count }
+      return { count: next.count, expires_at: next.expires_at }
     }
     if (sql.startsWith('UPDATE')) {
       const row = rows.get(args[0] as string)

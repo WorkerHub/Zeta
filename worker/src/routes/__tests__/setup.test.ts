@@ -29,13 +29,14 @@ describe('setup endpoint', () => {
     expect(calls).toHaveLength(0)
   })
 
-  it('rejects a wrong secret without touching the database', async () => {
+  it('rejects a wrong secret without initialising the schema', async () => {
     const { db, calls } = fakeD1()
     for (const secret of ['wrong', 'test-setup-secre', 'test-setup-secret-and-more']) {
       const res = await callWorker(fakeEnv({ DB: db }), '/api/setup', postJson({ secret }))
       expect(res.status).toBe(403)
     }
-    expect(calls).toHaveLength(0)
+    // Only the per-attempt rate-limit counters are written; the schema is never touched.
+    expect(calls.filter((c) => !c.sql.includes('rate_limits'))).toHaveLength(0)
   })
 
   it('requires a JSON body with a string secret', async () => {
@@ -49,7 +50,75 @@ describe('setup endpoint', () => {
     const { db, calls } = fakeD1()
     const res = await callWorker(fakeEnv({ DB: db, SETUP_SECRET: '' }), '/api/setup', postJson({ secret: 'x' }))
     expect(res.status).toBe(500)
-    expect(calls).toHaveLength(0)
+    expect(calls.filter((c) => !c.sql.includes('rate_limits'))).toHaveLength(0)
+  })
+
+  describe('POST /api/setup rate limiting', () => {
+    const attempt = (ip?: string) => postJson({ secret: 'wrong' }, ip ? { headers: { 'cf-connecting-ip': ip } } : {})
+
+    it('returns 429 with Retry-After once an IP exceeds 10 attempts', async () => {
+      const { db } = fakeD1()
+      const env = fakeEnv({ DB: db })
+      for (let i = 0; i < 10; i++) {
+        expect((await callWorker(env, '/api/setup', attempt('203.0.113.9'))).status).toBe(403)
+      }
+      const blocked = await callWorker(env, '/api/setup', attempt('203.0.113.9'))
+      expect(blocked.status).toBe(429)
+      expect(await blocked.json()).toEqual({ error: 'Too many setup attempts. Try again later.' })
+      expect(Number(blocked.headers.get('Retry-After'))).toBeGreaterThan(0)
+    })
+
+    it('counts a successful setup too, against the same counter as failures', async () => {
+      const { db } = fakeD1()
+      const env = fakeEnv({ DB: db })
+      expect((await callWorker(env, '/api/setup', postJson({ secret: 'test-setup-secret' }))).status).toBe(200)
+      for (let i = 0; i < 9; i++) {
+        expect((await callWorker(env, '/api/setup', postJson({ secret: 'wrong' }))).status).toBe(403)
+      }
+      // 1 success + 9 failures = 10 attempts; the next one is throttled even with the right secret.
+      expect((await callWorker(env, '/api/setup', postJson({ secret: 'test-setup-secret' }))).status).toBe(429)
+    })
+
+    it('keeps per-IP counters independent', async () => {
+      const { db } = fakeD1()
+      const env = fakeEnv({ DB: db })
+      for (let i = 0; i < 10; i++) {
+        await callWorker(env, '/api/setup', attempt('203.0.113.1'))
+      }
+      expect((await callWorker(env, '/api/setup', attempt('203.0.113.1'))).status).toBe(429)
+      expect((await callWorker(env, '/api/setup', attempt('203.0.113.2'))).status).toBe(403)
+    })
+  })
+
+  describe('GET /api/setup/state', () => {
+    it('reports enabled when the settings table does not exist yet', async () => {
+      const { db } = fakeD1((sql) => {
+        if (sql.includes('FROM settings')) throw new Error('no such table: settings')
+        return null
+      })
+      const res = await callWorker(fakeEnv({ DB: db }), '/api/setup/state')
+      expect(res.status).toBe(200)
+      expect(await res.json()).toEqual({ enabled: true })
+    })
+
+    it('reports enabled by default when the row is absent', async () => {
+      const { db } = fakeD1(() => null)
+      const res = await callWorker(fakeEnv({ DB: db }), '/api/setup/state')
+      expect(res.status).toBe(200)
+      expect(await res.json()).toEqual({ enabled: true })
+    })
+
+    it('reflects the toggle: 0 → false, 1 → true (not swallowed by the 405 fallback)', async () => {
+      for (const [value, enabled] of [
+        ['0', false],
+        ['1', true],
+      ] as const) {
+        const { db } = fakeD1((sql) => (sql.includes('FROM settings') ? { value } : null))
+        const res = await callWorker(fakeEnv({ DB: db }), '/api/setup/state')
+        expect(res.status).toBe(200)
+        expect(await res.json()).toEqual({ enabled })
+      }
+    })
   })
 
   describe('query_history upgrade', () => {
