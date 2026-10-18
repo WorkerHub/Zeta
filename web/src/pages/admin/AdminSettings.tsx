@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
-import { Save, Loader2, Send } from 'lucide-react'
-import { adminApi } from '../../lib/api'
+import { Save, Loader2, Send, Database } from 'lucide-react'
+import { adminApi, adminSetupApi, ApiError } from '../../lib/api'
+import { adminSetupErrorKey } from '../../lib/setup'
 import { useLocale } from '../../hooks/useLocale'
 
 type Settings = Record<string, string>
@@ -25,6 +26,60 @@ interface ResendConfig {
 const DEFAULT_SMTP: SmtpConfig = { host: '', port: '587', username: '', password: '', from: '', from_name: '' }
 const DEFAULT_RESEND: ResendConfig = { api_key: '', from: '', from_name: '' }
 
+type Translate = (key: string, vars?: Record<string, string | number>) => string
+
+// Stateless presentation for the database-maintenance card, split out so its three result
+// branches (up-to-date / upgraded / failed) and the loading button can be asserted without a
+// browser via renderToStaticMarkup.
+interface AdminSetupCardProps {
+  t: Translate
+  // null = not run yet (no result shown); otherwise a success — [] means up to date,
+  // non-empty lists the upgrade items.
+  upgraded: string[] | null
+  error: string
+  running: boolean
+  onRun: () => void
+}
+
+export function AdminSetupCard({ t, upgraded, error, running, onRun }: AdminSetupCardProps) {
+  return (
+    <div className="card p-5 space-y-4">
+      <h2 className="text-sm font-semibold text-zinc-400 uppercase tracking-wider">{t('admin_setup.title')}</h2>
+      <p className="text-sm text-zinc-600 dark:text-zinc-300">{t('admin_setup.desc')}</p>
+
+      {upgraded !== null && (
+        <div role="status" className="space-y-3">
+          {upgraded.length > 0 ? (
+            <>
+              <p className="text-sm text-emerald-500">{t('admin_setup.upgraded_title')}</p>
+              <ul className="text-sm text-zinc-700 dark:text-zinc-300 list-disc list-inside space-y-1">
+                {upgraded.map((item) => (
+                  <li key={item}>{item}</li>
+                ))}
+              </ul>
+            </>
+          ) : (
+            <p className="text-sm text-emerald-500">{t('admin_setup.up_to_date')}</p>
+          )}
+        </div>
+      )}
+
+      {error && (
+        <p role="alert" className="text-sm text-red-400">
+          {error}
+        </p>
+      )}
+
+      <div>
+        <button type="button" onClick={onRun} disabled={running} className="btn-primary gap-2">
+          {running ? <Loader2 size={14} className="animate-spin" /> : <Database size={14} />}
+          {running ? t('admin_setup.running') : t('admin_setup.run')}
+        </button>
+      </div>
+    </div>
+  )
+}
+
 export default function AdminSettings() {
   const { t } = useLocale()
   const [settings, setSettings] = useState<Settings>({})
@@ -46,6 +101,11 @@ export default function AdminSettings() {
   const [testEmailLoading, setTestEmailLoading] = useState(false)
   const [testEmailMsg, setTestEmailMsg] = useState('')
   const [testEmailError, setTestEmailError] = useState('')
+
+  // Database maintenance state
+  const [upgradeUpgraded, setUpgradeUpgraded] = useState<string[] | null>(null)
+  const [upgradeRunning, setUpgradeRunning] = useState(false)
+  const [upgradeError, setUpgradeError] = useState('')
 
   useEffect(() => {
     adminApi
@@ -138,6 +198,25 @@ export default function AdminSettings() {
       setTestEmailError((e instanceof Error && e.message) || t('admin_settings.test_email_failed'))
     } finally {
       setTestEmailLoading(false)
+    }
+  }
+
+  async function handleUpgrade() {
+    setUpgradeRunning(true)
+    setUpgradeError('')
+    setUpgradeUpgraded(null)
+    try {
+      const res = await adminSetupApi.run()
+      setUpgradeUpgraded(res.upgraded ?? [])
+    } catch (err) {
+      if (err instanceof ApiError) {
+        const key = adminSetupErrorKey(err.status)
+        setUpgradeError(key ? t(key) : err.message || t('errors.generic'))
+      } else {
+        setUpgradeError(t('errors.generic'))
+      }
+    } finally {
+      setUpgradeRunning(false)
     }
   }
 
@@ -242,6 +321,15 @@ export default function AdminSettings() {
             </button>
           </div>
         </div>
+
+        {/* Database maintenance */}
+        <AdminSetupCard
+          t={t}
+          upgraded={upgradeUpgraded}
+          error={upgradeError}
+          running={upgradeRunning}
+          onRun={() => void handleUpgrade()}
+        />
 
         {/* Saved query runs */}
         <div className="card p-5 space-y-4">

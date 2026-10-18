@@ -32,3 +32,12 @@ export function setupErrorInfo(status: number, message: string, retryAfter: stri
   if (status === 500 && /SETUP_SECRET/i.test(message)) return { key: 'setup.error_setup_secret_unset' }
   return { key: 'errors.generic' }
 }
+
+// Maps a failed POST /api/admin/setup to a translation key for the admin settings page.
+// 401 (session expired) and 403 (not an admin) have dedicated copy; any other status returns
+// null so the caller can show the server's `error` text (or a generic fallback).
+export function adminSetupErrorKey(status: number): string | null {
+  if (status === 401) return 'admin_setup.error_unauthorized'
+  if (status === 403) return 'admin_setup.error_forbidden'
+  return null
+}

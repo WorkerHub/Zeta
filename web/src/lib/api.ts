@@ -286,6 +286,21 @@ export const setupApi = {
   },
 }
 
+// ── Admin setup endpoint ──────────────────────────────────────────────────────
+
+export interface AdminSetupResult {
+  ok: true
+  message: string
+  upgraded?: string[]
+  permissionsRepair?: Record<string, unknown>
+}
+
+// POST /api/admin/setup — the signed-in admin's session authorizes this (no setup secret).
+// Reuses apiFetch so a 401 refreshes/redirects like every other admin call.
+export const adminSetupApi = {
+  run: () => apiFetch<AdminSetupResult>('/admin/setup', { method: 'POST' }),
+}
+
 // ── Admin endpoints ───────────────────────────────────────────────────────────
 
 export const adminApi = {
