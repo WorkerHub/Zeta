@@ -40,36 +40,13 @@ describe('patchWrangler', () => {
 
   it('keeps hostile values inside their TOML strings', () => {
     const evil = 'a/b&c\\d$&$\'"\nmain = "evil.js"\n[[d1_databases]]\nbinding = "X'
-    const { toml } = patchWrangler(template, {
-      ...base,
-      D1_DATABASE_NAME: evil,
-      QUERY_DB_1_NAME: evil,
-      QUERY_DB_1_ID: 'id"1',
-    })
+    const { toml } = patchWrangler(template, { ...base, D1_DATABASE_NAME: evil })
     const { tables, values } = lines(toml)
     expect(values('main')).toEqual(['src/index.ts'])
-    expect(tables.filter((t) => t === 'd1_databases')).toHaveLength(2)
-    expect(values('binding')).toEqual(['ASSETS', 'DB', 'KV', 'QUERY_DB_1'])
-    expect(values('database_name')).toEqual([evil, evil])
-    expect(values('database_id')).toEqual([base.D1_DATABASE_ID, 'id"1'])
-  })
-
-  it('appends complete query databases and skips incomplete ones', () => {
-    const { toml, log } = patchWrangler(template, {
-      ...base,
-      QUERY_DB_1_NAME: 'one',
-      QUERY_DB_1_ID: 'id-1',
-      QUERY_DB_2_NAME: 'two',
-      QUERY_DB_10_NAME: 'ten',
-      QUERY_DB_10_ID: 'id-10',
-    })
-    expect(lines(toml).values('binding')).toEqual(['ASSETS', 'DB', 'KV', 'QUERY_DB_1', 'QUERY_DB_10'])
-    expect(log.some((l) => l.startsWith('WARNING: QUERY_DB_2'))).toBe(true)
-  })
-
-  it('does not let a value forge a GitHub Actions log command', () => {
-    const { log } = patchWrangler(template, { ...base, QUERY_DB_1_NAME: 'x\n::error::boom', QUERY_DB_1_ID: 'i' })
-    expect(log.every((l) => !l.includes('\n'))).toBe(true)
+    expect(tables.filter((t) => t === 'd1_databases')).toHaveLength(1)
+    expect(values('binding')).toEqual(['ASSETS', 'DB', 'KV'])
+    expect(values('database_name')).toEqual([evil])
+    expect(values('database_id')).toEqual([base.D1_DATABASE_ID])
   })
 
   it('fails when a required variable is missing', () => {

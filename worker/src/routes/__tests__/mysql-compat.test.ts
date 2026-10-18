@@ -1,7 +1,7 @@
-import { describe, it, expect } from 'vitest'
-import type { D1Database } from '@cloudflare/workers-types'
+import { describe, it, expect, vi, afterEach } from 'vitest'
 import type { DatabaseSync } from 'node:sqlite'
 import init from '../../../migrations/0001_init.sql?raw'
+import cfDatabaseId from '../../../migrations/0006_d1_cf_database_id.sql?raw'
 import type { Env } from '../../types'
 import { bearer, callWorker, fakeEnv, postJson } from './fakes'
 import { sqliteD1 } from './sqlite-d1'
@@ -10,17 +10,43 @@ import { sqliteD1 } from './sqlite-d1'
 // MySQL statements (SHOW TABLES, DESCRIBE, …) run for real through /api/query.
 
 const MEMBER = 'member-1'
+const DB_1 = '22222222-2222-4222-8222-222222222222'
+const APP_DB = '11111111-1111-4111-8111-111111111111'
+
+afterEach(() => vi.unstubAllGlobals())
 
 type Row = Record<string, unknown>
 const rows = (sqlite: DatabaseSync, sql: string) => sqlite.prepare(sql).all() as Row[]
 
+// Runs the SQL sent over the D1 HTTP API against the real target SQLite, returning the D1 HTTP
+// response shape. A failed statement returns its error message instead of throwing.
+function execTarget(
+  sqlite: DatabaseSync,
+  sql: string
+): { results: Row[]; meta: Record<string, unknown> } | { error: string } {
+  try {
+    const stmt = sqlite.prepare(sql)
+    if (stmt.columns().length > 0) return { results: stmt.all() as Row[], meta: { changes: 0 } }
+    const r = stmt.run()
+    return { results: [] as Row[], meta: { changes: Number(r.changes) } }
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : String(err) }
+  }
+}
+
+function jsonResponse(payload: unknown) {
+  return new Response(JSON.stringify(payload), { status: 200, headers: { 'Content-Type': 'application/json' } })
+}
+
 function setup() {
   const app = sqliteD1()
   app.sqlite.exec(init)
+  app.sqlite.exec(cfDatabaseId)
   app.sqlite.exec(`
     INSERT INTO users (id, email, name, role, created_at, updated_at) VALUES
       ('${MEMBER}', 'member@example.com', 'Member', 'member', 0, 0);
-    INSERT INTO d1_databases (id, name, binding_name, created_at) VALUES ('db-1', 'one', 'QUERY_DB_1', 0);
+    INSERT INTO d1_databases (id, name, binding_name, cf_database_id, created_at) VALUES
+      ('db-1', 'one', 'QUERY_DB_1', '${DB_1}', 0);
     INSERT INTO user_database_permissions (id, user_id, database_id, permission, granted_at)
       VALUES ('p1', '${MEMBER}', 'db-1', 'read', 0);
   `)
@@ -36,15 +62,21 @@ function setup() {
     CREATE INDEX idx_orders_b ON orders(b);
   `)
   const executed: string[] = []
-  const queryDb = {
-    prepare: (sql: string) => {
-      executed.push(sql)
-      return target.db.prepare(sql)
-    },
-    batch: target.db.batch,
-  } as unknown as D1Database
 
-  const env = fakeEnv({ DB: app.db, QUERY_DB_1: queryDb })
+  const env = fakeEnv({ DB: app.db, CF_ACCOUNT_ID: 'acct', CF_D1_API_TOKEN: 'tok', ZETA_APP_DB_ID: APP_DB })
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async (_url: unknown, init: RequestInit) => {
+      const { sql } = JSON.parse(String(init.body)) as { sql: string }
+      executed.push(sql)
+      const res = execTarget(target.sqlite, sql)
+      if ('error' in res) {
+        return jsonResponse({ success: true, result: [{ success: false }], errors: [{ message: res.error }] })
+      }
+      return jsonResponse({ success: true, result: [{ success: true, results: res.results, meta: res.meta }] })
+    })
+  )
+
   return { env, app: app.sqlite, target: target.sqlite, executed }
 }
 

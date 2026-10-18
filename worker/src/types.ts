@@ -16,8 +16,6 @@ export interface Env {
   CF_ACCOUNT_ID: string // Cloudflare account ID (32-char hex) used to build the D1 API URL
   CF_D1_API_TOKEN: string // API token with "D1 → Edit" permission, used to list + query target D1s
   ZETA_APP_DB_ID: string // this app's own D1 database UUID; excluded from every query-target list
-  // Additional queryable D1 databases – dynamic bindings (legacy; new databases use the HTTP API)
-  [key: string]: unknown
 }
 
 export interface Variables {

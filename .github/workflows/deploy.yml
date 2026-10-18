@@ -48,26 +48,6 @@ jobs:
           D1_DATABASE_NAME: ${{ vars.D1_DATABASE_NAME }}
           D1_DATABASE_ID: ${{ vars.D1_DATABASE_ID }}
           KV_NAMESPACE_ID: ${{ vars.KV_NAMESPACE_ID }}
-          QUERY_DB_1_NAME: ${{ vars.QUERY_DB_1_NAME }}
-          QUERY_DB_1_ID: ${{ vars.QUERY_DB_1_ID }}
-          QUERY_DB_2_NAME: ${{ vars.QUERY_DB_2_NAME }}
-          QUERY_DB_2_ID: ${{ vars.QUERY_DB_2_ID }}
-          QUERY_DB_3_NAME: ${{ vars.QUERY_DB_3_NAME }}
-          QUERY_DB_3_ID: ${{ vars.QUERY_DB_3_ID }}
-          QUERY_DB_4_NAME: ${{ vars.QUERY_DB_4_NAME }}
-          QUERY_DB_4_ID: ${{ vars.QUERY_DB_4_ID }}
-          QUERY_DB_5_NAME: ${{ vars.QUERY_DB_5_NAME }}
-          QUERY_DB_5_ID: ${{ vars.QUERY_DB_5_ID }}
-          QUERY_DB_6_NAME: ${{ vars.QUERY_DB_6_NAME }}
-          QUERY_DB_6_ID: ${{ vars.QUERY_DB_6_ID }}
-          QUERY_DB_7_NAME: ${{ vars.QUERY_DB_7_NAME }}
-          QUERY_DB_7_ID: ${{ vars.QUERY_DB_7_ID }}
-          QUERY_DB_8_NAME: ${{ vars.QUERY_DB_8_NAME }}
-          QUERY_DB_8_ID: ${{ vars.QUERY_DB_8_ID }}
-          QUERY_DB_9_NAME: ${{ vars.QUERY_DB_9_NAME }}
-          QUERY_DB_9_ID: ${{ vars.QUERY_DB_9_ID }}
-          QUERY_DB_10_NAME: ${{ vars.QUERY_DB_10_NAME }}
-          QUERY_DB_10_ID: ${{ vars.QUERY_DB_10_ID }}
         run: node scripts/patch-wrangler.mjs wrangler.toml
 
       - name: Deploy Worker

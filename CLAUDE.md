@@ -32,7 +32,7 @@ GitHub's blame view reads the file automatically.
 
 ## Key Files
 
-- `worker/wrangler.toml` — CF bindings (DB, KV, extra D1s, domain)
+- `worker/wrangler.toml` — CF bindings (DB, KV, domain)
 - `worker/migrations/0001_init.sql` — base schema (later changes in `0002_*` … `0006_*`; `routes/setup.ts` mirrors all of them for setup-initialised, prefix-aware databases)
 - `worker/src/lib/d1-http.ts` — Cloudflare D1 HTTP API client (list account databases, run a query); query targets reach D1 over the REST API instead of bindings
 - `worker/src/lib/runs.ts` — saved notebook runs: 512 KB per run, per-notebook run limit and per-user storage quota pruning; fixed per-notebook run numbers (`seq`, taken from `notebooks.last_run_seq`, never reused)
@@ -65,4 +65,4 @@ GitHub's blame view reads the file automatically.
 2. Optionally set a display name and description
 3. Grant users access in Admin → Databases → Permissions
 
-No binding or redeploy is required: query targets run over the Cloudflare D1 HTTP API using the `CF_D1_API_TOKEN` secret and `CF_ACCOUNT_ID` variable. Databases registered by the old binding method keep working through their binding until re-linked — use **Link** on the row in Admin → Databases to switch them to the HTTP API (permissions, history and saved runs are kept).
+No binding or redeploy is required: query targets run over the Cloudflare D1 HTTP API using the `CF_D1_API_TOKEN` secret and `CF_ACCOUNT_ID` variable. A database registered by the old binding method has no `cf_database_id` and can't be queried until re-linked — use **Link** on the row in Admin → Databases to switch it to the HTTP API (permissions, history and saved runs are kept).
