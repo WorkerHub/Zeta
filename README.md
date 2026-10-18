@@ -318,6 +318,7 @@ All endpoints live under `/api/`. Authentication uses short-lived JWT access tok
 | `GET/DELETE /api/notebooks/:id/runs[/:runId]` | A notebook's saved runs: list (highest number `seq` first, `limit` plus `before=<seq>` or `offset`), read one with its results, delete one, or clear all |
 | `GET/PUT /api/profile/run-settings` | The user's own run limit (`run_limit`, `null` follows the admin limit) and storage usage |
 | `GET/POST/PATCH/DELETE /api/admin/*` | Admin-only: users, databases, permissions, settings |
+| `POST /api/admin/setup` | Admin-only: runs the same schema initialisation/upgrade as POST /api/setup without SETUP_SECRET — the admin session is the credential |
 | `POST /api/setup` | Idempotent schema initialisation (JSON body `{"secret": "<SETUP_SECRET>"}`). Rate-limited to 3 attempts / 10 min per IP |
 | `GET /api/setup/state` | Public: `{"enabled": boolean}` — whether the `/setup` page is enabled |
 | `GET /api/health` | Health check |
