@@ -143,6 +143,9 @@ export default function AdminSettings() {
 
   if (loading) return <div className="p-6 text-sm text-zinc-500">{t('admin_settings.loading')}</div>
 
+  // The setup page is enabled unless explicitly disabled; new installs default to enabled ('1').
+  const setupPageEnabled = (settings.setup_page_enabled ?? '1') !== '0'
+
   return (
     <div className="p-4 sm:p-6 max-w-5xl">
       <div className="flex items-center justify-between mb-6">
@@ -217,6 +220,22 @@ export default function AdminSettings() {
               role="switch"
               aria-checked={settings.enforce_2fa === 'true'}
               onClick={() => toggle('enforce_2fa')}
+              className="toggle-track"
+            >
+              <span className="toggle-thumb" />
+            </button>
+          </div>
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium text-zinc-700 dark:text-zinc-200">{t('admin_settings.setup_page')}</p>
+              <p className="text-xs text-zinc-500">{t('admin_settings.setup_page_desc')}</p>
+            </div>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={setupPageEnabled}
+              aria-label={t('admin_settings.setup_page')}
+              onClick={() => set('setup_page_enabled', setupPageEnabled ? '0' : '1')}
               className="toggle-track"
             >
               <span className="toggle-thumb" />

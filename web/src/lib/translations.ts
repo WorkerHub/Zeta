@@ -55,6 +55,25 @@ export const translations: Record<Locale, Record<string, string>> = {
     '2fa.passkey': 'Passkey',
     '2fa.use_passkey': 'Sign in with passkey',
 
+    // Setup page
+    'setup.title': 'Initialize database',
+    'setup.desc': 'Enter your setup secret to initialize or upgrade the database.',
+    'setup.disabled': 'The setup page has been disabled by an administrator.',
+    'setup.go_login': 'Go to login',
+    'setup.state_unavailable': "Couldn't verify the page status — you can still try, but it may fail.",
+    'setup.secret_label': 'Setup secret',
+    'setup.submit': 'Initialize / Upgrade database',
+    'setup.submitting': 'Initializing…',
+    'setup.success': 'Database initialized / already up to date.',
+    'setup.register_admin': 'Register the first administrator',
+    'setup.upgraded_title': 'Database upgraded:',
+    'setup.error_wrong_secret': 'Incorrect setup secret.',
+    'setup.error_missing_secret': 'Please enter the setup secret.',
+    'setup.error_rate_limited': 'Too many attempts, please try again later.',
+    'setup.error_rate_limited_retry': 'Too many attempts. Please try again in {n}s.',
+    'setup.error_setup_secret_unset':
+      'The Worker has no SETUP_SECRET configured. Please add it in the Cloudflare dashboard first.',
+
     // Query page
     'query.sql_editor': 'SQL Editor',
     'query.run': 'Run',
@@ -232,6 +251,9 @@ export const translations: Record<Locale, Record<string, string>> = {
     'admin_settings.require_verification_desc': 'Users must verify before logging in',
     'admin_settings.enforce_2fa': 'Enforce 2FA for all users',
     'admin_settings.enforce_2fa_desc': 'Require 2FA even if not individually set',
+    'admin_settings.setup_page': 'Setup page',
+    'admin_settings.setup_page_desc':
+      'Allow access to the /setup page. Turning this off only hides the page; POST /api/setup still works with the secret.',
     'admin_settings.email_provider': 'Email Provider',
     'admin_settings.provider_none': 'None',
     'admin_settings.from_address': 'From address',
@@ -382,6 +404,24 @@ export const translations: Record<Locale, Record<string, string>> = {
     '2fa.cancel': '取消',
     '2fa.passkey': '通行密钥',
     '2fa.use_passkey': '使用通行密钥登录',
+
+    // Setup page
+    'setup.title': '初始化数据库',
+    'setup.desc': '输入初始化密钥以初始化或升级数据库。',
+    'setup.disabled': '初始化页面已被管理员关闭',
+    'setup.go_login': '去登录',
+    'setup.state_unavailable': '无法确认页面状态 — 你仍可尝试，但可能会失败。',
+    'setup.secret_label': '初始化密钥',
+    'setup.submit': '初始化 / 升级数据库',
+    'setup.submitting': '初始化中…',
+    'setup.success': '数据库已初始化 / 已是最新',
+    'setup.register_admin': '注册首个管理员',
+    'setup.upgraded_title': '数据库已升级：',
+    'setup.error_wrong_secret': '密钥不正确',
+    'setup.error_missing_secret': '请输入密钥',
+    'setup.error_rate_limited': '尝试过于频繁，请稍后再试',
+    'setup.error_rate_limited_retry': '尝试过于频繁，请在 {n} 秒后重试',
+    'setup.error_setup_secret_unset': 'Worker 未配置 SETUP_SECRET，请先在 Cloudflare 控制台添加',
 
     // Query page
     'query.sql_editor': 'SQL 编辑器',
@@ -558,6 +598,8 @@ export const translations: Record<Locale, Record<string, string>> = {
     'admin_settings.require_verification_desc': '用户必须验证邮箱后才能登录',
     'admin_settings.enforce_2fa': '强制所有用户启用两步验证',
     'admin_settings.enforce_2fa_desc': '即使未单独设置也要求两步验证',
+    'admin_settings.setup_page': '允许访问初始化页面',
+    'admin_settings.setup_page_desc': '允许访问 /setup 页面。关闭只会隐藏该页面；POST /api/setup 仍可用密钥调用。',
     'admin_settings.email_provider': '邮件服务',
     'admin_settings.provider_none': '无',
     'admin_settings.from_address': '发件地址',
