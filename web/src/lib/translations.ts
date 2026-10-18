@@ -278,6 +278,17 @@ export const translations: Record<Locale, Record<string, string>> = {
     'admin_settings.run_quota_desc':
       "1–1024. Beyond it a user's oldest runs are deleted. A single run stores at most 512 KB of results.",
 
+    // Admin setup (database maintenance)
+    'admin_setup.title': 'Database maintenance',
+    'admin_setup.desc':
+      'A signed-in admin can check and upgrade the database structure directly — no SETUP_SECRET needed. For first-time initialization (before any admin account exists), still use the /setup page or curl.',
+    'admin_setup.run': 'Check and upgrade database',
+    'admin_setup.running': 'Checking…',
+    'admin_setup.up_to_date': 'The database structure is already up to date.',
+    'admin_setup.upgraded_title': 'Database upgraded:',
+    'admin_setup.error_unauthorized': 'Please sign in again.',
+    'admin_setup.error_forbidden': 'Administrator permission required.',
+
     // Errors (fallbacks when the server gives no message)
     'errors.generic': 'Something went wrong',
     'errors.login_failed': 'Login failed',
@@ -622,6 +633,17 @@ export const translations: Record<Locale, Record<string, string>> = {
     'admin_settings.run_limit_desc': '1–1000。用户可以设置得更少；超出的旧记录会被删除。',
     'admin_settings.run_quota': '每个用户运行结果存储上限（MB）',
     'admin_settings.run_quota_desc': '1–1024。超出时删除该用户最旧的运行记录。单次运行最多保存 512 KB 结果。',
+
+    // Admin setup (database maintenance)
+    'admin_setup.title': '数据库维护',
+    'admin_setup.desc':
+      '已登录管理员可直接检查并升级数据库结构，无需 SETUP_SECRET。首次初始化（尚无管理员账号时）仍需通过 /setup 页面或 curl 完成。',
+    'admin_setup.run': '检查并升级数据库',
+    'admin_setup.running': '检查中…',
+    'admin_setup.up_to_date': '数据库结构已是最新',
+    'admin_setup.upgraded_title': '数据库已升级：',
+    'admin_setup.error_unauthorized': '请重新登录',
+    'admin_setup.error_forbidden': '需要管理员权限',
 
     // Errors (fallbacks when the server gives no message)
     'errors.generic': '出错了',

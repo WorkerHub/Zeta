@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { resolveSetupView, setupErrorInfo } from '../setup'
+import { resolveSetupView, setupErrorInfo, adminSetupErrorKey } from '../setup'
 
 describe('resolveSetupView', () => {
   it('shows the form when the page is enabled', () => {
@@ -48,5 +48,20 @@ describe('setupErrorInfo', () => {
   it('falls back to the generic error for other failures', () => {
     expect(setupErrorInfo(500, 'DDL error: something broke', null)).toEqual({ key: 'errors.generic' })
     expect(setupErrorInfo(502, 'Bad gateway', null)).toEqual({ key: 'errors.generic' })
+  })
+})
+
+describe('adminSetupErrorKey', () => {
+  it('maps 401 to the re-login message', () => {
+    expect(adminSetupErrorKey(401)).toBe('admin_setup.error_unauthorized')
+  })
+
+  it('maps 403 to the admin-permission message', () => {
+    expect(adminSetupErrorKey(403)).toBe('admin_setup.error_forbidden')
+  })
+
+  it('falls through for other statuses so the server error text can be shown', () => {
+    expect(adminSetupErrorKey(500)).toBeNull()
+    expect(adminSetupErrorKey(502)).toBeNull()
   })
 })
