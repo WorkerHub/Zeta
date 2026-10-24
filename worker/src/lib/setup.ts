@@ -1,6 +1,7 @@
 import type { D1Database } from '@cloudflare/workers-types'
 import type { Env } from '../types'
-import { now, tables } from './db'
+import { detectExistingTableFamily, now, tablePrefix, tables } from './db'
+import type { ExistingTableFamily } from './db'
 
 // The reusable schema-initialisation + upgrade routine, shared by POST /api/setup (keyed to
 // SETUP_SECRET, rate-limited) and POST /api/admin/setup (keyed to the admin session). Both return
@@ -10,6 +11,9 @@ export type SetupResult =
   | {
       ok: true
       message: string
+      // The table prefix actually in effect: DEFAULT_TABLE_PREFIX + '_' when TABLE_PREFIX is
+      // unset, the configured value + '_' (e.g. 'ZETA_'), or '' for an unprefixed deployment.
+      tablePrefix: string
       upgraded?: string[]
       permissionsRepair?: { dropped: number; clearedGrantedBy: number }
     }
@@ -350,11 +354,42 @@ const DEFAULT_SETTINGS: Array<[string, string]> = [
 
 // Creates every table (idempotently), applies schema upgrades for databases created by older
 // versions, and seeds the default settings. Returns the same shape POST /api/setup has always
-// returned (`ok`, `message`, `upgraded`, `permissionsRepair`) so both callers stay byte-compatible.
+// returned (`ok`, `message`, `upgraded`, `permissionsRepair`) plus `tablePrefix` — the prefix
+// actually in effect — so both callers stay byte-compatible.
 export async function runSetup(env: Env): Promise<SetupResult> {
   const T = tables(env)
+  const prefix = tablePrefix(env)
   const errors: string[] = []
   const ts = now()
+
+  // Anti-silent-switch guard, before any DDL: if this D1 database already holds an initialised
+  // Zeta schema under a DIFFERENT prefix than the resolved one, initialising here would strand
+  // that data behind a brand-new set of tables (a silent switch — e.g. a deployment that used to
+  // run TABLE_PREFIX=ZETA losing the variable would suddenly point at zeta_*). Refuse and tell
+  // the operator which TABLE_PREFIX keeps the existing tables. A database that hosts no complete
+  // Zeta family — including one shared with other projects' tables — initialises normally.
+  let existing: ExistingTableFamily | null
+  try {
+    existing = await detectExistingTableFamily(env.DB)
+  } catch (err) {
+    return { ok: false, errors: [`Schema inspection error: ${err instanceof Error ? err.message : String(err)}`] }
+  }
+  if (existing && existing.prefix !== prefix) {
+    const show = (p: string) => (p === '' ? '(no prefix)' : p)
+    const hint =
+      existing.prefix === ''
+        ? 'set TABLE_PREFIX to an empty string (TABLE_PREFIX="") to keep using these unprefixed tables'
+        : `set TABLE_PREFIX=${existing.prefix.slice(0, -1)} to keep using these tables`
+    return {
+      ok: false,
+      errors: [
+        `Refusing to initialise: this D1 database already contains an initialised Zeta schema with ` +
+          `table prefix ${show(existing.prefix)} (${existing.tableCount} tables), but the resolved table ` +
+          `prefix is ${show(prefix)}. ${hint} (or point the Worker at a different D1 database) and run ` +
+          `setup again. Initialising under a different prefix would strand the existing data.`,
+      ],
+    }
+  }
 
   // Run all DDL statements in a batch
   try {
@@ -417,7 +452,9 @@ export async function runSetup(env: Env): Promise<SetupResult> {
     ok: true,
     message:
       'Database initialised successfully. You can now register at /register — the first user becomes admin. ' +
-      'On new installs registration then stays closed until an admin opens it in Admin → Settings.',
+      'On new installs registration then stays closed until an admin opens it in Admin → Settings. ' +
+      `Tables use the prefix ${prefix === '' ? '(none)' : prefix}.`,
+    tablePrefix: prefix,
     ...(upgraded.length > 0 && { upgraded }),
     ...(permissionsRepair && { permissionsRepair }),
   }
