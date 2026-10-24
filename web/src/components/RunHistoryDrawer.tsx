@@ -346,11 +346,7 @@ export default function RunHistoryDrawer({
                     const failed = run.error_count > 0
                     return (
                       <li key={run.id}>
-                        <div
-                          className={`flex items-stretch pr-1.5 ${
-                            active ? 'bg-brand-50' : 'hover:bg-ink-50'
-                          }`}
-                        >
+                        <div className={`flex items-stretch pr-1.5 ${active ? 'bg-brand-50' : 'hover:bg-ink-50'}`}>
                           <button
                             type="button"
                             ref={(el) => {
@@ -370,18 +366,14 @@ export default function RunHistoryDrawer({
                               ) : (
                                 <CheckCircle2 size={11} className="shrink-0 text-success-600" aria-hidden="true" />
                               )}
-                              <span className="font-mono text-caption tnum text-ink-700">
-                                #{run.seq}
-                              </span>
+                              <span className="font-mono text-caption tnum text-ink-700">#{run.seq}</span>
                               <span className="truncate text-micro text-ink-500">{ago(run)}</span>
                               <span className="sr-only">{t(failed ? 'runs.failed' : 'runs.succeeded')}</span>
                             </span>
                             <span className="mt-0.5 block truncate text-micro text-ink-500">
                               {outcome(run)} · {run.duration_ms}ms
                             </span>
-                            <span className="mt-0.5 block truncate font-mono text-micro text-ink-400">
-                              {run.sql}
-                            </span>
+                            <span className="mt-0.5 block truncate font-mono text-micro text-ink-400">{run.sql}</span>
                           </button>
                           <button
                             type="button"
@@ -438,9 +430,7 @@ export default function RunHistoryDrawer({
                       ) : (
                         <CheckCircle2 size={12} className="shrink-0 text-success-600" aria-hidden="true" />
                       )}
-                      <span className="font-mono tnum text-ink-700">
-                        #{selectedRun.seq}
-                      </span>
+                      <span className="font-mono tnum text-ink-700">#{selectedRun.seq}</span>
                       <span className="text-ink-500">{new Date(selectedRun.executed_at).toLocaleString()}</span>
                       <span className="text-ink-300">·</span>
                       <span className="text-ink-500">{outcome(selectedRun)}</span>
@@ -459,9 +449,7 @@ export default function RunHistoryDrawer({
                   </div>
 
                   <div className="shrink-0 border-b border-ink-200 px-4 py-2">
-                    <p className="mb-1 text-micro uppercase text-ink-400">
-                      {t('runs.sql')}
-                    </p>
+                    <p className="mb-1 text-micro uppercase text-ink-400">{t('runs.sql')}</p>
                     <pre className="max-h-32 overflow-auto whitespace-pre-wrap break-words rounded-lg bg-ink-50 p-2 font-mono text-caption text-ink-700">
                       {selectedRun.sql}
                     </pre>
@@ -503,9 +491,7 @@ export default function RunHistoryDrawer({
         {confirmClear && (
           <ConfirmDialog
             title={t('runs.clear')}
-            description={
-              hasMore ? t('runs.clear_confirm_more') : t('runs.clear_confirm', { n: runs.length })
-            }
+            description={hasMore ? t('runs.clear_confirm_more') : t('runs.clear_confirm', { n: runs.length })}
             busy={busy === 'all'}
             confirmLabel={t('common.delete')}
             onCancel={() => setConfirmClear(false)}

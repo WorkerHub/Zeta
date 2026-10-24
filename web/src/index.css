@@ -7,8 +7,9 @@
  */
 @theme {
   /* §2.4 Font families */
-  --font-sans: "Inter", ui-sans-serif, system-ui, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei",
-    "Noto Sans CJK SC", sans-serif;
+  --font-sans:
+    "Inter", ui-sans-serif, system-ui, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans CJK SC",
+    sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
 
   /* §2.1 Brand (terracotta) — actions / selection / focus only */
@@ -106,15 +107,9 @@
 
   /* §2.6 Shadows (light; dark doubles opacity below) */
   --shadow-xs: 0 1px 2px rgb(28 24 21 / 0.05);
-  --shadow-sm:
-    0 1px 3px rgb(28 24 21 / 0.07),
-    0 1px 2px rgb(28 24 21 / 0.04);
-  --shadow-md:
-    0 4px 12px -2px rgb(28 24 21 / 0.1),
-    0 2px 6px -2px rgb(28 24 21 / 0.06);
-  --shadow-lg:
-    0 12px 32px -8px rgb(28 24 21 / 0.16),
-    0 4px 12px -4px rgb(28 24 21 / 0.08);
+  --shadow-sm: 0 1px 3px rgb(28 24 21 / 0.07), 0 1px 2px rgb(28 24 21 / 0.04);
+  --shadow-md: 0 4px 12px -2px rgb(28 24 21 / 0.1), 0 2px 6px -2px rgb(28 24 21 / 0.06);
+  --shadow-lg: 0 12px 32px -8px rgb(28 24 21 / 0.16), 0 4px 12px -4px rgb(28 24 21 / 0.08);
 
   /* §2.6 Easing & duration */
   --ease-standard: cubic-bezier(0.2, 0, 0, 1);
@@ -187,15 +182,9 @@
 
   /* Dark shadows: opacity ×1.8 (§2.6) */
   --shadow-xs: 0 1px 2px rgb(0 0 0 / 0.09);
-  --shadow-sm:
-    0 1px 3px rgb(0 0 0 / 0.13),
-    0 1px 2px rgb(0 0 0 / 0.07);
-  --shadow-md:
-    0 4px 12px -2px rgb(0 0 0 / 0.18),
-    0 2px 6px -2px rgb(0 0 0 / 0.11);
-  --shadow-lg:
-    0 12px 32px -8px rgb(0 0 0 / 0.29),
-    0 4px 12px -4px rgb(0 0 0 / 0.14);
+  --shadow-sm: 0 1px 3px rgb(0 0 0 / 0.13), 0 1px 2px rgb(0 0 0 / 0.07);
+  --shadow-md: 0 4px 12px -2px rgb(0 0 0 / 0.18), 0 2px 6px -2px rgb(0 0 0 / 0.11);
+  --shadow-lg: 0 12px 32px -8px rgb(0 0 0 / 0.29), 0 4px 12px -4px rgb(0 0 0 / 0.14);
 }
 
 @custom-variant dark (&:where(.dark, .dark *));

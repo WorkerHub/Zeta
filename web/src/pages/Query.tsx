@@ -725,9 +725,7 @@ export default function QueryPage() {
             setPageError('')
             deleteNotebook(nbId)
               .then(() => runs.forgetNotebook(nbId))
-              .catch((err) =>
-                setPageError(err instanceof Error ? err.message : t('errors.delete_notebook_failed'))
-              )
+              .catch((err) => setPageError(err instanceof Error ? err.message : t('errors.delete_notebook_failed')))
           }}
         />
       )}

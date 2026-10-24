@@ -18,10 +18,7 @@ export default function ResultTable({ rows }: Props) {
         <thead>
           <tr className="bg-ink-100/50 border-b border-ink-200">
             {columns.map((col) => (
-              <th
-                key={col}
-                className="text-left px-3 py-2 text-label text-ink-500 whitespace-nowrap"
-              >
+              <th key={col} className="text-left px-3 py-2 text-label text-ink-500 whitespace-nowrap">
                 {col}
               </th>
             ))}

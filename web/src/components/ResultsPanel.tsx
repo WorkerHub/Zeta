@@ -40,9 +40,7 @@ export default function ResultsPanel({ results, activeIndex, onSelectIndex }: Pr
                 key={i}
                 onClick={() => onSelectIndex(i)}
                 className={`w-full text-left px-2.5 py-2 border-b border-ink-100 transition-colors duration-(--duration-fast) ease-(--ease-standard) ${
-                  isActive
-                    ? 'bg-brand-50 border-l-2 border-l-brand-600'
-                    : 'hover:bg-ink-50'
+                  isActive ? 'bg-brand-50 border-l-2 border-l-brand-600' : 'hover:bg-ink-50'
                 }`}
               >
                 <div className="flex items-center gap-1 mb-0.5">
@@ -51,9 +49,7 @@ export default function ResultsPanel({ results, activeIndex, onSelectIndex }: Pr
                   ) : (
                     <CheckCircle2 size={10} className="text-success-600 shrink-0" />
                   )}
-                  <span
-                    className={`text-micro tnum ${isActive ? 'text-ink-700' : 'text-ink-500'}`}
-                  >
+                  <span className={`text-micro tnum ${isActive ? 'text-ink-700' : 'text-ink-500'}`}>
                     #{i + 1} · {meta} · {r.duration_ms}ms
                   </span>
                 </div>
@@ -92,10 +88,14 @@ export default function ResultsPanel({ results, activeIndex, onSelectIndex }: Pr
                     : t('results.rows', { n: 0 })}
               </span>
               {active.truncated && (
-                <span className="text-caption text-warning-600 tnum">{t('results.truncated', { n: MAX_RESULT_ROWS })}</span>
+                <span className="text-caption text-warning-600 tnum">
+                  {t('results.truncated', { n: MAX_RESULT_ROWS })}
+                </span>
               )}
               {active.stored_rows !== undefined && (
-                <span className="text-caption text-warning-600 tnum">{t('results.stored_rows', { n: active.stored_rows })}</span>
+                <span className="text-caption text-warning-600 tnum">
+                  {t('results.stored_rows', { n: active.stored_rows })}
+                </span>
               )}
               <span className="text-ink-300 text-caption">·</span>
               <span className="text-caption text-ink-500 tnum">{active.duration_ms}ms</span>
