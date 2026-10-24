@@ -1,7 +1,7 @@
 export type SqlClass = 'read' | 'write' | 'destructive' | 'forbidden' | 'multiple' | 'empty'
 export type Permission = 'read' | 'write' | 'write_drop'
 
-interface Token {
+export interface Token {
   type: 'word' | 'quoted' | 'punct'
   value: string
   start: number // offset in the source SQL
@@ -51,7 +51,9 @@ function scan(sql: string): { tokens: Token[]; openComment: boolean } {
   return { tokens, openComment }
 }
 
-function tokenize(sql: string): Token[] {
+// Exported for the app-DB guardrail (lib/app-db-guard.ts), which reuses the same tokens so the
+// two modules can never disagree about what counts as a word/quoted/punct token.
+export function tokenize(sql: string): Token[] {
   return scan(sql).tokens
 }
 

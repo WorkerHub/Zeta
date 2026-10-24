@@ -1,7 +1,10 @@
 import { Hono } from 'hono'
-import type { Env, Variables, DatabaseRow } from '../types'
-import { requireAuth } from '../middleware/auth'
+import { capAppDbPermission } from '../lib/app-db-guard'
+import { isAppDb } from '../lib/d1-http'
 import { tables } from '../lib/db'
+import type { Permission } from '../lib/sql-guard'
+import { requireAuth } from '../middleware/auth'
+import type { DatabaseRow, Env, Variables } from '../types'
 
 const databases = new Hono<{ Bindings: Env; Variables: Variables }>()
 databases.use('*', requireAuth)
@@ -44,13 +47,20 @@ databases.get('/', async (c) => {
   }
 
   return c.json(
-    rows.map((db) => ({
-      id: db.id,
-      name: db.name,
-      description: db.description,
-      ...(role === 'admin' ? { binding_name: db.binding_name, cf_database_id: db.cf_database_id } : {}),
-      permission: role === 'admin' ? 'write_drop' : (permMap.get(db.id) ?? 'read'),
-    }))
+    rows.map((db) => {
+      const appDb = isAppDb(c.env, db.cf_database_id)
+      // The application database's permission is capped at write: the admin's implicit write_drop
+      // and any stored write_drop are reported at their effective level, never as write_drop.
+      const base: Permission = role === 'admin' ? 'write_drop' : ((permMap.get(db.id) ?? 'read') as Permission)
+      return {
+        id: db.id,
+        name: db.name,
+        description: db.description,
+        ...(role === 'admin' ? { binding_name: db.binding_name, cf_database_id: db.cf_database_id } : {}),
+        is_app_db: appDb,
+        permission: appDb ? capAppDbPermission(base) : base,
+      }
+    })
   )
 })
 
