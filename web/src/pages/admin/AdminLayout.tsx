@@ -1,6 +1,18 @@
 import { useState, useRef, useEffect } from 'react'
 import { Link, Routes, Route, useLocation, Navigate } from 'react-router-dom'
-import { ArrowLeft, Database, Users, Settings, Globe, Monitor, Sun, Moon, User as UserIcon, Info, LogOut } from 'lucide-react'
+import {
+  ArrowLeft,
+  Database,
+  Users,
+  Settings,
+  Globe,
+  Monitor,
+  Sun,
+  Moon,
+  User as UserIcon,
+  Info,
+  LogOut,
+} from 'lucide-react'
 import { useLocale } from '../../hooks/useLocale'
 import { useTheme } from '../../hooks/useTheme'
 import { useAuthContext } from '../../hooks/useAuth'
