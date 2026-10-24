@@ -1,6 +1,18 @@
 import { useState, useRef, useEffect } from 'react'
 import { Link, Routes, Route, useLocation, Navigate } from 'react-router-dom'
-import { Database, Users, Settings, Globe, Monitor, Sun, Moon, User as UserIcon, Info, LogOut } from 'lucide-react'
+import {
+  ArrowLeft,
+  Database,
+  Users,
+  Settings,
+  Globe,
+  Monitor,
+  Sun,
+  Moon,
+  User as UserIcon,
+  Info,
+  LogOut,
+} from 'lucide-react'
 import { useLocale } from '../../hooks/useLocale'
 import { useTheme } from '../../hooks/useTheme'
 import { useAuthContext } from '../../hooks/useAuth'
@@ -42,7 +54,7 @@ export default function AdminLayout() {
     <div className="flex h-screen bg-ink-50">
       {/* Sidebar — desktop only */}
       <aside className="w-56 border-r border-ink-200 flex-col shrink-0 hidden sm:flex bg-ink-0">
-        <div className="px-4 py-4 border-b border-ink-200 flex items-center gap-2.5">
+        <div className="h-12 px-4 border-b border-ink-200 flex items-center gap-2.5">
           <Logo size="sm" />
           <span className="text-body-strong text-ink-900">{t('admin.title')}</span>
         </div>
@@ -58,6 +70,15 @@ export default function AdminLayout() {
             </Link>
           ))}
         </nav>
+        <div className="border-t border-ink-200 p-2">
+          <Link
+            to="/query"
+            className="flex items-center gap-2.5 px-3 py-2 rounded-lg text-body transition-colors duration-(--duration-base) text-ink-500 hover:bg-ink-100 hover:text-ink-900"
+          >
+            <ArrowLeft size={15} />
+            {t('admin.back_to_query')}
+          </Link>
+        </div>
       </aside>
 
       {/* Right column: header + content */}
