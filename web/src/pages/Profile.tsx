@@ -215,7 +215,7 @@ export default function ProfilePage() {
             </div>
             <div className="flex items-center justify-between">
               <span className="text-ink-500">{t('profile.role')}</span>
-              <span className={`badge ${user?.role === 'admin' ? 'badge-blue' : 'badge-zinc'}`}>{user?.role}</span>
+              <span className={`badge ${user?.role === 'admin' ? 'badge-brand' : 'badge-zinc'}`}>{user?.role}</span>
             </div>
           </div>
         </div>
@@ -417,8 +417,8 @@ export default function ProfilePage() {
       </div>
 
       {removal && (
-        <div className="fixed inset-0 z-(--z-modal) flex items-center justify-center p-4 bg-ink-950/50 backdrop-blur-sm">
-          <form onSubmit={confirmRemoval} className="card w-full max-w-sm p-6 shadow-lg space-y-4">
+        <div className="fixed inset-0 z-(--z-modal) flex items-center justify-center p-4 bg-ink-950/50 backdrop-blur-sm animate-overlay-enter">
+          <form onSubmit={confirmRemoval} className="card w-full max-w-sm p-6 shadow-lg space-y-4 animate-modal-enter">
             <h2 className="text-heading text-ink-900">
               {t(removal.kind === 'totp' ? 'profile.confirm_delete_totp' : 'profile.confirm_delete_passkey')}
             </h2>

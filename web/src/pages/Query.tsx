@@ -33,6 +33,7 @@ import { useNotebookRuns } from '../hooks/useNotebookRuns'
 import ResultsPanel from '../components/ResultsPanel'
 import RunHistoryBar from '../components/RunHistoryBar'
 import RunHistoryDrawer from '../components/RunHistoryDrawer'
+import ConfirmDialog from '../components/ConfirmDialog'
 import Logo from '../components/Logo'
 import { splitSqlStatements } from '../lib/sql'
 import type { Database as DbType, NotebookRunSummary, StatementResult } from '../types'
@@ -74,6 +75,8 @@ export default function QueryPage() {
   const [showDbMenu, setShowDbMenu] = useState(false)
   const [showUserMenu, setShowUserMenu] = useState(false)
   const [renamingId, setRenamingId] = useState<string | null>(null)
+  // Notebook pending deletion — the design-system ConfirmDialog replaces window.confirm
+  const [deletingNotebookId, setDeletingNotebookId] = useState<string | null>(null)
   const [renameValue, setRenameValue] = useState('')
   const [selectedSql, setSelectedSql] = useState('')
   const selectedSqlRef = useRef('')
@@ -300,7 +303,7 @@ export default function QueryPage() {
             <ChevronDown size={13} className="text-ink-400 shrink-0 ml-0.5" />
           </button>
           {showDbMenu && (
-            <div className="absolute left-0 top-full mt-1 w-64 bg-ink-0 border border-ink-200 rounded-lg shadow-md z-(--z-dropdown) overflow-hidden">
+            <div className="absolute left-0 top-full mt-1 w-64 bg-ink-0 border border-ink-200 rounded-lg shadow-md z-(--z-dropdown) overflow-hidden animate-overlay-enter">
               {databases.length === 0 ? (
                 <p className="px-4 py-3 text-body text-ink-500">{t('query.no_databases')}</p>
               ) : (
@@ -377,7 +380,7 @@ export default function QueryPage() {
             {user?.name?.[0]?.toUpperCase() ?? '?'}
           </button>
           {showUserMenu && (
-            <div className="absolute right-0 top-full mt-1 w-48 bg-ink-0 border border-ink-200 rounded-lg shadow-md z-(--z-dropdown) overflow-hidden">
+            <div className="absolute right-0 top-full mt-1 w-48 bg-ink-0 border border-ink-200 rounded-lg shadow-md z-(--z-dropdown) overflow-hidden animate-overlay-enter">
               <div className="px-4 py-3 border-b border-ink-200">
                 <p className="text-body-strong text-ink-900 truncate">{user?.name}</p>
                 <p className="text-caption text-ink-500 truncate">{user?.email}</p>
@@ -486,13 +489,7 @@ export default function QueryPage() {
                 type="button"
                 onClick={(e) => {
                   e.stopPropagation()
-                  if (!window.confirm(t('notebook.delete_confirm'))) return
-                  setPageError('')
-                  deleteNotebook(nb.id)
-                    .then(() => runs.forgetNotebook(nb.id))
-                    .catch((err) =>
-                      setPageError(err instanceof Error ? err.message : t('errors.delete_notebook_failed'))
-                    )
+                  setDeletingNotebookId(nb.id)
                 }}
                 className="opacity-0 group-hover:opacity-100 p-0.5 rounded hover:bg-ink-200 text-ink-400 hover:text-ink-700 transition-opacity duration-(--duration-base)"
               >
@@ -515,7 +512,7 @@ export default function QueryPage() {
       {/* Main content */}
       <div
         ref={containerRef}
-        className="flex flex-1 overflow-hidden pb-12 sm:pb-0"
+        className="flex flex-1 overflow-hidden clear-mobile-bar sm:pb-0"
         onPointerMove={onDividerPointerMove}
         onPointerUp={onDividerPointerUp}
       >
@@ -671,7 +668,7 @@ export default function QueryPage() {
       </div>
 
       {/* Mobile bottom bar */}
-      <div className="sm:hidden fixed bottom-0 left-0 right-0 z-(--z-sticky-bar) flex items-center gap-2 px-3 py-2 bg-ink-0 border-t border-ink-200">
+      <div className="sm:hidden fixed bottom-0 left-0 right-0 z-(--z-sticky-bar) safe-b flex items-center gap-2 px-3 py-2 bg-ink-0 border-t border-ink-200">
         {/* DB selector */}
         <div className="relative flex-1" ref={dbMenuRef}>
           <button
@@ -685,7 +682,7 @@ export default function QueryPage() {
             <ChevronDown size={13} className="text-ink-400 shrink-0" />
           </button>
           {showDbMenu && (
-            <div className="absolute left-0 bottom-full mb-1 w-56 bg-ink-0 border border-ink-200 rounded-lg shadow-md z-(--z-dropdown) overflow-hidden">
+            <div className="absolute left-0 bottom-full mb-1 w-56 bg-ink-0 border border-ink-200 rounded-lg shadow-md z-(--z-dropdown) overflow-hidden animate-overlay-enter">
               {databases.map((db) => (
                 <button
                   type="button"
@@ -714,6 +711,25 @@ export default function QueryPage() {
           {selectedSql.trim() ? t('query.run_selection') : t('query.run')}
         </button>
       </div>
+
+      {/* Notebook deletion confirmation (design-system dialog, §3.1 micro_interaction) */}
+      {deletingNotebookId && (
+        <ConfirmDialog
+          title={t('notebook.delete_confirm')}
+          description={t('notebook.delete_confirm_desc')}
+          onCancel={() => setDeletingNotebookId(null)}
+          onConfirm={() => {
+            const nbId = deletingNotebookId
+            setDeletingNotebookId(null)
+            setPageError('')
+            deleteNotebook(nbId)
+              .then(() => runs.forgetNotebook(nbId))
+              .catch((err) =>
+                setPageError(err instanceof Error ? err.message : t('errors.delete_notebook_failed'))
+              )
+          }}
+        />
+      )}
 
       {/* Run history drawer — every saved run of the current notebook */}
       {showRunHistory && (

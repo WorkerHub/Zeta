@@ -95,6 +95,7 @@ export const translations: Record<Locale, Record<string, string>> = {
     'notebook.untitled': 'Untitled',
     'notebook.new': 'New notebook',
     'notebook.delete_confirm': 'Delete this notebook?',
+    'notebook.delete_confirm_desc': 'The notebook and its SQL content will be removed. Saved runs are kept.',
     'notebook.limit_reached': 'Maximum 20 notebooks reached',
 
     // Theme
@@ -359,6 +360,8 @@ export const translations: Record<Locale, Record<string, string>> = {
     // Common
     'common.loading': 'Loading…',
     'common.dismiss': 'Dismiss',
+    'common.cancel': 'Cancel',
+    'common.confirm': 'Delete',
   },
   zh: {
     // App
@@ -453,6 +456,7 @@ export const translations: Record<Locale, Record<string, string>> = {
     'notebook.untitled': '未命名',
     'notebook.new': '新建 Notebook',
     'notebook.delete_confirm': '删除此 Notebook？',
+    'notebook.delete_confirm_desc': '将删除该 Notebook 及其 SQL 内容，已保存的运行记录会保留。',
     'notebook.limit_reached': '已达到 20 个上限',
 
     // Theme
@@ -713,6 +717,8 @@ export const translations: Record<Locale, Record<string, string>> = {
     // Common
     'common.loading': '加载中…',
     'common.dismiss': '关闭',
+    'common.cancel': '取消',
+    'common.confirm': '删除',
   },
 }
 

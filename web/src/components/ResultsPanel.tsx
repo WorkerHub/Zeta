@@ -83,7 +83,7 @@ export default function ResultsPanel({ results, activeIndex, onSelectIndex }: Pr
             </>
           ) : (
             <>
-              <CheckCircle2 size={12} className="text-success-600 shrink-0" />
+              <CheckCircle2 size={12} className="text-success-600 shrink-0 animate-success-pop" />
               <span className="text-caption text-success-600 tnum">
                 {active.results.length > 0
                   ? t(active.results.length === 1 ? 'results.row' : 'results.rows', { n: active.results.length })

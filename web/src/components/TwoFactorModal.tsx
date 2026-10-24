@@ -73,8 +73,8 @@ export default function TwoFactorModal({ pendingToken, onSuccess, onCancel }: Pr
   }
 
   return (
-    <div className="fixed inset-0 z-(--z-modal) flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-      <div className="card w-full max-w-sm rounded-xl p-6 shadow-lg">
+    <div className="fixed inset-0 z-(--z-modal) flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-overlay-enter">
+      <div className="card w-full max-w-sm rounded-xl p-6 shadow-lg animate-modal-enter">
         <div className="flex items-center justify-between mb-6">
           <h2 className="text-heading text-ink-950">{t('2fa.title')}</h2>
           <button type="button" onClick={onCancel} className="btn-ghost p-1.5 rounded-lg">

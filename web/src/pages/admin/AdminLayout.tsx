@@ -110,7 +110,7 @@ export default function AdminLayout() {
               {user?.name?.[0]?.toUpperCase() ?? '?'}
             </button>
             {showUserMenu && (
-              <div className="absolute right-0 top-full mt-1 w-48 bg-ink-0 border border-ink-200 rounded-lg shadow-md z-(--z-dropdown) overflow-hidden">
+              <div className="absolute right-0 top-full mt-1 w-48 bg-ink-0 border border-ink-200 rounded-lg shadow-md z-(--z-dropdown) overflow-hidden animate-overlay-enter">
                 <div className="px-4 py-3 border-b border-ink-200">
                   <p className="text-body-strong text-ink-900 truncate">{user?.name}</p>
                   <p className="text-caption text-ink-500 truncate">{user?.email}</p>

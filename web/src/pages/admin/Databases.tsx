@@ -262,7 +262,7 @@ export default function AdminDatabases() {
       )}
 
       {/* Database list */}
-      <div className="card overflow-hidden">
+      <div className="card overflow-x-auto">
         {loading ? (
           <p className="px-4 py-8 text-center text-body text-ink-500">{t('admin_db.loading')}</p>
         ) : databases.length === 0 ? (
@@ -391,7 +391,7 @@ export default function AdminDatabases() {
                   </div>
                   <div className="flex items-center gap-2">
                     <span
-                      className={`badge ${p.permission === 'write_drop' ? 'badge-yellow' : p.permission === 'write' ? 'badge-blue' : 'badge-zinc'}`}
+                      className={`badge ${p.permission === 'write_drop' ? 'badge-yellow' : p.permission === 'write' ? 'badge-brand' : 'badge-zinc'}`}
                     >
                       {p.permission === 'write_drop'
                         ? t('admin_db.perm_write_drop')

@@ -140,7 +140,7 @@ export default function AdminUsers() {
         />
       </div>
 
-      <div className="card overflow-hidden">
+      <div className="card overflow-x-auto">
         <table className="w-full text-body">
           <thead>
             <tr className="border-b border-ink-200 bg-ink-50">
@@ -256,8 +256,8 @@ export default function AdminUsers() {
 
       {/* Delete confirmation modal */}
       {deleteTarget && (
-        <div className="fixed inset-0 z-(--z-modal) flex items-center justify-center p-4 bg-ink-950/50 backdrop-blur-sm">
-          <div className="card w-full max-w-sm p-6 shadow-lg">
+        <div className="fixed inset-0 z-(--z-modal) flex items-center justify-center p-4 bg-ink-950/50 backdrop-blur-sm animate-overlay-enter">
+          <div className="card w-full max-w-sm p-6 shadow-lg animate-modal-enter">
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-heading text-ink-900">{t('admin_users.confirm_delete')}</h2>
               <button type="button" onClick={() => setDeleteTarget(null)} className="btn-ghost p-1.5 rounded-lg">
@@ -288,8 +288,8 @@ export default function AdminUsers() {
 
       {/* Add / Edit modal */}
       {modal && (
-        <div className="fixed inset-0 z-(--z-modal) flex items-center justify-center p-4 bg-ink-950/50 backdrop-blur-sm">
-          <div className="card w-full max-w-md p-6 shadow-lg">
+        <div className="fixed inset-0 z-(--z-modal) flex items-center justify-center p-4 bg-ink-950/50 backdrop-blur-sm animate-overlay-enter">
+          <div className="card w-full max-w-md p-6 shadow-lg animate-modal-enter">
             <div className="flex items-center justify-between mb-6">
               <h2 className="text-heading text-ink-900">
                 {modal.mode === 'create' ? t('admin_users.new_user') : t('admin_users.edit_user')}

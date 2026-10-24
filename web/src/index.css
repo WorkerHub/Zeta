@@ -238,11 +238,67 @@
   }
 }
 
+/* §2.6 motion: shared keyframes bound to the frozen easing/duration tokens.
+   Enter motions run ≤ 400ms (slower); fade-only variants keep reduced-motion calm. */
+@keyframes overlay-in {
+  from {
+    opacity: 0;
+  }
+}
+@keyframes modal-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.98);
+  }
+}
+@keyframes drawer-in {
+  from {
+    transform: translateX(32px);
+    opacity: 0;
+  }
+}
+/* §3.1 originality: one-time restrained emphasis on run success (≤ 400ms) */
+@keyframes success-pop {
+  0% {
+    transform: scale(0.6);
+    opacity: 0;
+  }
+  60% {
+    transform: scale(1.15);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
 @layer utilities {
   /* §2.4: tabular numbers for dense numeric content */
   .tnum {
     font-variant-numeric: tabular-nums;
     font-feature-settings: "tnum";
+  }
+  /* Modal/drawer/backdrop entrances (§3.1 motion: unified language, exit = instant dismiss) */
+  .animate-overlay-enter {
+    animation: overlay-in var(--duration-slow) var(--ease-enter) both;
+  }
+  .animate-modal-enter {
+    animation: modal-in var(--duration-slow) var(--ease-enter) both;
+  }
+  .animate-drawer-enter {
+    animation: drawer-in var(--duration-slower) var(--ease-enter) both;
+  }
+  .animate-success-pop {
+    animation: success-pop var(--duration-slow) var(--ease-standard) both;
+  }
+  /* §2.7: bottom safe area for fixed mobile bars */
+  .safe-b {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+  /* Clearance for content sitting above the fixed mobile bar (bar ≈ 3rem + inset) */
+  .clear-mobile-bar {
+    padding-bottom: calc(3rem + env(safe-area-inset-bottom));
   }
 }
 
@@ -293,7 +349,8 @@
   .badge {
     @apply inline-flex items-center px-2 py-0.5 rounded-sm text-micro;
   }
-  .badge-blue {
+  /* Brand badge (Stage 4 rename: semantics are 'brand', visuals are brand tokens) */
+  .badge-brand {
     @apply inline-flex items-center px-2 py-0.5 rounded-sm text-micro bg-brand-50 text-brand-700 border border-brand-200;
   }
   .badge-green {

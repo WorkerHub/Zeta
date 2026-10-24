@@ -12,6 +12,7 @@ import { timeAgo } from '../lib/time'
 import type { RunResults } from '../hooks/useNotebookRuns'
 import type { NotebookRunSummary } from '../types'
 import ResultsPanel from './ResultsPanel'
+import ConfirmDialog from './ConfirmDialog'
 
 interface Props {
   runs: NotebookRunSummary[] // newest (highest number) first
@@ -55,6 +56,8 @@ export default function RunHistoryDrawer({
   // A run being deleted, or 'all' while the notebook is cleared
   const [busy, setBusy] = useState<string | null>(null)
   const [actionError, setActionError] = useState('')
+  // 'Clear all' asks via the design-system ConfirmDialog (§3.1: no window.confirm)
+  const [confirmClear, setConfirmClear] = useState(false)
   const [resultIdx, setResultIdx] = useState(0)
   const selectedRunId = selectedRun?.id ?? null
   // The drawer opens at half the window; dragging its inner edge (or the arrow keys) resizes it
@@ -208,9 +211,7 @@ export default function RunHistoryDrawer({
   }
 
   async function clearAll() {
-    // The exact count is only known once every page is loaded
-    const message = hasMore ? t('runs.clear_confirm_more') : t('runs.clear_confirm', { n: runs.length })
-    if (!window.confirm(message)) return
+    setConfirmClear(false)
     setActionError('')
     setBusy('all')
     try {
@@ -227,7 +228,7 @@ export default function RunHistoryDrawer({
     <div className="fixed inset-0 z-(--z-drawer) flex justify-end">
       {/* biome-ignore lint/a11y/useKeyWithClickEvents: backdrop is a pointer-only dismiss target; Esc and the close button close the drawer */}
       {/* biome-ignore lint/a11y/noStaticElementInteractions: pointer-only backdrop; the drawer has its own close button */}
-      <div className="absolute inset-0 bg-black/40" onClick={onClose} />
+      <div className="absolute inset-0 bg-black/40 animate-overlay-enter" onClick={onClose} />
       <div
         ref={panelRef}
         id="run-history-panel"
@@ -237,7 +238,7 @@ export default function RunHistoryDrawer({
         tabIndex={-1}
         onKeyDown={trapFocus}
         style={{ '--history-drawer-width': `${width}px` } as CSSProperties}
-        className="relative flex h-full w-full flex-col border-l border-ink-200 bg-ink-0 shadow-lg outline-none @container sm:w-[var(--history-drawer-width)]"
+        className="relative flex h-full w-full flex-col border-l border-ink-200 bg-ink-0 shadow-lg outline-none @container animate-drawer-enter sm:w-[var(--history-drawer-width)]"
       >
         {/* Resize handle on the drawer's inner edge; phones keep the full-width stacked layout */}
         {/* biome-ignore lint/a11y/useSemanticElements: a draggable splitter must be focusable and expose aria-value* attributes; <hr> cannot */}
@@ -260,7 +261,7 @@ export default function RunHistoryDrawer({
           onKeyDown={resizeByKey}
           className="group absolute inset-y-0 -left-2 z-10 hidden w-2 cursor-col-resize touch-none outline-none sm:block"
         >
-          <div className="mx-auto h-full w-px bg-transparent transition-all duration-(--duration-base) group-hover:w-0.5 group-hover:bg-brand-600 group-focus-visible:w-0.5 group-focus-visible:bg-brand-600 group-active:w-0.5 group-active:bg-brand-600 dark:group-hover:bg-brand-400 dark:group-focus-visible:bg-brand-400 dark:group-active:bg-brand-400" />
+          <div className="mx-auto h-full w-px bg-transparent transition-[width,background-color] duration-(--duration-base) ease-(--ease-standard) group-hover:w-0.5 group-hover:bg-brand-600 group-focus-visible:w-0.5 group-focus-visible:bg-brand-600 group-active:w-0.5 group-active:bg-brand-600 dark:group-hover:bg-brand-400 dark:group-focus-visible:bg-brand-400 dark:group-active:bg-brand-400" />
         </div>
 
         <div className="flex shrink-0 items-center gap-2 border-b border-ink-200 px-4 py-3">
@@ -274,7 +275,7 @@ export default function RunHistoryDrawer({
           <div className="flex-1" />
           <button
             type="button"
-            onClick={clearAll}
+            onClick={() => setConfirmClear(true)}
             disabled={runs.length === 0 || busy !== null}
             className="flex shrink-0 items-center gap-1 rounded-md px-2 py-1 text-caption text-danger-600 transition-colors duration-(--duration-fast) hover:bg-danger-50 disabled:cursor-not-allowed disabled:opacity-40"
             title={t('runs.clear')}
@@ -496,6 +497,19 @@ export default function RunHistoryDrawer({
               )}
             </div>
           </div>
+        )}
+
+        {/* Clear-all confirmation (design-system dialog; exact count only once every page is loaded) */}
+        {confirmClear && (
+          <ConfirmDialog
+            title={t('runs.clear')}
+            description={
+              hasMore ? t('runs.clear_confirm_more') : t('runs.clear_confirm', { n: runs.length })
+            }
+            busy={busy === 'all'}
+            onCancel={() => setConfirmClear(false)}
+            onConfirm={clearAll}
+          />
         )}
       </div>
     </div>
