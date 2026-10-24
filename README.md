@@ -117,11 +117,13 @@ Go to **Workers & Pages → zeta → Settings → Variables and Secrets**:
 | Name | Value |
 |------|-------|
 | `APP_URL` | Your Worker URL, e.g. `https://zeta.yourname.workers.dev` or your custom domain. Use the exact `https://` URL users open: it is the only origin CORS allows, the passkey RP ID, the base of email links and the issuer/audience of every login token (changing it later signs everybody out) |
-| `TABLE_PREFIX` | *(Optional)* Prefix for all internal D1 tables, e.g. `kp` → tables become `kp_users`, `kp_settings`, etc. Must be set **before** calling the setup endpoint. Cannot be changed after initialisation. |
+| `TABLE_PREFIX` | *(Optional)* Prefix for all internal D1 tables. Three states: **unset** → default prefix `zeta` (`zeta_users`, `zeta_settings`, …); **set to a value** → the value used verbatim, case preserved, with `_` appended (`kp` → `kp_users`, `ZETA` → `ZETA_users`; invalid characters are rejected); **set to an empty string** → no prefix (you accept the risk of table-name collisions). Decide it **before** calling the setup endpoint — it cannot be changed after initialisation. |
 
 > `CF_ACCOUNT_ID` and `ZETA_APP_DB_ID` are injected automatically at deploy time from the GitHub Variables `CLOUDFLARE_ACCOUNT_ID` and `D1_DATABASE_ID` — do **not** set them here. You only configure `CF_D1_API_TOKEN` above.
 
 > These are kept out of GitHub entirely. The `keep_vars = true` setting in `wrangler.toml` ensures each deployment never overwrites values you set here.
+
+> **Upgrade warning:** an existing deployment that never set `TABLE_PREFIX` used **no prefix** before the three-state change. After upgrading, an unset prefix resolves to the default `zeta` and points at different tables. Before upgrading, set `TABLE_PREFIX` explicitly to preserve your existing tables — an empty string keeps the old unprefixed tables — or rely on the startup/setup guard, which aborts instead of silently switching prefixes. In a shared D1 database, Zeta's migrations and the guard only match Zeta's own table family and never touch other projects' tables (`SL_*`, `eNotify_*`, `TP_*`, `YL_*`, `TEMP_*`, …).
 
 ---
 
@@ -297,9 +299,11 @@ git config blame.ignoreRevsFile .git-blame-ignore-revs
 | `SETUP_SECRET` | Secret | Protects `POST /api/setup` |
 | `CF_D1_API_TOKEN` | Secret | API token with `D1 → Edit` permission — lists and queries the D1 databases added in the admin panel |
 | `APP_URL` | Variable | Full URL of your deployment; also the JWT `iss`/`aud`, so tokens from another deployment sharing `JWT_SECRET` are rejected |
-| `TABLE_PREFIX` | Variable | *(Optional)* Prefix for internal tables (e.g. `kp`). Set before first setup run. Immutable after initialisation. |
+| `TABLE_PREFIX` | Variable | *(Optional)* Prefix for internal tables. Three states: **unset** → default prefix `zeta`; **set to a value** → that value verbatim, case preserved, with `_` appended (`kp` → `kp_users`, `ZETA` → `ZETA_users`); **set to an empty string** → no prefix. Set before first setup run. Immutable after initialisation. |
 
 `CF_ACCOUNT_ID` and `ZETA_APP_DB_ID` are not set here: `wrangler.toml`'s `[vars]` injects them at deploy time from the GitHub Variables `CLOUDFLARE_ACCOUNT_ID` and `D1_DATABASE_ID`.
+
+**Upgrade warning:** an existing deployment that never set `TABLE_PREFIX` used **no prefix** before the three-state change. After upgrading, an unset prefix resolves to the default `zeta` and points at different tables. Before upgrading, set `TABLE_PREFIX` explicitly to preserve your existing tables (an empty string keeps the old unprefixed tables) or rely on the startup/setup guard, which aborts instead of silently switching prefixes. In a shared D1 database, Zeta's migrations and the guard only match Zeta's own table family and never touch other projects' tables (`SL_*`, `eNotify_*`, `TP_*`, `YL_*`, `TEMP_*`, …).
 
 ---
 
