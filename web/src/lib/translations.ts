@@ -172,7 +172,7 @@ export const translations: Record<Locale, Record<string, string>> = {
     'admin.users': 'Users',
     'admin.databases': 'Databases',
     'admin.settings': 'Settings',
-    'admin.back_to_query': 'Back to query',
+    'admin.back_to_query': 'Back to Query Panel',
 
     // Admin Users
     'admin_users.total': 'total',
@@ -534,7 +534,7 @@ export const translations: Record<Locale, Record<string, string>> = {
     'admin.users': '用户',
     'admin.databases': '数据库',
     'admin.settings': '设置',
-    'admin.back_to_query': '返回查询',
+    'admin.back_to_query': '返回查询面板',
 
     // Admin Users
     'admin_users.total': '总计',
