@@ -1,6 +1,6 @@
-import { describe, it, expect, afterEach, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { Env } from '../../types'
-import { listAccountD1Databases, queryD1Http, D1HttpError } from '../d1-http'
+import { appDbTargetAllowed, D1HttpError, isAppDb, listAccountD1Databases, queryD1Http } from '../d1-http'
 
 const APP_DB = '11111111-1111-4111-8111-111111111111'
 const DB_1 = '22222222-2222-4222-8222-222222222222'
@@ -12,6 +12,35 @@ const jsonResponse = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } })
 
 afterEach(() => vi.unstubAllGlobals())
+
+describe('appDbTargetAllowed', () => {
+  it('is off when unset, empty or any value other than true', () => {
+    expect(appDbTargetAllowed(env())).toBe(false)
+    expect(appDbTargetAllowed(env({ ALLOW_APP_DB_AS_TARGET: '' }))).toBe(false)
+    expect(appDbTargetAllowed(env({ ALLOW_APP_DB_AS_TARGET: 'false' }))).toBe(false)
+    expect(appDbTargetAllowed(env({ ALLOW_APP_DB_AS_TARGET: 'yes' }))).toBe(false)
+    expect(appDbTargetAllowed(env({ ALLOW_APP_DB_AS_TARGET: '1' }))).toBe(false)
+    expect(appDbTargetAllowed(env({ ALLOW_APP_DB_AS_TARGET: 'true-ish' }))).toBe(false)
+  })
+
+  it('is on only for true, case-insensitively, with surrounding whitespace ignored', () => {
+    expect(appDbTargetAllowed(env({ ALLOW_APP_DB_AS_TARGET: 'true' }))).toBe(true)
+    expect(appDbTargetAllowed(env({ ALLOW_APP_DB_AS_TARGET: 'TRUE' }))).toBe(true)
+    expect(appDbTargetAllowed(env({ ALLOW_APP_DB_AS_TARGET: '  true  ' }))).toBe(true)
+    expect(appDbTargetAllowed(env({ ALLOW_APP_DB_AS_TARGET: 'True\n' }))).toBe(true)
+  })
+})
+
+describe('isAppDb', () => {
+  it('matches the trimmed ZETA_APP_DB_ID exactly, case-sensitively, and nothing else', () => {
+    expect(isAppDb(env(), APP_DB)).toBe(true)
+    expect(isAppDb(env({ ZETA_APP_DB_ID: `${APP_DB}\n` }), APP_DB)).toBe(true)
+    expect(isAppDb(env(), DB_1)).toBe(false)
+    expect(isAppDb(env(), null)).toBe(false)
+    expect(isAppDb(env(), undefined)).toBe(false)
+    expect(isAppDb(env({ ZETA_APP_DB_ID: '' }), APP_DB)).toBe(false)
+  })
+})
 
 describe('listAccountD1Databases', () => {
   it('returns the account databases minus the application database', async () => {
@@ -119,6 +148,53 @@ describe('listAccountD1Databases', () => {
     )
     const rows = await listAccountD1Databases(env({ ZETA_APP_DB_ID: `${APP_DB}\n` }))
     expect(rows).toEqual([])
+  })
+
+  it('includes the application database when ALLOW_APP_DB_AS_TARGET is enabled', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        jsonResponse({
+          success: true,
+          result: [
+            { uuid: APP_DB, name: 'zeta', created_at: 'x' },
+            { uuid: DB_1, name: 'analytics', created_at: 'y' },
+          ],
+          result_info: { page: 1, per_page: 100, total_count: 2 },
+        })
+      )
+    )
+    const rows = await listAccountD1Databases(env({ ALLOW_APP_DB_AS_TARGET: 'true' }))
+    expect(rows.map((r) => r.uuid)).toEqual([APP_DB, DB_1])
+  })
+
+  it('keeps the account-membership fail-closed check when ALLOW_APP_DB_AS_TARGET is enabled', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        jsonResponse({
+          success: true,
+          result: [{ uuid: DB_1, name: 'analytics', created_at: 'x' }],
+          result_info: { page: 1, per_page: 100, total_count: 1 },
+        })
+      )
+    )
+    await expect(listAccountD1Databases(env({ ALLOW_APP_DB_AS_TARGET: 'true' }))).rejects.toMatchObject({
+      kind: 'config',
+      status: 500,
+      message: 'ZETA_APP_DB_ID is not a database in this Cloudflare account.',
+    })
+  })
+
+  it('fails closed when ZETA_APP_DB_ID is missing even with ALLOW_APP_DB_AS_TARGET enabled', async () => {
+    vi.stubGlobal('fetch', vi.fn())
+    await expect(
+      listAccountD1Databases(env({ ALLOW_APP_DB_AS_TARGET: 'true', ZETA_APP_DB_ID: '' }))
+    ).rejects.toMatchObject({
+      kind: 'config',
+      status: 500,
+      message: 'ZETA_APP_DB_ID is not configured on this Worker.',
+    })
   })
 })
 

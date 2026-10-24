@@ -118,6 +118,7 @@
 |------|----|
 | `APP_URL` | 你的 Worker 地址，例如 `https://zeta.yourname.workers.dev` 或自定义域名。请填写用户实际访问的 `https://` 地址：它是 CORS 唯一允许的来源、Passkey 的 RP ID、邮件链接的前缀，也是所有登录令牌的签发方/受众（之后修改会让所有用户重新登录） |
 | `TABLE_PREFIX` | *（可选）* 所有内部 D1 表的前缀，例如 `kp` → 表名变为 `kp_users`、`kp_settings` 等。必须在**调用 setup 接口之前**设置，初始化后不可更改。 |
+| `ALLOW_APP_DB_AS_TARGET` | *（可选，默认关闭）* 设为 `true` 后，允许把 Zeta 自身的应用库添加为查询目标——适用于多个项目共用一个 D1 的部署。其他任何取值（或不设置）都保持排除。开启后应用库带有护栏：有效权限封顶为 `write`（`DROP`/`TRUNCATE` 等删除类语句一律被拒，且无法对它授予 `write_drop`），应用内部表（`users`、`settings`、`notebooks`……即 `TABLE_PREFIX` 生效后的全部内部表）只读——管理员也不例外；无法确定目标表的写语句一律拒绝。 |
 
 > `CF_ACCOUNT_ID` 与 `ZETA_APP_DB_ID` 会在部署时由 GitHub Variables `CLOUDFLARE_ACCOUNT_ID`、`D1_DATABASE_ID` 自动注入，**不要在这里手动设置**。你只需要配置上面的 `CF_D1_API_TOKEN`。
 
@@ -183,7 +184,7 @@ curl -X POST https://<你的域名>/api/setup \
 D1 数据库现在从管理后台直接添加——**无需绑定、无需改 GitHub Variables、也无需重新部署**。Worker 通过 Cloudflare D1 HTTP API 访问它们，凭据是第三步配置的 `CF_D1_API_TOKEN`（密钥）与 `CF_ACCOUNT_ID`（变量）。
 
 1. 在**管理后台 → 数据库**中点击**添加数据库**。
-2. 从账号的 D1 数据库列表中选择一个（Zeta 自身的应用库已被排除）。
+2. 从账号的 D1 数据库列表中选择一个。Zeta 自身的应用库默认被排除；按第三步设置 `ALLOW_APP_DB_AS_TARGET` 变量后即可添加——添加后其内部表保持只读，且禁用删除类操作（`DROP`、`TRUNCATE` 等）。
 3. 可选地填写显示名称和描述，然后注册。
 4. 在**管理后台 → 数据库 → 权限**中为用户分配 `read`（只读）或 `write`（读写）权限。
 

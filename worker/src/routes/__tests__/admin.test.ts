@@ -1,4 +1,4 @@
-import { describe, it, expect, afterEach, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { bearer, callWorker, fakeD1, fakeEnv, postJson } from './fakes'
 import { sqliteD1 } from './sqlite-d1'
 
@@ -205,8 +205,8 @@ describe('database registry over the D1 HTTP API', () => {
     expect(res.status).toBe(200)
     const body = (await res.json()) as { results: Array<Record<string, unknown>> }
     expect(body.results).toEqual([
-      { uuid: DB_1, name: 'analytics', created_at: 'x', added: true, database_id: 'r1' },
-      { uuid: DB_2, name: 'logs', created_at: 'x', added: false, database_id: null },
+      { uuid: DB_1, name: 'analytics', created_at: 'x', added: true, database_id: 'r1', is_app_db: false },
+      { uuid: DB_2, name: 'logs', created_at: 'x', added: false, database_id: null, is_app_db: false },
     ])
   })
 
@@ -354,6 +354,216 @@ describe('database registry over the D1 HTTP API', () => {
     )
     expect(res.status).toBe(500)
     expect(((await res.json()) as { error: string }).error).toContain('ZETA_APP_DB_ID')
+  })
+})
+
+describe('application database as a query target (ALLOW_APP_DB_AS_TARGET)', () => {
+  const APP_DB = '11111111-1111-4111-8111-111111111111'
+  const DB_1 = '22222222-2222-4222-8222-222222222222'
+
+  const cfList = (rows: Array<{ uuid: string; name: string }>) =>
+    new Response(
+      JSON.stringify({
+        success: true,
+        result: rows.map((r) => ({ ...r, created_at: 'x' })),
+        result_info: { page: 1, per_page: 100, total_count: rows.length },
+      }),
+      { status: 200, headers: { 'Content-Type': 'application/json' } }
+    )
+
+  const switchOnEnv = (handler?: Parameters<typeof fakeD1>[0]) =>
+    fakeEnv({
+      DB: fakeD1(handler).db,
+      CF_ACCOUNT_ID: 'acct',
+      CF_D1_API_TOKEN: 'tok',
+      ZETA_APP_DB_ID: APP_DB,
+      ALLOW_APP_DB_AS_TARGET: 'true',
+    })
+
+  it('lists the application database with is_app_db when the switch is on', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        cfList([
+          { uuid: APP_DB, name: 'zeta' },
+          { uuid: DB_1, name: 'analytics' },
+        ])
+      )
+    )
+    const { db } = fakeD1((sql) =>
+      sql.includes('WHERE cf_database_id IS NOT NULL') ? [{ id: 'r1', cf_database_id: DB_1 }] : null
+    )
+    const env = fakeEnv({
+      DB: db,
+      CF_ACCOUNT_ID: 'acct',
+      CF_D1_API_TOKEN: 'tok',
+      ZETA_APP_DB_ID: APP_DB,
+      ALLOW_APP_DB_AS_TARGET: 'true',
+    })
+    const res = await callWorker(env, '/api/admin/d1/databases', { headers: await bearer(env, 'a1', 'admin') })
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as { results: Array<Record<string, unknown>> }
+    expect(body.results).toEqual([
+      { uuid: APP_DB, name: 'zeta', created_at: 'x', added: false, database_id: null, is_app_db: true },
+      { uuid: DB_1, name: 'analytics', created_at: 'x', added: true, database_id: 'r1', is_app_db: false },
+    ])
+  })
+
+  it('registers the application database when the switch is on', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        cfList([
+          { uuid: APP_DB, name: 'zeta' },
+          { uuid: DB_1, name: 'analytics' },
+        ])
+      )
+    )
+    const { db, calls } = fakeD1()
+    const env = fakeEnv({
+      DB: db,
+      CF_ACCOUNT_ID: 'acct',
+      CF_D1_API_TOKEN: 'tok',
+      ZETA_APP_DB_ID: APP_DB,
+      ALLOW_APP_DB_AS_TARGET: 'true',
+    })
+    const res = await callWorker(
+      env,
+      '/api/admin/databases',
+      postJson({ cf_database_id: APP_DB }, { headers: await bearer(env, 'a1', 'admin') })
+    )
+    expect(res.status).toBe(201)
+    const insert = calls.find((c) => c.sql.startsWith('INSERT INTO d1_databases'))
+    expect(insert).toBeTruthy()
+    expect(insert!.args[1]).toBe('zeta')
+    expect(insert!.args[4]).toBe(APP_DB)
+  })
+
+  it('re-links a legacy database to the application database when the switch is on', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        cfList([
+          { uuid: APP_DB, name: 'zeta' },
+          { uuid: DB_1, name: 'analytics' },
+        ])
+      )
+    )
+    const { db, calls } = fakeD1()
+    const env = fakeEnv({
+      DB: db,
+      CF_ACCOUNT_ID: 'acct',
+      CF_D1_API_TOKEN: 'tok',
+      ZETA_APP_DB_ID: APP_DB,
+      ALLOW_APP_DB_AS_TARGET: 'true',
+    })
+    const res = await callWorker(
+      env,
+      '/api/admin/databases/r1',
+      postJson({ cf_database_id: APP_DB }, { method: 'PATCH', headers: await bearer(env, 'a1', 'admin') })
+    )
+    expect(res.status).toBe(200)
+    const update = calls.find((c) => c.sql.startsWith('UPDATE d1_databases'))
+    expect(update).toBeTruthy()
+    expect(update!.args[0]).toBe(APP_DB)
+  })
+
+  it('keeps refusing the application database for any other switch value', async () => {
+    for (const value of ['false', 'yes', '1', '']) {
+      vi.stubGlobal(
+        'fetch',
+        vi.fn().mockResolvedValue(
+          cfList([
+            { uuid: APP_DB, name: 'zeta' },
+            { uuid: DB_1, name: 'analytics' },
+          ])
+        )
+      )
+      const { db, calls } = fakeD1()
+      const env = fakeEnv({
+        DB: db,
+        CF_ACCOUNT_ID: 'acct',
+        CF_D1_API_TOKEN: 'tok',
+        ZETA_APP_DB_ID: APP_DB,
+        ALLOW_APP_DB_AS_TARGET: value,
+      })
+      const res = await callWorker(
+        env,
+        '/api/admin/databases',
+        postJson({ cf_database_id: APP_DB }, { headers: await bearer(env, 'a1', 'admin') })
+      )
+      expect(res.status).toBe(400)
+      expect(calls.some((c) => c.sql.startsWith('INSERT INTO d1_databases'))).toBe(false)
+    }
+    vi.unstubAllGlobals()
+  })
+
+  it('annotates registry rows with is_app_db', async () => {
+    const { db } = fakeD1((sql) =>
+      sql.startsWith('SELECT * FROM d1_databases')
+        ? [
+            {
+              id: 'r1',
+              name: 'app',
+              description: null,
+              binding_name: `cf:${APP_DB}`,
+              cf_database_id: APP_DB,
+              is_active: 1,
+              created_at: 0,
+              created_by: null,
+            },
+            {
+              id: 'r2',
+              name: 'logs',
+              description: null,
+              binding_name: `cf:${DB_1}`,
+              cf_database_id: DB_1,
+              is_active: 1,
+              created_at: 0,
+              created_by: null,
+            },
+          ]
+        : null
+    )
+    const env = fakeEnv({ DB: db, ZETA_APP_DB_ID: APP_DB })
+    const res = await callWorker(env, '/api/admin/databases', { headers: await bearer(env, 'a1', 'admin') })
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as { results: Array<{ id: string; is_app_db: boolean }> }
+    expect(body.results.find((r) => r.id === 'r1')!.is_app_db).toBe(true)
+    expect(body.results.find((r) => r.id === 'r2')!.is_app_db).toBe(false)
+  })
+
+  it('refuses to grant write_drop on an application-database registry row', async () => {
+    const { db, calls } = fakeD1((sql) =>
+      sql.includes('SELECT cf_database_id FROM d1_databases') ? { cf_database_id: APP_DB } : null
+    )
+    const env = switchOnEnv()
+    env.DB = db
+    const res = await callWorker(
+      env,
+      '/api/admin/databases/r1/permissions/u1',
+      postJson({ permission: 'write_drop' }, { method: 'PUT', headers: await bearer(env, 'a1', 'admin') })
+    )
+    expect(res.status).toBe(400)
+    expect(((await res.json()) as { error: string }).error).toContain('write')
+    expect(calls.some((c) => c.sql.startsWith('INSERT INTO user_database_permissions'))).toBe(false)
+  })
+
+  it('still grants write and read on an application-database registry row', async () => {
+    for (const permission of ['read', 'write']) {
+      const { db, calls } = fakeD1((sql) =>
+        sql.includes('SELECT cf_database_id FROM d1_databases') ? { cf_database_id: APP_DB } : null
+      )
+      const env = switchOnEnv()
+      env.DB = db
+      const res = await callWorker(
+        env,
+        '/api/admin/databases/r1/permissions/u1',
+        postJson({ permission }, { method: 'PUT', headers: await bearer(env, 'a1', 'admin') })
+      )
+      expect(res.status).toBe(200)
+      expect(calls.some((c) => c.sql.startsWith('INSERT INTO user_database_permissions'))).toBe(true)
+    }
   })
 })
 

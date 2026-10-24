@@ -59,6 +59,22 @@ export function appDbId(env: Env): string | undefined {
   return v ? v : undefined
 }
 
+// The opt-in switch for using the application database itself as a query target (shared-database
+// deployments). Only the exact value "true" (case-insensitive, surrounding whitespace ignored)
+// turns it on; unset, empty or any other value stays off — fail closed. This is the single place
+// every exclusion point and guardrail reads the env var from; no other code may read it directly.
+export function appDbTargetAllowed(env: Env): boolean {
+  return env.ALLOW_APP_DB_AS_TARGET?.trim().toLowerCase() === 'true'
+}
+
+// The single target-identity check shared by every exclusion/annotation point: does this
+// cf_database_id refer to the application's own database? Callers must NOT re-implement the
+// comparison against appDbId() themselves.
+export function isAppDb(env: Env, cfDatabaseId: string | null | undefined): boolean {
+  const appId = appDbId(env)
+  return appId !== undefined && cfDatabaseId === appId
+}
+
 async function cfFetch(env: Env, path: string, init: RequestInit = {}): Promise<Response> {
   const { token } = accountAndToken(env)
   try {
@@ -98,7 +114,9 @@ function cfError(res: Response, body: CfResponse<unknown>): D1HttpError {
   return new D1HttpError(res.status, first?.message ?? `Cloudflare API error (${res.status}).`, 'sql')
 }
 
-// Lists every D1 database in the account (paginated), minus the application's own database.
+// Lists every D1 database in the account (paginated). The application's own database is excluded
+// unless ALLOW_APP_DB_AS_TARGET is explicitly enabled; the "ZETA_APP_DB_ID must be a real database
+// in this account" fail-closed check applies either way.
 export async function listAccountD1Databases(env: Env): Promise<CfD1Database[]> {
   const { accountId } = accountAndToken(env)
   const appId = appDbId(env)
@@ -123,7 +141,7 @@ export async function listAccountD1Databases(env: Env): Promise<CfD1Database[]> 
   if (!all.some((d) => d.uuid === appId)) {
     throw new D1HttpError(500, 'ZETA_APP_DB_ID is not a database in this Cloudflare account.', 'config')
   }
-  return all.filter((d) => d.uuid !== appId)
+  return appDbTargetAllowed(env) ? all : all.filter((d) => d.uuid !== appId)
 }
 
 // Runs one statement against a D1 database over the HTTP API. The caller has already classified
