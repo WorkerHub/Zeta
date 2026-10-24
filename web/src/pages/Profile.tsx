@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import {
-  Database,
   ArrowLeft,
   Shield,
   Key,
@@ -18,6 +17,7 @@ import QRCode from 'qrcode'
 import { startRegistration } from '@simplewebauthn/browser'
 import { profileApi } from '../lib/api'
 import { useLocale } from '../hooks/useLocale'
+import Logo from '../components/Logo'
 import RunSettingsCard from '../components/RunSettingsCard'
 import type { User } from '../types'
 
@@ -64,7 +64,7 @@ export default function ProfilePage() {
       setTotpQr(null)
       return
     }
-    QRCode.toDataURL(totpSetup.uri, { width: 176, margin: 1, color: { dark: '#000000', light: '#ffffff' } })
+    QRCode.toDataURL(totpSetup.uri, { width: 176, margin: 1, color: { dark: '#1c1815', light: '#ffffff' } })
       .then(setTotpQr)
       .catch(() => setTotpQr(null))
   }, [totpSetup?.uri])
@@ -178,54 +178,52 @@ export default function ProfilePage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-zinc-50 dark:bg-zinc-950 flex items-center justify-center text-zinc-500 text-sm">
+      <div className="min-h-screen bg-ink-50 flex items-center justify-center text-ink-500 text-body">
         {t('common.loading')}
       </div>
     )
   }
 
   return (
-    <div className="min-h-screen bg-zinc-50 dark:bg-zinc-950">
+    <div className="min-h-screen bg-ink-50">
       {/* Header */}
-      <header className="px-4 py-3 border-b border-zinc-200 dark:border-zinc-800 flex items-center gap-3">
-        <div className="w-7 h-7 bg-blue-600 rounded-md flex items-center justify-center">
-          <Database size={15} className="text-white" />
-        </div>
-        <span className="font-semibold text-zinc-900 dark:text-zinc-100">{t('app.name')}</span>
+      <header className="px-6 py-3 border-b border-ink-200 flex items-center gap-2.5 bg-ink-0">
+        <Logo size="sm" />
+        <span className="text-body-strong text-ink-900">{t('app.name')}</span>
         <div className="flex-1" />
         <Link to="/query" className="btn-ghost btn-sm gap-1.5">
           <ArrowLeft size={14} /> {t('profile.back_to_query')}
         </Link>
       </header>
 
-      <div className="max-w-2xl mx-auto p-4 sm:p-6 space-y-6">
-        <h1 className="text-xl font-semibold text-zinc-900 dark:text-zinc-100">{t('profile.title')}</h1>
+      <div className="max-w-2xl mx-auto px-6 py-8 flex flex-col gap-8">
+        <h1 className="text-display text-ink-950">{t('profile.title')}</h1>
 
         {/* Account info */}
         <div className="card p-5">
-          <h2 className="text-sm font-semibold text-zinc-700 dark:text-zinc-300 mb-4 flex items-center gap-2">
-            <Shield size={15} className="text-zinc-500" /> {t('profile.account')}
+          <h2 className="text-heading text-ink-900 mb-4 flex items-center gap-2">
+            <Shield size={15} className="text-ink-400" /> {t('profile.account')}
           </h2>
-          <div className="space-y-2 text-sm">
+          <div className="flex flex-col gap-2 text-body">
             <div className="flex items-center justify-between">
-              <span className="text-zinc-500">{t('auth.name')}</span>
-              <span className="text-zinc-800 dark:text-zinc-200">{user?.name}</span>
+              <span className="text-ink-500">{t('auth.name')}</span>
+              <span className="text-ink-900">{user?.name}</span>
             </div>
             <div className="flex items-center justify-between">
-              <span className="text-zinc-500">{t('auth.email')}</span>
-              <span className="text-zinc-800 dark:text-zinc-200">{user?.email}</span>
+              <span className="text-ink-500">{t('auth.email')}</span>
+              <span className="text-ink-900">{user?.email}</span>
             </div>
             <div className="flex items-center justify-between">
-              <span className="text-zinc-500">{t('profile.role')}</span>
-              <span className={`badge ${user?.role === 'admin' ? 'badge-blue' : 'badge-zinc'}`}>{user?.role}</span>
+              <span className="text-ink-500">{t('profile.role')}</span>
+              <span className={`badge ${user?.role === 'admin' ? 'badge-brand' : 'badge-neutral'}`}>{user?.role}</span>
             </div>
           </div>
         </div>
 
         {/* Change password */}
         <div className="card p-5">
-          <h2 className="text-sm font-semibold text-zinc-700 dark:text-zinc-300 mb-4 flex items-center gap-2">
-            <Key size={15} className="text-zinc-500" /> {t('profile.change_password')}
+          <h2 className="text-heading text-ink-900 mb-4 flex items-center gap-2">
+            <Key size={15} className="text-ink-400" /> {t('profile.change_password')}
           </h2>
           <form onSubmit={savePassword} className="space-y-4">
             <div>
@@ -268,8 +266,8 @@ export default function ProfilePage() {
                 required
               />
             </div>
-            {pwError && <p className="text-sm text-red-400">{pwError}</p>}
-            {pwSuccess && <p className="text-sm text-emerald-400">{pwSuccess}</p>}
+            {pwError && <p className="text-body text-danger-600">{pwError}</p>}
+            {pwSuccess && <p className="text-body text-success-600">{pwSuccess}</p>}
             <button type="submit" className="btn-primary" disabled={pwLoading}>
               {pwLoading ? t('profile.saving') : t('profile.update_password')}
             </button>
@@ -278,27 +276,24 @@ export default function ProfilePage() {
 
         {/* TOTP */}
         <div className="card p-5">
-          <h2 className="text-sm font-semibold text-zinc-700 dark:text-zinc-300 mb-4 flex items-center gap-2">
-            <Smartphone size={15} className="text-zinc-500" /> {t('profile.totp_title')}
+          <h2 className="text-heading text-ink-900 mb-4 flex items-center gap-2">
+            <Smartphone size={15} className="text-ink-400" /> {t('profile.totp_title')}
           </h2>
 
           {user?.totpCredentials && user.totpCredentials.length > 0 && (
             <ul className="space-y-2 mb-4">
               {user.totpCredentials.map((cred) => (
-                <li
-                  key={cred.id}
-                  className="flex items-center justify-between bg-zinc-100 dark:bg-zinc-800 rounded-lg px-4 py-2.5"
-                >
+                <li key={cred.id} className="flex items-center justify-between bg-ink-100 rounded-lg px-4 py-2.5">
                   <div>
-                    <p className="text-sm text-zinc-800 dark:text-zinc-200">{cred.name}</p>
-                    <p className="text-xs text-zinc-500">
+                    <p className="text-body-strong text-ink-900">{cred.name}</p>
+                    <p className="text-caption text-ink-500 tnum">
                       {t('profile.totp_added')} {new Date(cred.created_at * 1000).toLocaleDateString()}
                     </p>
                   </div>
                   <button
                     type="button"
                     onClick={() => askRemoval('totp', cred.id)}
-                    className="btn-ghost p-1.5 text-red-400"
+                    className="btn-ghost p-1.5 text-danger-600"
                   >
                     <Trash2 size={14} />
                   </button>
@@ -313,31 +308,33 @@ export default function ProfilePage() {
             </button>
           ) : (
             <div className="space-y-4">
-              <p className="text-sm text-zinc-400">{t('profile.totp_scan')}</p>
+              <p className="text-body text-ink-500">{t('profile.totp_scan')}</p>
               <div className="flex justify-center">
                 {totpQr ? (
-                  <img src={totpQr} alt={t('profile.totp_qr_alt')} className="rounded-lg w-44 h-44" />
+                  <div className="bg-ink-0 p-2 rounded-lg border border-ink-200">
+                    <img src={totpQr} alt={t('profile.totp_qr_alt')} className="rounded-lg w-44 h-44" />
+                  </div>
                 ) : (
-                  <div className="w-44 h-44 rounded-lg bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center text-zinc-500 text-xs">
+                  <div className="w-44 h-44 rounded-lg bg-ink-100 flex items-center justify-center text-ink-500 text-caption">
                     {t('profile.totp_generating')}
                   </div>
                 )}
               </div>
-              <div className="flex items-center gap-2 bg-zinc-100 dark:bg-zinc-800 rounded-lg px-3 py-2">
-                <code className="flex-1 text-xs text-zinc-700 dark:text-zinc-300 font-mono break-all">
+              <div className="flex items-center gap-2 bg-ink-100 rounded-lg px-3 py-2">
+                <code className="flex-1 text-caption text-ink-700 font-mono break-all tnum">
                   {showSecret ? totpSetup.secret : '•'.repeat(totpSetup.secret.length)}
                 </code>
                 <button
                   type="button"
                   onClick={() => setShowSecret(!showSecret)}
-                  className="text-zinc-500 hover:text-zinc-300 p-1"
+                  className="text-ink-400 hover:text-ink-700 p-1 transition-colors duration-(--duration-base)"
                 >
                   {showSecret ? <EyeOff size={13} /> : <Eye size={13} />}
                 </button>
                 <button
                   type="button"
                   onClick={copySecret}
-                  className={`p-1 ${copied ? 'text-emerald-400' : 'text-zinc-500 hover:text-zinc-300'}`}
+                  className={`p-1 transition-colors duration-(--duration-base) ${copied ? 'text-success-600' : 'text-ink-400 hover:text-ink-700'}`}
                 >
                   {copied ? <CheckCircle size={13} /> : <Copy size={13} />}
                 </button>
@@ -357,7 +354,7 @@ export default function ProfilePage() {
                   placeholder="000000"
                 />
               </div>
-              {totpError && <p className="text-sm text-red-400">{totpError}</p>}
+              {totpError && <p className="text-body text-danger-600">{totpError}</p>}
               <div className="flex gap-3">
                 <button
                   type="button"
@@ -380,32 +377,29 @@ export default function ProfilePage() {
               </div>
             </div>
           )}
-          {totpError && !totpSetup && <p className="text-sm text-red-400 mt-2">{totpError}</p>}
+          {totpError && !totpSetup && <p className="text-body text-danger-600 mt-2">{totpError}</p>}
         </div>
 
         {/* Passkey */}
         <div className="card p-5">
-          <h2 className="text-sm font-semibold text-zinc-700 dark:text-zinc-300 mb-4 flex items-center gap-2">
-            <Fingerprint size={15} className="text-zinc-500" /> {t('profile.passkey_title')}
+          <h2 className="text-heading text-ink-900 mb-4 flex items-center gap-2">
+            <Fingerprint size={15} className="text-ink-400" /> {t('profile.passkey_title')}
           </h2>
 
           {user?.passkeyCredentials && user.passkeyCredentials.length > 0 && (
             <ul className="space-y-2 mb-4">
               {user.passkeyCredentials.map((cred) => (
-                <li
-                  key={cred.id}
-                  className="flex items-center justify-between bg-zinc-100 dark:bg-zinc-800 rounded-lg px-4 py-2.5"
-                >
+                <li key={cred.id} className="flex items-center justify-between bg-ink-100 rounded-lg px-4 py-2.5">
                   <div>
-                    <p className="text-sm text-zinc-800 dark:text-zinc-200">{cred.name ?? t('profile.passkey')}</p>
-                    <p className="text-xs text-zinc-500">
+                    <p className="text-body-strong text-ink-900">{cred.name ?? t('profile.passkey')}</p>
+                    <p className="text-caption text-ink-500 tnum">
                       {t('profile.totp_added')} {new Date(cred.created_at * 1000).toLocaleDateString()}
                     </p>
                   </div>
                   <button
                     type="button"
                     onClick={() => askRemoval('passkey', cred.id)}
-                    className="btn-ghost p-1.5 text-red-400"
+                    className="btn-ghost p-1.5 text-danger-600"
                   >
                     <Trash2 size={14} />
                   </button>
@@ -417,7 +411,7 @@ export default function ProfilePage() {
           <button type="button" onClick={registerPasskey} disabled={passkeyLoading} className="btn-secondary gap-2">
             <Plus size={14} /> {passkeyLoading ? t('profile.passkey_waiting') : t('profile.passkey_add')}
           </button>
-          {passkeyError && <p className="text-sm text-red-400 mt-2">{passkeyError}</p>}
+          {passkeyError && <p className="text-body text-danger-600 mt-2">{passkeyError}</p>}
         </div>
 
         {/* Saved query runs */}
@@ -425,12 +419,12 @@ export default function ProfilePage() {
       </div>
 
       {removal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-          <form onSubmit={confirmRemoval} className="card w-full max-w-sm p-6 shadow-2xl space-y-4">
-            <h2 className="text-base font-semibold text-zinc-900 dark:text-zinc-100">
+        <div className="fixed inset-0 z-(--z-modal) flex items-center justify-center p-4 bg-ink-950/50 backdrop-blur-sm animate-overlay-enter">
+          <form onSubmit={confirmRemoval} className="card w-full max-w-sm p-6 shadow-lg space-y-4 animate-modal-enter">
+            <h2 className="text-heading text-ink-900">
               {t(removal.kind === 'totp' ? 'profile.confirm_delete_totp' : 'profile.confirm_delete_passkey')}
             </h2>
-            <p className="text-sm text-zinc-500">{t('profile.confirm_remove_desc')}</p>
+            <p className="text-body text-ink-500">{t('profile.confirm_remove_desc')}</p>
             <div>
               <label htmlFor="removal-password" className="label">
                 {t('profile.current_password')}
@@ -447,7 +441,7 @@ export default function ProfilePage() {
                 onChange={(e) => setRemovalPassword(e.target.value)}
               />
             </div>
-            {removalError && <p className="text-sm text-red-400">{removalError}</p>}
+            {removalError && <p className="text-body text-danger-600">{removalError}</p>}
             <div className="flex gap-3">
               <button type="button" onClick={() => setRemoval(null)} className="btn-secondary flex-1">
                 {t('2fa.cancel')}

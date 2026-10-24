@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState, type RefObject } from 'react'
 import { Link } from 'react-router-dom'
-import { Database, Globe, Loader2 } from 'lucide-react'
+import { Globe, Loader2 } from 'lucide-react'
 import { setupApi, SetupApiError } from '../lib/api'
 import { resolveSetupView, setupErrorInfo, type SetupView } from '../lib/setup'
 import { useLocale } from '../hooks/useLocale'
+import Logo from '../components/Logo'
 
 type Translate = (key: string, vars?: Record<string, string | number>) => string
 
@@ -37,14 +38,14 @@ export function SetupCard({
   onSubmit,
 }: SetupCardProps) {
   if (view === 'loading') {
-    return <div className="card p-6 text-sm text-zinc-500">{t('common.loading')}</div>
+    return <div className="card p-6 text-body text-ink-500">{t('common.loading')}</div>
   }
 
   if (view === 'disabled') {
     return (
       <div className="card p-6 space-y-4">
-        <h1 className="text-lg font-semibold text-zinc-900 dark:text-zinc-100">{t('setup.title')}</h1>
-        <p role="alert" className="text-sm text-zinc-600 dark:text-zinc-300">
+        <h1 className="text-heading text-ink-900">{t('setup.title')}</h1>
+        <p role="alert" className="text-body text-ink-700">
           {t('setup.disabled')}
         </p>
         <Link to="/login" className="btn-primary w-full">
@@ -58,15 +59,15 @@ export function SetupCard({
 
   return (
     <div className="card p-6">
-      <h1 className="text-lg font-semibold text-zinc-900 mb-1 dark:text-zinc-100">{t('setup.title')}</h1>
-      <p className="text-sm text-zinc-500 mb-6">{t('setup.desc')}</p>
+      <h1 className="text-heading text-ink-900 mb-1">{t('setup.title')}</h1>
+      <p className="text-body text-ink-500 mb-6">{t('setup.desc')}</p>
 
       {success ? (
         <div role="status" className="space-y-4">
           {upgradedItems && upgradedItems.length > 0 ? (
             <>
-              <p className="text-sm text-emerald-500">{t('setup.upgraded_title')}</p>
-              <ul className="text-sm text-zinc-700 dark:text-zinc-300 list-disc list-inside space-y-1">
+              <p className="text-body text-success-600">{t('setup.upgraded_title')}</p>
+              <ul className="text-body text-ink-700 list-disc list-inside space-y-1">
                 {upgradedItems.map((item) => (
                   <li key={item}>{item}</li>
                 ))}
@@ -77,7 +78,7 @@ export function SetupCard({
             </>
           ) : (
             <>
-              <p className="text-sm text-emerald-500">{t('setup.success')}</p>
+              <p className="text-body text-success-600">{t('setup.success')}</p>
               <Link to="/register" className="btn-primary w-full">
                 {t('setup.register_admin')}
               </Link>
@@ -95,7 +96,7 @@ export function SetupCard({
           }}
           className="space-y-4"
         >
-          {stateHint && <p className="text-xs text-amber-500">{t('setup.state_unavailable')}</p>}
+          {stateHint && <p className="text-caption text-warning-600">{t('setup.state_unavailable')}</p>}
           <div>
             <label htmlFor="setup-secret" className="label">
               {t('setup.secret_label')}
@@ -115,7 +116,7 @@ export function SetupCard({
           </div>
 
           {error && (
-            <p role="alert" className="text-sm text-red-400">
+            <p role="alert" className="text-body text-danger-600">
               {error}
             </p>
           )}
@@ -187,7 +188,7 @@ export default function Setup() {
   }
 
   return (
-    <div className="relative min-h-screen flex items-center justify-center p-4 bg-zinc-50 dark:bg-zinc-950">
+    <div className="relative min-h-screen flex items-center justify-center p-4 bg-ink-50">
       <button
         type="button"
         onClick={() => changeLocale(locale === 'en' ? 'zh' : 'en')}
@@ -198,10 +199,8 @@ export default function Setup() {
       </button>
       <div className="w-full max-w-sm">
         <div className="flex items-center justify-center gap-2 mb-8">
-          <div className="w-9 h-9 bg-blue-600 rounded-lg flex items-center justify-center">
-            <Database size={20} className="text-white" />
-          </div>
-          <span className="text-xl font-semibold text-zinc-900 dark:text-zinc-100">{t('app.name')}</span>
+          <Logo size="md" />
+          <span className="text-title text-ink-900">{t('app.name')}</span>
         </div>
 
         <SetupCard

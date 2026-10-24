@@ -95,6 +95,7 @@ export const translations: Record<Locale, Record<string, string>> = {
     'notebook.untitled': 'Untitled',
     'notebook.new': 'New notebook',
     'notebook.delete_confirm': 'Delete this notebook?',
+    'notebook.delete_confirm_desc': 'The notebook and its SQL content will be removed. Saved runs are kept.',
     'notebook.limit_reached': 'Maximum 20 notebooks reached',
 
     // Theme
@@ -225,7 +226,8 @@ export const translations: Record<Locale, Record<string, string>> = {
     'admin_db.no_permissions': 'No member permissions set. Only admins can access this database.',
     'admin_db.loading': 'Loading…',
     'admin_db.no_databases': 'No databases registered yet',
-    'admin_db.confirm_delete': 'Delete database "{name}" from registry? This does not delete the actual D1 database.',
+    'admin_db.confirm_delete': 'Delete database "{name}"?',
+    'admin_db.confirm_delete_desc': 'This removes it from the registry. The actual D1 database is not deleted.',
     'admin_db.name_placeholder': 'My Database',
     'admin_db.toggle_active': 'Toggle active',
     'admin_db.cf_database': 'Cloudflare D1 database',
@@ -359,6 +361,9 @@ export const translations: Record<Locale, Record<string, string>> = {
     // Common
     'common.loading': 'Loading…',
     'common.dismiss': 'Dismiss',
+    'common.cancel': 'Cancel',
+    'common.confirm': 'Confirm',
+    'common.delete': 'Delete',
   },
   zh: {
     // App
@@ -453,6 +458,7 @@ export const translations: Record<Locale, Record<string, string>> = {
     'notebook.untitled': '未命名',
     'notebook.new': '新建 Notebook',
     'notebook.delete_confirm': '删除此 Notebook？',
+    'notebook.delete_confirm_desc': '将删除该 Notebook 及其 SQL 内容，已保存的运行记录会保留。',
     'notebook.limit_reached': '已达到 20 个上限',
 
     // Theme
@@ -582,7 +588,8 @@ export const translations: Record<Locale, Record<string, string>> = {
     'admin_db.no_permissions': '未设置成员权限。仅管理员可访问此数据库。',
     'admin_db.loading': '加载中…',
     'admin_db.no_databases': '暂无已注册的数据库',
-    'admin_db.confirm_delete': '从注册表中删除数据库"{name}"？这不会删除实际的 D1 数据库。',
+    'admin_db.confirm_delete': '删除数据库"{name}"？',
+    'admin_db.confirm_delete_desc': '这会将其从注册表中移除，不会删除实际的 D1 数据库。',
     'admin_db.name_placeholder': '我的数据库',
     'admin_db.toggle_active': '切换启用状态',
     'admin_db.cf_database': 'Cloudflare D1 数据库',
@@ -713,6 +720,9 @@ export const translations: Record<Locale, Record<string, string>> = {
     // Common
     'common.loading': '加载中…',
     'common.dismiss': '关闭',
+    'common.cancel': '取消',
+    'common.confirm': '确定',
+    'common.delete': '删除',
   },
 }
 

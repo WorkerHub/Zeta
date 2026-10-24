@@ -17,14 +17,22 @@ const AdminPage = lazy(() => import('./pages/admin/AdminLayout'))
 
 function RouteLoading() {
   const { t } = useLocale()
-  return <div className="flex h-screen items-center justify-center text-zinc-500 text-sm">{t('common.loading')}</div>
+  return (
+    <div className="flex h-screen items-center justify-center bg-ink-50 text-ink-500 text-body">
+      {t('common.loading')}
+    </div>
+  )
 }
 
 function PrivateRoute({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuthContext()
   const { t } = useLocale()
   if (loading)
-    return <div className="flex h-screen items-center justify-center text-zinc-500 text-sm">{t('common.loading')}</div>
+    return (
+      <div className="flex h-screen items-center justify-center bg-ink-50 text-ink-500 text-body">
+        {t('common.loading')}
+      </div>
+    )
   if (!user) return <Navigate to="/login" replace />
   return <>{children}</>
 }
@@ -33,7 +41,11 @@ function AdminRoute({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuthContext()
   const { t } = useLocale()
   if (loading)
-    return <div className="flex h-screen items-center justify-center text-zinc-500 text-sm">{t('common.loading')}</div>
+    return (
+      <div className="flex h-screen items-center justify-center bg-ink-50 text-ink-500 text-body">
+        {t('common.loading')}
+      </div>
+    )
   if (!user) return <Navigate to="/login" replace />
   if (user.role !== 'admin') return <Navigate to="/query" replace />
   return <>{children}</>

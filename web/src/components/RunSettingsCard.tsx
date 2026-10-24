@@ -54,14 +54,14 @@ export default function RunSettingsCard() {
 
   return (
     <div className="card p-5">
-      <h2 className="text-sm font-semibold text-zinc-700 dark:text-zinc-300 mb-4 flex items-center gap-2">
-        <History size={15} className="text-zinc-500" /> {t('profile.run_title')}
+      <h2 className="text-heading text-ink-900 mb-4 flex items-center gap-2">
+        <History size={15} className="text-ink-500" /> {t('profile.run_title')}
       </h2>
       {!settings ? (
         error ? (
-          <p className="text-sm text-red-400">{error}</p>
+          <p className="text-body text-danger-600">{error}</p>
         ) : (
-          <p className="text-sm text-zinc-500">{t('common.loading')}</p>
+          <p className="text-body text-ink-500">{t('common.loading')}</p>
         )
       ) : (
         <form onSubmit={save} className="space-y-3">
@@ -86,18 +86,18 @@ export default function RunSettingsCard() {
                 {saved ? t('admin_settings.saved') : t('profile.run_save')}
               </button>
             </div>
-            <p className="text-xs text-zinc-500 mt-1">
+            <p className="text-caption text-ink-500 mt-1 tnum">
               {t('profile.run_limit_effective', { n: settings.effective_run_limit, max: settings.admin_run_limit })}
               {capped && ` ${t('profile.run_limit_capped', { n: settings.admin_run_limit })}`}
             </p>
           </div>
-          <p className="text-xs text-zinc-500">
+          <p className="text-caption text-ink-500 tnum">
             {t('profile.run_storage', {
               used: formatBytes(settings.storage_used_bytes),
               quota: formatBytes(settings.storage_quota_bytes),
             })}
           </p>
-          {error && <p className="text-sm text-red-400">{error}</p>}
+          {error && <p className="text-body text-danger-600">{error}</p>}
         </form>
       )}
     </div>

@@ -1,8 +1,9 @@
 import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { Database, Globe } from 'lucide-react'
+import { Globe } from 'lucide-react'
 import { authApi } from '../lib/api'
 import { useLocale } from '../hooks/useLocale'
+import Logo from '../components/Logo'
 
 export default function Register() {
   const navigate = useNavigate()
@@ -36,7 +37,7 @@ export default function Register() {
   })
 
   return (
-    <div className="relative min-h-screen flex items-center justify-center p-4 bg-zinc-50 dark:bg-zinc-950">
+    <div className="relative min-h-screen flex items-center justify-center p-4 bg-ink-50">
       <button
         type="button"
         onClick={() => changeLocale(locale === 'en' ? 'zh' : 'en')}
@@ -47,18 +48,16 @@ export default function Register() {
       </button>
       <div className="w-full max-w-sm">
         <div className="flex items-center justify-center gap-2 mb-8">
-          <div className="w-9 h-9 bg-blue-600 rounded-lg flex items-center justify-center">
-            <Database size={20} className="text-white" />
-          </div>
-          <span className="text-xl font-semibold text-zinc-900 dark:text-zinc-100">{t('app.name')}</span>
+          <Logo size="md" />
+          <span className="text-title text-ink-900">{t('app.name')}</span>
         </div>
 
         <div className="card p-6">
-          <h1 className="text-lg font-semibold text-zinc-900 mb-6 dark:text-zinc-100">{t('auth.register')}</h1>
+          <h1 className="text-heading text-ink-900 mb-6">{t('auth.register')}</h1>
 
           {success ? (
             <div className="space-y-4">
-              <p className="text-sm text-emerald-400">{success}</p>
+              <p className="text-body text-success-600">{success}</p>
               <button type="button" onClick={() => navigate('/login')} className="btn-primary w-full">
                 {t('auth.go_to_signin')}
               </button>
@@ -107,7 +106,7 @@ export default function Register() {
                 />
               </div>
 
-              {error && <p className="text-sm text-red-400">{error}</p>}
+              {error && <p className="text-body text-danger-600">{error}</p>}
 
               <button type="submit" className="btn-primary w-full" disabled={loading}>
                 {loading ? t('auth.creating_account') : t('auth.create_account')}
@@ -115,9 +114,12 @@ export default function Register() {
             </form>
           )}
 
-          <p className="mt-4 text-sm text-center text-zinc-500">
+          <p className="mt-4 text-body text-center text-ink-500">
             {t('auth.have_account')}{' '}
-            <Link to="/login" className="text-blue-400 hover:text-blue-300">
+            <Link
+              to="/login"
+              className="text-brand-600 hover:text-brand-700 dark:text-brand-400 dark:hover:text-brand-300 transition-colors duration-(--duration-base)"
+            >
               {t('auth.signin')}
             </Link>
           </p>

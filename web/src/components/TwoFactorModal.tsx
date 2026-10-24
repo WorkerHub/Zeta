@@ -73,10 +73,10 @@ export default function TwoFactorModal({ pendingToken, onSuccess, onCancel }: Pr
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-      <div className="card w-full max-w-sm p-6 shadow-2xl">
+    <div className="fixed inset-0 z-(--z-modal) flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-overlay-enter">
+      <div className="card w-full max-w-sm rounded-xl p-6 shadow-lg animate-modal-enter">
         <div className="flex items-center justify-between mb-6">
-          <h2 className="text-lg font-semibold text-zinc-900 dark:text-zinc-100">{t('2fa.title')}</h2>
+          <h2 className="text-heading text-ink-950">{t('2fa.title')}</h2>
           <button type="button" onClick={onCancel} className="btn-ghost p-1.5 rounded-lg">
             <X size={16} />
           </button>
@@ -94,7 +94,7 @@ export default function TwoFactorModal({ pendingToken, onSuccess, onCancel }: Pr
                 setError('')
                 setOtpSent(false)
               }}
-              className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-medium border transition-colors ${method === m ? 'bg-blue-600 border-blue-600 text-white' : 'bg-zinc-100 border-zinc-200 text-zinc-500 hover:text-zinc-800 dark:bg-zinc-800 dark:border-zinc-700 dark:text-zinc-400 dark:hover:text-zinc-200'}`}
+              className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-md text-caption font-medium border transition-colors duration-(--duration-base) ease-(--ease-standard) focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-600 dark:focus-visible:ring-brand-400 ${method === m ? 'bg-brand-600 border-brand-600 text-white shadow-xs dark:bg-brand-400 dark:border-brand-400 dark:text-ink-950' : 'bg-ink-100 border-ink-200 text-ink-500 hover:text-ink-900 dark:border-ink-300'}`}
             >
               {m === 'totp' ? (
                 <>
@@ -127,7 +127,7 @@ export default function TwoFactorModal({ pendingToken, onSuccess, onCancel }: Pr
                 maxLength={6}
                 value={code}
                 onChange={(e) => setCode(e.target.value.replace(/\D/g, ''))}
-                className="input text-center text-2xl tracking-[0.5em] font-mono"
+                className="input text-center text-title tracking-[0.5em] font-mono tnum"
                 placeholder="000000"
                 // biome-ignore lint/a11y/noAutofocus: focus moves into the dialog that just opened
                 autoFocus
@@ -145,7 +145,7 @@ export default function TwoFactorModal({ pendingToken, onSuccess, onCancel }: Pr
               </button>
             ) : (
               <div>
-                <p className="text-sm text-emerald-400 mb-4">{t('2fa.code_sent')}</p>
+                <p className="text-body text-success-600 mb-4">{t('2fa.code_sent')}</p>
                 <label htmlFor="twofa-email-code" className="label">
                   {t('2fa.enter_code')}
                 </label>
@@ -157,7 +157,7 @@ export default function TwoFactorModal({ pendingToken, onSuccess, onCancel }: Pr
                   maxLength={6}
                   value={code}
                   onChange={(e) => setCode(e.target.value.replace(/\D/g, ''))}
-                  className="input text-center text-2xl tracking-[0.5em] font-mono"
+                  className="input text-center text-title tracking-[0.5em] font-mono tnum"
                   placeholder="000000"
                   // biome-ignore lint/a11y/noAutofocus: focus moves into the dialog that just opened
                   autoFocus
@@ -176,7 +176,7 @@ export default function TwoFactorModal({ pendingToken, onSuccess, onCancel }: Pr
           </div>
         )}
 
-        {error && <p className="text-sm text-red-400 mt-3">{error}</p>}
+        {error && <p className="text-body text-danger-600 mt-3">{error}</p>}
 
         <div className="mt-6 flex gap-3">
           <button type="button" onClick={onCancel} className="btn-secondary flex-1">
