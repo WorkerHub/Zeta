@@ -121,6 +121,12 @@ describe('appDbWriteTargetError', () => {
     unresolvable('ANALYZE')
     unresolvable('BEGIN')
     unresolvable('CREATE VIEW v AS SELECT 1')
+    // CREATE TRIGGER fails closed like CREATE VIEW: its body can write any table when the
+    // trigger fires, so the attached table is not the statement's only target — a trigger
+    // created on a non-internal table must not be able to mutate internal tables later.
+    unresolvable('CREATE TRIGGER bypass AFTER INSERT ON logs BEGIN DELETE FROM users END')
+    unresolvable('CREATE TRIGGER bypass AFTER INSERT ON logs BEGIN DELETE FROM users; END')
+    unresolvable('CREATE TEMP TRIGGER IF NOT EXISTS bypass AFTER INSERT ON logs BEGIN UPDATE users SET name = 1 END')
     // WITH that ends after its CTE list, or an unparseable CTE prefix
     unresolvable('WITH a AS (SELECT 1)')
     unresolvable('WITH a (SELECT 1) DELETE FROM logs')
@@ -133,9 +139,11 @@ describe('appDbWriteTargetError', () => {
     unresolvable('@@@')
   })
 
-  it('ignores a trailing statement terminator and comments before the head', () => {
+  it('ignores trailing statement terminators and comments before the head', () => {
     allowed('INSERT INTO logs VALUES (1);')
+    allowed('INSERT INTO logs VALUES (1);;')
     internal('INSERT INTO users VALUES (1);')
+    internal('INSERT INTO users VALUES (1);;')
     internal('-- note\n/* x */ DELETE FROM users')
     internal("INSERT INTO users VALUES ('DELETE FROM logs; DROP TABLE logs')")
   })

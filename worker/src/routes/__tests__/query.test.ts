@@ -304,6 +304,38 @@ describe('application database as a query target (ALLOW_APP_DB_AS_TARGET)', () =
     expect(fetchMock).not.toHaveBeenCalled()
   })
 
+  it('rejects CREATE TRIGGER fail closed — a trigger body writing an internal table must not ride on its non-internal attached table (Tony 评审打回项)', async () => {
+    const env = appDbEnv()
+    const headers = await bearer(env, 'a1', 'admin')
+    // Without an inner `;` the statement is one `write`-class statement and reaches the guardrail
+    for (const sql of [
+      'CREATE TRIGGER bypass AFTER INSERT ON logs BEGIN DELETE FROM users END',
+      'CREATE TEMP TRIGGER IF NOT EXISTS bypass AFTER INSERT ON logs BEGIN UPDATE users SET name = 1 END',
+    ]) {
+      const fetchMock = vi.fn()
+      vi.stubGlobal('fetch', fetchMock)
+      const { single, batch } = await runStatement(env, sql, headers)
+      expect(single.status, sql).toBe(403)
+      expect(single.error, sql).toMatch(/cannot be determined/i)
+      expect(batch.status, sql).toBe(200)
+      expect(batch.error, sql).toMatch(/cannot be determined/i)
+      expect(fetchMock, sql).not.toHaveBeenCalled()
+    }
+    // With an inner `;` the single-statement rule rejects it first (also fail closed)
+    const fetchMock = vi.fn()
+    vi.stubGlobal('fetch', fetchMock)
+    const { single, batch } = await runStatement(
+      env,
+      'CREATE TRIGGER bypass AFTER INSERT ON logs BEGIN DELETE FROM users; END',
+      headers
+    )
+    expect(single.status).toBe(400)
+    expect(single.error).toMatch(/one statement/i)
+    expect(batch.status).toBe(200)
+    expect(batch.error).toMatch(/one statement/i)
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
   it('caps a stored write_drop at write for members on the application database', async () => {
     const env = appDbEnv({}, 'write_drop')
     const fetchMock = fetchOkEach({ success: true, result: [{ success: true, results: [], meta: {} }] })

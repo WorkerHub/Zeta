@@ -147,14 +147,16 @@ function writeTarget(tokens: Token[]): TargetResult {
       if (afterClause === null) return { ok: false }
 
       if (kind.value === 'table') return identAt(tokens, afterClause)
-      if (kind.value === 'index' || kind.value === 'trigger') {
+      if (kind.value === 'index') {
         // CREATE [UNIQUE] INDEX [IF NOT EXISTS] <name> ON <table>
-        // CREATE [TEMP] TRIGGER [IF NOT EXISTS] <name> …event… ON <table>
         if (afterClause >= tokens.length) return { ok: false } // missing name
-        const on = wordIndex(tokens, afterClause + 1, 'on') // skip the object's name
+        const on = wordIndex(tokens, afterClause + 1, 'on') // skip the index's name
         return on === -1 ? { ok: false } : identAt(tokens, on + 1)
       }
-      // CREATE VIEW (and anything else) has no single target table
+      // CREATE TRIGGER fails closed like CREATE VIEW: a trigger body (BEGIN … END;) can write
+      // any table when the trigger fires, so the attached table is not the statement's only
+      // target — a trigger created on a non-internal table could mutate internal tables later.
+      // CREATE VIEW (and anything else) has no single target table either.
       return { ok: false }
     }
     default:
@@ -169,10 +171,9 @@ function writeTarget(tokens: Token[]): TargetResult {
 // or `destructive` on the application-database target; reads are unrestricted.
 export function appDbWriteTargetError(sql: string, appTables: ReadonlySet<string>): string | null {
   let tokens = tokenize(sql)
-  // A single statement can only carry a trailing `;`; drop it so it cannot read
+  // A single statement can only carry trailing `;`s; drop them all so none can read
   // as a punct token at a name position.
-  const last = tokens[tokens.length - 1]
-  if (last?.type === 'punct' && last.value === ';') tokens = tokens.slice(0, -1)
+  while (tokens.at(-1)?.type === 'punct' && tokens.at(-1)?.value === ';') tokens = tokens.slice(0, -1)
 
   if (tokens[0]?.type === 'word' && tokens[0]!.value === 'with') {
     const stripped = stripCte(tokens)
