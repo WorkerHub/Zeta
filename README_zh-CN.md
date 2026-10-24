@@ -4,7 +4,7 @@
 
 自托管的 [Cloudflare D1](https://developers.cloudflare.com/d1/) 数据库 SQL 查询界面。完全运行在 Cloudflare 平台上，无需管理任何服务器。
 
-**版本 1.0.0**
+**版本 1.2.0**
 
 ![Stack](https://img.shields.io/badge/Cloudflare-Workers-orange?logo=cloudflare) ![Stack](https://img.shields.io/badge/Hono-v4-blue) ![Stack](https://img.shields.io/badge/React-19-61dafb?logo=react) ![Stack](https://img.shields.io/badge/TypeScript-5-blue?logo=typescript)
 
