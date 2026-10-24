@@ -226,7 +226,8 @@ export const translations: Record<Locale, Record<string, string>> = {
     'admin_db.no_permissions': 'No member permissions set. Only admins can access this database.',
     'admin_db.loading': 'Loading…',
     'admin_db.no_databases': 'No databases registered yet',
-    'admin_db.confirm_delete': 'Delete database "{name}" from registry? This does not delete the actual D1 database.',
+    'admin_db.confirm_delete': 'Delete database "{name}"?',
+    'admin_db.confirm_delete_desc': 'This removes it from the registry. The actual D1 database is not deleted.',
     'admin_db.name_placeholder': 'My Database',
     'admin_db.toggle_active': 'Toggle active',
     'admin_db.cf_database': 'Cloudflare D1 database',
@@ -361,7 +362,8 @@ export const translations: Record<Locale, Record<string, string>> = {
     'common.loading': 'Loading…',
     'common.dismiss': 'Dismiss',
     'common.cancel': 'Cancel',
-    'common.confirm': 'Delete',
+    'common.confirm': 'Confirm',
+    'common.delete': 'Delete',
   },
   zh: {
     // App
@@ -586,7 +588,8 @@ export const translations: Record<Locale, Record<string, string>> = {
     'admin_db.no_permissions': '未设置成员权限。仅管理员可访问此数据库。',
     'admin_db.loading': '加载中…',
     'admin_db.no_databases': '暂无已注册的数据库',
-    'admin_db.confirm_delete': '从注册表中删除数据库"{name}"？这不会删除实际的 D1 数据库。',
+    'admin_db.confirm_delete': '删除数据库"{name}"？',
+    'admin_db.confirm_delete_desc': '这会将其从注册表中移除，不会删除实际的 D1 数据库。',
     'admin_db.name_placeholder': '我的数据库',
     'admin_db.toggle_active': '切换启用状态',
     'admin_db.cf_database': 'Cloudflare D1 数据库',
@@ -718,7 +721,8 @@ export const translations: Record<Locale, Record<string, string>> = {
     'common.loading': '加载中…',
     'common.dismiss': '关闭',
     'common.cancel': '取消',
-    'common.confirm': '删除',
+    'common.confirm': '确定',
+    'common.delete': '删除',
   },
 }
 

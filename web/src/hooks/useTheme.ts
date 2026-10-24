@@ -15,7 +15,7 @@ function applyTheme(theme: Theme) {
     html.classList.remove('dark')
   }
   const metaTheme = document.querySelector<HTMLMetaElement>('meta[name="theme-color"]')
-  if (metaTheme) metaTheme.content = isDark ? '#09090b' : '#fafafa'
+  if (metaTheme) metaTheme.content = isDark ? '#211d1a' : '#f7f5f2'
 }
 
 export function useTheme() {

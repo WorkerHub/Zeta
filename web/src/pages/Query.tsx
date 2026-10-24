@@ -717,6 +717,7 @@ export default function QueryPage() {
         <ConfirmDialog
           title={t('notebook.delete_confirm')}
           description={t('notebook.delete_confirm_desc')}
+          confirmLabel={t('common.delete')}
           onCancel={() => setDeletingNotebookId(null)}
           onConfirm={() => {
             const nbId = deletingNotebookId

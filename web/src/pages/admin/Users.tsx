@@ -113,7 +113,7 @@ export default function AdminUsers() {
       <div className="flex items-center justify-between">
         <h1 className="text-title text-ink-950">{t('admin.users')}</h1>
         <div className="flex items-center gap-2">
-          <span className="badge badge-zinc tnum">
+          <span className="badge badge-neutral tnum">
             {total} {t('admin_users.total')}
           </span>
           <button type="button" onClick={openCreate} className="btn-primary btn-sm flex items-center gap-1.5">

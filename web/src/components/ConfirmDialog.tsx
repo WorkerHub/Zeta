@@ -27,12 +27,12 @@ export default function ConfirmDialog({
   busy = false,
 }: Props) {
   const { t } = useLocale()
-  const confirmRef = useRef<HTMLButtonElement>(null)
+  const cancelRef = useRef<HTMLButtonElement>(null)
 
-  // Focus the destructive action on open; return focus to whatever opened the dialog
+  // Focus the least destructive action (cancel) on open; return focus to whatever opened the dialog
   useEffect(() => {
     const previous = document.activeElement instanceof HTMLElement ? document.activeElement : null
-    confirmRef.current?.focus()
+    cancelRef.current?.focus()
     return () => {
       if (previous?.isConnected) previous.focus()
     }
@@ -96,10 +96,10 @@ export default function ConfirmDialog({
           </div>
         </div>
         <div className="mt-6 flex gap-3">
-          <button type="button" onClick={onCancel} disabled={busy} className="btn-secondary flex-1">
+          <button ref={cancelRef} type="button" onClick={onCancel} disabled={busy} className="btn-secondary flex-1">
             {cancelLabel ?? t('common.cancel')}
           </button>
-          <button ref={confirmRef} type="button" onClick={onConfirm} disabled={busy} className="btn-danger flex-1">
+          <button type="button" onClick={onConfirm} disabled={busy} className="btn-danger flex-1">
             {confirmLabel ?? t('common.confirm')}
           </button>
         </div>

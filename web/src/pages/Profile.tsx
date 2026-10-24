@@ -215,7 +215,7 @@ export default function ProfilePage() {
             </div>
             <div className="flex items-center justify-between">
               <span className="text-ink-500">{t('profile.role')}</span>
-              <span className={`badge ${user?.role === 'admin' ? 'badge-brand' : 'badge-zinc'}`}>{user?.role}</span>
+              <span className={`badge ${user?.role === 'admin' ? 'badge-brand' : 'badge-neutral'}`}>{user?.role}</span>
             </div>
           </div>
         </div>
@@ -311,7 +311,9 @@ export default function ProfilePage() {
               <p className="text-body text-ink-500">{t('profile.totp_scan')}</p>
               <div className="flex justify-center">
                 {totpQr ? (
-                  <img src={totpQr} alt={t('profile.totp_qr_alt')} className="rounded-lg w-44 h-44" />
+                  <div className="bg-ink-0 p-2 rounded-lg border border-ink-200">
+                    <img src={totpQr} alt={t('profile.totp_qr_alt')} className="rounded-lg w-44 h-44" />
+                  </div>
                 ) : (
                   <div className="w-44 h-44 rounded-lg bg-ink-100 flex items-center justify-center text-ink-500 text-caption">
                     {t('profile.totp_generating')}

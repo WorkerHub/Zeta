@@ -507,6 +507,7 @@ export default function RunHistoryDrawer({
               hasMore ? t('runs.clear_confirm_more') : t('runs.clear_confirm', { n: runs.length })
             }
             busy={busy === 'all'}
+            confirmLabel={t('common.delete')}
             onCancel={() => setConfirmClear(false)}
             onConfirm={clearAll}
           />

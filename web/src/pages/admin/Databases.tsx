@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { Plus, Trash2, Power, Users, Link2, ChevronDown } from 'lucide-react'
 import { adminApi } from '../../lib/api'
 import { useLocale } from '../../hooks/useLocale'
+import ConfirmDialog from '../../components/ConfirmDialog'
 import type { AdminDatabase, CfD1Database, DatabaseGrant } from '../../types'
 
 export default function AdminDatabases() {
@@ -21,6 +22,7 @@ export default function AdminDatabases() {
   const [allUsers, setAllUsers] = useState<Array<{ id: string; email: string; name: string }>>([])
   const [permUserId, setPermUserId] = useState('')
   const [permLevel, setPermLevel] = useState('read')
+  const [deletingDb, setDeletingDb] = useState<{ id: string; name: string } | null>(null)
 
   // Runs an admin action and shows its error instead of dropping it
   const attempt = useCallback(
@@ -111,14 +113,13 @@ export default function AdminDatabases() {
     })
   }
 
-  async function deleteDb(id: string, name: string) {
-    if (!confirm(t('admin_db.confirm_delete').replace('{name}', name))) return
+  async function deleteDb(id: string) {
     try {
       await adminApi.deleteDatabase(id)
       if (selectedDb?.id === id) setSelectedDb(null)
       load()
     } catch (err) {
-      alert(err instanceof Error ? err.message : t('errors.delete_db_failed'))
+      setError(err instanceof Error ? err.message : t('errors.delete_db_failed'))
     }
   }
 
@@ -295,13 +296,13 @@ export default function AdminDatabases() {
                         {db.cf_database_id}
                       </code>
                     ) : (
-                      <span className="badge badge-zinc">
+                      <span className="badge badge-neutral">
                         {t('admin_db.legacy_binding', { name: db.binding_name })}
                       </span>
                     )}
                   </td>
                   <td className="px-4 py-3">
-                    <span className={`badge ${db.is_active ? 'badge-green' : 'badge-zinc'}`}>
+                    <span className={`badge ${db.is_active ? 'badge-green' : 'badge-neutral'}`}>
                       {db.is_active ? t('admin_db.active') : t('admin_db.inactive')}
                     </span>
                   </td>
@@ -330,7 +331,7 @@ export default function AdminDatabases() {
                       </button>
                       <button
                         type="button"
-                        onClick={() => deleteDb(db.id, db.name)}
+                        onClick={() => setDeletingDb({ id: db.id, name: db.name })}
                         className="btn-ghost btn-sm p-1.5 text-danger-600"
                       >
                         <Trash2 size={13} />
@@ -391,7 +392,7 @@ export default function AdminDatabases() {
                   </div>
                   <div className="flex items-center gap-2">
                     <span
-                      className={`badge ${p.permission === 'write_drop' ? 'badge-yellow' : p.permission === 'write' ? 'badge-brand' : 'badge-zinc'}`}
+                      className={`badge ${p.permission === 'write_drop' ? 'badge-yellow' : p.permission === 'write' ? 'badge-brand' : 'badge-neutral'}`}
                     >
                       {p.permission === 'write_drop'
                         ? t('admin_db.perm_write_drop')
@@ -412,6 +413,21 @@ export default function AdminDatabases() {
             </ul>
           )}
         </div>
+      )}
+      {/* Delete confirmation (design-system dialog; error surfaces in the page banner) */}
+      {deletingDb && (
+        <ConfirmDialog
+          title={t('admin_db.confirm_delete').replace('{name}', deletingDb.name)}
+          description={t('admin_db.confirm_delete_desc')}
+          confirmLabel={t('common.delete')}
+          onCancel={() => setDeletingDb(null)}
+          onConfirm={() => {
+            const target = deletingDb
+            setDeletingDb(null)
+            setError('')
+            deleteDb(target.id)
+          }}
+        />
       )}
     </div>
   )

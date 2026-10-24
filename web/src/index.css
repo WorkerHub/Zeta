@@ -362,7 +362,7 @@
   .badge-red {
     @apply inline-flex items-center px-2 py-0.5 rounded-sm text-micro bg-danger-50 text-danger-600 border border-danger-200;
   }
-  .badge-zinc {
+  .badge-neutral {
     @apply inline-flex items-center px-2 py-0.5 rounded-sm text-micro bg-ink-200 text-ink-700;
   }
 
