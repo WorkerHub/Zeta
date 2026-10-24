@@ -118,6 +118,7 @@ Go to **Workers & Pages → zeta → Settings → Variables and Secrets**:
 |------|-------|
 | `APP_URL` | Your Worker URL, e.g. `https://zeta.yourname.workers.dev` or your custom domain. Use the exact `https://` URL users open: it is the only origin CORS allows, the passkey RP ID, the base of email links and the issuer/audience of every login token (changing it later signs everybody out) |
 | `TABLE_PREFIX` | *(Optional)* Prefix for all internal D1 tables, e.g. `kp` → tables become `kp_users`, `kp_settings`, etc. Must be set **before** calling the setup endpoint. Cannot be changed after initialisation. |
+| `ALLOW_APP_DB_AS_TARGET` | *(Optional, default off)* Set to exactly `true` to allow Zeta's own app database to be added and queried as a target — for deployments that share one D1 database between Zeta and other projects. Any other value (or unset) keeps the app database excluded. While enabled the app database is guarded: its effective permission is capped at `write` (destructive statements like `DROP`/`TRUNCATE` are always rejected and `write_drop` cannot be granted on it), and its internal tables (`users`, `settings`, `notebooks`, … everything `TABLE_PREFIX` resolves to) are read-only — including for admins. Write statements whose target table cannot be determined are rejected. |
 
 > `CF_ACCOUNT_ID` and `ZETA_APP_DB_ID` are injected automatically at deploy time from the GitHub Variables `CLOUDFLARE_ACCOUNT_ID` and `D1_DATABASE_ID` — do **not** set them here. You only configure `CF_D1_API_TOKEN` above.
 
@@ -183,7 +184,7 @@ On new installs, registration closes as soon as that first account exists. After
 D1 databases are added from the admin panel — no binding, no GitHub Variables, no redeploy. The Worker reaches them over the Cloudflare D1 HTTP API using the `CF_D1_API_TOKEN` secret and `CF_ACCOUNT_ID` variable configured in Step 3.
 
 1. In **Admin → Databases**, click **Add database**.
-2. Pick a D1 database from your account's list (Zeta's own app database is excluded).
+2. Pick a D1 database from your account's list. Zeta's own app database is excluded by default; after setting the `ALLOW_APP_DB_AS_TARGET` variable (Step 3) it can be added too — its internal tables then stay read-only and destructive operations (`DROP`, `TRUNCATE`, …) are disabled on it.
 3. Optionally set a display name and description, then register it.
 4. Grant users `read` or `write` access in **Admin → Databases → Permissions**.
 

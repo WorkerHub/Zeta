@@ -1,6 +1,6 @@
-import { describe, it, expect } from 'vitest'
+import { describe, expect, it } from 'vitest'
+import type { DatabaseRow, Env } from '../../types'
 import { resolveQueryTarget } from '../bindings'
-import type { Env, DatabaseRow } from '../../types'
 
 const env = {
   DB: {},
@@ -35,6 +35,28 @@ describe('resolveQueryTarget', () => {
     const r = resolveQueryTarget(envWithAppDb, dbRow({ cf_database_id: 'app-uuid' }))
     expect(r.ok).toBe(false)
     expect(!r.ok && r.error).toContain('application database')
+  })
+
+  it('allows the application database when ALLOW_APP_DB_AS_TARGET is enabled', () => {
+    const env = { ...envWithAppDb, ALLOW_APP_DB_AS_TARGET: 'true' } as unknown as Env
+    const r = resolveQueryTarget(env, dbRow({ cf_database_id: 'app-uuid' }))
+    expect(r.ok && r.target).toEqual({ kind: 'http', databaseId: 'app-uuid' })
+  })
+
+  it('refuses the application database for any other switch value', () => {
+    for (const value of ['false', 'yes', '1', '']) {
+      const env = { ...envWithAppDb, ALLOW_APP_DB_AS_TARGET: value } as unknown as Env
+      const r = resolveQueryTarget(env, dbRow({ cf_database_id: 'app-uuid' }))
+      expect(r.ok).toBe(false)
+      expect(!r.ok && r.error).toContain('application database')
+    }
+  })
+
+  it('fails closed on the application database when ZETA_APP_DB_ID is missing, even with the switch on', () => {
+    const noAppId = { ...env, ALLOW_APP_DB_AS_TARGET: 'true' } as unknown as Env
+    const r = resolveQueryTarget(noAppId, dbRow({ cf_database_id: 'db-uuid' }))
+    expect(r.ok).toBe(false)
+    expect(!r.ok && r.error).toContain('ZETA_APP_DB_ID')
   })
 
   it('fails closed when ZETA_APP_DB_ID is not configured', () => {

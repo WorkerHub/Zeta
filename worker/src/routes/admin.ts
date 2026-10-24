@@ -1,15 +1,15 @@
-import { Hono, type Context } from 'hono'
-import type { Env, Variables, UserRow, DatabaseRow } from '../types'
-import { requireAdmin } from '../middleware/auth'
+import { type Context, Hono } from 'hono'
+import { checkRateLimit, hashPassword } from '../lib/auth'
+import { appDbTargetAllowed, type CfD1Database, D1HttpError, isAppDb, listAccountD1Databases } from '../lib/d1-http'
+import { audit, getSettings, now, setSetting, tables } from '../lib/db'
+import { isValidEmail, sendEmail } from '../lib/email'
 import { uuid } from '../lib/id'
-import { now, setSetting, getSettings, audit, tables } from '../lib/db'
-import { hashPassword, checkRateLimit } from '../lib/auth'
 import { KV } from '../lib/kv'
-import { sealSecret, sealLegacySecret } from '../lib/secrets'
-import { listAccountD1Databases, D1HttpError, appDbId, type CfD1Database } from '../lib/d1-http'
-import { sendEmail, isValidEmail } from '../lib/email'
 import { MAX_RUN_LIMIT, MAX_RUN_QUOTA_MB, parseBoundedInt, pruneRuns } from '../lib/runs'
+import { sealLegacySecret, sealSecret } from '../lib/secrets'
 import { runSetup } from '../lib/setup'
+import { requireAdmin } from '../middleware/auth'
+import type { DatabaseRow, Env, UserRow, Variables } from '../types'
 
 const admin = new Hono<{ Bindings: Env; Variables: Variables }>()
 admin.use('*', requireAdmin)
@@ -252,13 +252,13 @@ function missingColumnResponse(c: Context<{ Bindings: Env; Variables: Variables 
   return null
 }
 
-// Verifies a picked database uuid is a real account database and not the application's own.
+// Verifies a picked database uuid is a real account database. The application's own database is
+// refused unless ALLOW_APP_DB_AS_TARGET is enabled; the existence check applies either way.
 async function verifyCfDatabase(
   c: Context<{ Bindings: Env; Variables: Variables }>,
   cfDatabaseId: string
 ): Promise<Response | { name: string }> {
-  const appId = appDbId(c.env)
-  if (appId && cfDatabaseId === appId) {
+  if (isAppDb(c.env, cfDatabaseId) && !appDbTargetAllowed(c.env)) {
     return c.json({ error: 'The application database cannot be added as a query target.' }, 400)
   }
   let available: CfD1Database[]
@@ -275,11 +275,14 @@ async function verifyCfDatabase(
 admin.get('/databases', async (c) => {
   const T = tables(c.env)
   const rows = await c.env.DB.prepare(`SELECT * FROM ${T.d1_databases} ORDER BY name`).all<DatabaseRow>()
-  return c.json({ results: rows.results })
+  // Annotated, not stored: whether a row targets the application's own database is derived from
+  // ZETA_APP_DB_ID + the row's cf_database_id on every read
+  return c.json({ results: rows.results.map((r) => ({ ...r, is_app_db: isAppDb(c.env, r.cf_database_id) })) })
 })
 
-// The Cloudflare account's D1 databases (minus the app DB), each annotated with whether it is
-// already registered as a query target and, if so, the registry row's id.
+// The Cloudflare account's D1 databases (minus the app DB unless ALLOW_APP_DB_AS_TARGET is
+// enabled), each annotated with whether it is already registered as a query target and, if so,
+// the registry row's id, plus whether it is the application's own database.
 admin.get('/d1/databases', async (c) => {
   let available: CfD1Database[]
   try {
@@ -309,6 +312,7 @@ admin.get('/d1/databases', async (c) => {
       created_at: d.created_at,
       added: added.has(d.uuid),
       database_id: added.get(d.uuid) ?? null,
+      is_app_db: isAppDb(c.env, d.uuid),
     })),
   })
 })
@@ -490,6 +494,21 @@ admin.put('/databases/:id/permissions/:userId', async (c) => {
   }
 
   const T = tables(c.env)
+  // The application database's effective permission is capped at write (destructive statements
+  // are rejected there), so write_drop is refused up front instead of being stored and discounted
+  // at runtime.
+  if (body.permission === 'write_drop') {
+    const row = await c.env.DB.prepare(`SELECT cf_database_id FROM ${T.d1_databases} WHERE id = ?1`)
+      .bind(c.req.param('id'))
+      .first<{ cf_database_id: string | null }>()
+    if (row && isAppDb(c.env, row.cf_database_id)) {
+      return c.json(
+        { error: 'The application database allows at most write permission; write_drop cannot be granted.' },
+        400
+      )
+    }
+  }
+
   await c.env.DB.prepare(
     `INSERT INTO ${T.user_database_permissions} (id, user_id, database_id, permission, granted_by, granted_at)
      VALUES (?1, ?2, ?3, ?4, ?5, ?6)

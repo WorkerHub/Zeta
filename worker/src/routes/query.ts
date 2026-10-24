@@ -1,20 +1,21 @@
-import { Hono, type Context } from 'hono'
-import type { Env, Variables, DatabaseRow } from '../types'
-import { requireAuth } from '../middleware/auth'
-import { uuid } from '../lib/id'
+import { type Context, Hono } from 'hono'
+import { appDbWriteTargetError, appInternalTables, capAppDbPermission } from '../lib/app-db-guard'
+import { type QueryTarget, resolveQueryTarget } from '../lib/bindings'
+import { D1HttpError, isAppDb, queryD1Http } from '../lib/d1-http'
 import { now, tables } from '../lib/db'
-import { resolveQueryTarget, type QueryTarget } from '../lib/bindings'
-import { D1HttpError, queryD1Http } from '../lib/d1-http'
+import { uuid } from '../lib/id'
+import { translateMySql } from '../lib/mysql-compat'
+import { type RunStatement, reserveRunSeq, saveRun } from '../lib/runs'
 import {
-  classifySql,
   checkSqlAccess,
+  classifySql,
   isWriteClass,
   limitReadSql,
   type Permission,
   type SqlClass,
 } from '../lib/sql-guard'
-import { translateMySql } from '../lib/mysql-compat'
-import { reserveRunSeq, saveRun, type RunStatement } from '../lib/runs'
+import { requireAuth } from '../middleware/auth'
+import type { DatabaseRow, Env, Variables } from '../types'
 
 const MAX_RESULT_ROWS = 5000
 const MAX_SQL_LENGTH = 100_000
@@ -104,6 +105,22 @@ function translate(sql: string): { sql: string; error?: string } {
   return { sql }
 }
 
+// The app-DB guardrails for one database row, applied right after permission resolution (see
+// lib/app-db-guard.ts): the effective permission is capped at write — which makes destructive
+// statements fail the ordinary checkSqlAccess — and write-class statements must resolve to a
+// target table outside the application's internal tables. Ordinary target databases are
+// untouched. Returns the capped permission.
+function applyAppDbGuards(env: Env, db: DatabaseRow, permission: Permission): Permission {
+  return isAppDb(env, db.cf_database_id) ? capAppDbPermission(permission) : permission
+}
+
+// The internal-table half of the guardrail for one already-classified statement. Only call it
+// when the target is the application database; returns the rejection message or null.
+function appDbStatementError(env: Env, db: DatabaseRow, kind: SqlClass, sql: string): string | null {
+  if (!isAppDb(env, db.cf_database_id) || !isWriteClass(kind)) return null
+  return appDbWriteTargetError(sql, appInternalTables(env))
+}
+
 // ── POST /api/query ────────────────────────────────────────────────────────────
 
 query.post('/', async (c) => {
@@ -142,8 +159,12 @@ query.post('/', async (c) => {
     permission = (perm.permission as Permission) ?? 'read'
   }
 
+  permission = applyAppDbGuards(c.env, db, permission)
+
   const denied = checkSqlAccess(kind, permission)
   if (denied) return c.json({ error: denied }, kind === 'multiple' || kind === 'empty' ? 400 : 403)
+  const appDbDenied = appDbStatementError(c.env, db, kind, runSql)
+  if (appDbDenied) return c.json({ error: appDbDenied }, 403)
 
   // Resolve the execution target (always the D1 HTTP API)
   const resolved = resolveQueryTarget(c.env, db)
@@ -251,18 +272,27 @@ query.post('/batch', async (c) => {
     permission = (perm.permission as Permission) ?? 'read'
   }
 
+  permission = applyAppDbGuards(c.env, db, permission)
+
   // Resolve the execution target (always the D1 HTTP API)
   const resolved = resolveQueryTarget(c.env, db)
   if (!resolved.ok) return queryError(c, resolved.error)
 
   // A batch whose statements are all rejected before running is not saved, like a rejected single
-  // one, and uses up no run number
+  // one, and uses up no run number. Rejections by the app-DB guardrail count as rejected-before-
+  // running too, so the same predicate is used here and in the loop below.
+  const statementDenied = (sql: string): string | null => {
+    const translated = translate(sql)
+    if (translated.error) return translated.error
+    const kind = classifySql(translated.sql)
+    const denied = checkSqlAccess(kind, permission)
+    if (denied) return denied
+    return appDbStatementError(c.env, db, kind, translated.sql)
+  }
   const runsAny = body.statements.some((x) => {
     const sql = x.trim()
     if (!sql) return false
-    const translated = translate(sql)
-    if (translated.error) return false
-    return !checkSqlAccess(classifySql(translated.sql), permission)
+    return statementDenied(sql) === null
   })
   const notebook = await resolveNotebook(c, body.notebookId, runsAny)
   if (notebook instanceof Response) return notebook
@@ -285,6 +315,11 @@ query.post('/batch', async (c) => {
     const denied = checkSqlAccess(kind, permission)
     if (denied) {
       results.push({ sql, results: [], duration_ms: 0, error: denied })
+      continue
+    }
+    const appDbDenied = appDbStatementError(c.env, db, kind, runSql)
+    if (appDbDenied) {
+      results.push({ sql, results: [], duration_ms: 0, error: appDbDenied })
       continue
     }
 
