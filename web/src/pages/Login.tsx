@@ -1,9 +1,10 @@
 import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { Database, Eye, EyeOff, Globe } from 'lucide-react'
+import { Eye, EyeOff, Globe } from 'lucide-react'
 import { authApi } from '../lib/api'
 import { useAuthContext } from '../hooks/useAuth'
 import { useLocale } from '../hooks/useLocale'
+import Logo from '../components/Logo'
 import TwoFactorModal from '../components/TwoFactorModal'
 import type { User } from '../types'
 
@@ -43,7 +44,7 @@ export default function Login() {
   }
 
   return (
-    <div className="relative min-h-screen flex items-center justify-center p-4 bg-zinc-50 dark:bg-zinc-950">
+    <div className="relative min-h-screen flex items-center justify-center p-4 bg-ink-50">
       <button
         type="button"
         onClick={() => changeLocale(locale === 'en' ? 'zh' : 'en')}
@@ -55,14 +56,12 @@ export default function Login() {
       <div className="w-full max-w-sm">
         {/* Logo */}
         <div className="flex items-center justify-center gap-2 mb-8">
-          <div className="w-9 h-9 bg-blue-600 rounded-lg flex items-center justify-center">
-            <Database size={20} className="text-white" />
-          </div>
-          <span className="text-xl font-semibold text-zinc-900 dark:text-zinc-100">{t('app.name')}</span>
+          <Logo size="md" />
+          <span className="text-title text-ink-900">{t('app.name')}</span>
         </div>
 
         <div className="card p-6">
-          <h1 className="text-lg font-semibold text-zinc-900 mb-6 dark:text-zinc-100">{t('auth.signin')}</h1>
+          <h1 className="text-heading text-ink-900 mb-6">{t('auth.signin')}</h1>
 
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
@@ -98,25 +97,31 @@ export default function Login() {
                 <button
                   type="button"
                   onClick={() => setShowPw(!showPw)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-zinc-300"
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-ink-400 hover:text-ink-700 transition-colors duration-(--duration-base)"
                 >
                   {showPw ? <EyeOff size={16} /> : <Eye size={16} />}
                 </button>
               </div>
             </div>
 
-            {error && <p className="text-sm text-red-400">{error}</p>}
+            {error && <p className="text-body text-danger-600">{error}</p>}
 
             <button type="submit" className="btn-primary w-full" disabled={loading}>
               {loading ? t('auth.signing_in') : t('auth.signin')}
             </button>
           </form>
 
-          <div className="mt-4 flex items-center justify-between text-sm">
-            <Link to="/forgot-password" className="text-zinc-500 hover:text-zinc-300 transition-colors">
+          <div className="mt-4 flex items-center justify-between text-body">
+            <Link
+              to="/forgot-password"
+              className="text-ink-500 hover:text-ink-900 transition-colors duration-(--duration-base)"
+            >
               {t('auth.forgot_password')}
             </Link>
-            <Link to="/register" className="text-blue-400 hover:text-blue-300 transition-colors">
+            <Link
+              to="/register"
+              className="text-brand-600 hover:text-brand-700 dark:text-brand-400 dark:hover:text-brand-300 transition-colors duration-(--duration-base)"
+            >
               {t('auth.create_account')}
             </Link>
           </div>

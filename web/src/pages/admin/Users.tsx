@@ -109,11 +109,11 @@ export default function AdminUsers() {
   }
 
   return (
-    <div className="p-4 sm:p-6 max-w-5xl">
-      <div className="flex items-center justify-between mb-6">
-        <h1 className="text-lg font-semibold text-zinc-900 dark:text-zinc-100">{t('admin.users')}</h1>
+    <div className="p-4 sm:p-6 max-w-5xl flex flex-col gap-6">
+      <div className="flex items-center justify-between">
+        <h1 className="text-title text-ink-950">{t('admin.users')}</h1>
         <div className="flex items-center gap-2">
-          <span className="badge badge-zinc">
+          <span className="badge badge-zinc tnum">
             {total} {t('admin_users.total')}
           </span>
           <button type="button" onClick={openCreate} className="btn-primary btn-sm flex items-center gap-1.5">
@@ -123,11 +123,11 @@ export default function AdminUsers() {
         </div>
       </div>
 
-      {error && <p className="mb-3 text-sm text-red-400">{error}</p>}
+      {error && <p className="-mt-3 text-body text-danger-600">{error}</p>}
 
       {/* Search */}
-      <div className="relative mb-4">
-        <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500" />
+      <div className="relative -mt-3">
+        <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-ink-400" />
         <input
           type="text"
           value={search}
@@ -141,15 +141,15 @@ export default function AdminUsers() {
       </div>
 
       <div className="card overflow-hidden">
-        <table className="w-full text-sm">
+        <table className="w-full text-body">
           <thead>
-            <tr className="border-b border-zinc-200 dark:border-zinc-800 bg-zinc-100/50 dark:bg-zinc-800/30">
-              <th className="text-left px-4 py-3 text-xs font-medium text-zinc-500">{t('admin_users.user')}</th>
-              <th className="text-left px-4 py-3 text-xs font-medium text-zinc-500 hidden md:table-cell">
+            <tr className="border-b border-ink-200 bg-ink-50">
+              <th className="text-left px-4 py-3 text-label text-ink-500">{t('admin_users.user')}</th>
+              <th className="text-left px-4 py-3 text-label text-ink-500 hidden md:table-cell">
                 {t('admin_users.verified')}
               </th>
-              <th className="text-left px-4 py-3 text-xs font-medium text-zinc-500">{t('admin_users.role')}</th>
-              <th className="text-left px-4 py-3 text-xs font-medium text-zinc-500 hidden lg:table-cell">
+              <th className="text-left px-4 py-3 text-label text-ink-500">{t('admin_users.role')}</th>
+              <th className="text-left px-4 py-3 text-label text-ink-500 hidden lg:table-cell">
                 {t('admin_users.joined')}
               </th>
               <th className="px-4 py-3" />
@@ -158,13 +158,13 @@ export default function AdminUsers() {
           <tbody>
             {loading ? (
               <tr>
-                <td colSpan={5} className="px-4 py-8 text-center text-zinc-500 text-sm">
+                <td colSpan={5} className="px-4 py-8 text-center text-body text-ink-500">
                   {t('admin_users.loading')}
                 </td>
               </tr>
             ) : users.length === 0 ? (
               <tr>
-                <td colSpan={5} className="px-4 py-8 text-center text-zinc-500 text-sm">
+                <td colSpan={5} className="px-4 py-8 text-center text-body text-ink-500">
                   {t('admin_users.no_users')}
                 </td>
               </tr>
@@ -172,31 +172,33 @@ export default function AdminUsers() {
               users.map((u) => (
                 <tr
                   key={u.id}
-                  className="border-b border-zinc-100 hover:bg-zinc-50 dark:border-zinc-800/50 dark:hover:bg-zinc-800/20 transition-colors"
+                  className="border-b border-ink-100 hover:bg-ink-50 transition-colors duration-(--duration-base)"
                 >
                   <td className="px-4 py-3">
-                    <p className="font-medium text-zinc-800 dark:text-zinc-200">{u.name}</p>
-                    <p className="text-xs text-zinc-500">{u.email}</p>
+                    <p className="text-body-strong text-ink-900">{u.name}</p>
+                    <p className="text-caption text-ink-500">{u.email}</p>
                   </td>
                   <td className="px-4 py-3 hidden md:table-cell">
                     {u.email_verified ? (
-                      <CheckCircle size={15} className="text-emerald-400" />
+                      <CheckCircle size={15} className="text-success-600" />
                     ) : (
-                      <XCircle size={15} className="text-zinc-600" />
+                      <XCircle size={15} className="text-ink-400" />
                     )}
                   </td>
                   <td className="px-4 py-3">
                     <select
                       value={u.role}
                       onChange={(e) => changeRole(u.id, e.target.value)}
-                      className="bg-zinc-100 border border-zinc-200 rounded-md px-2 py-1 text-xs text-zinc-700 dark:bg-zinc-800 dark:border-zinc-700 dark:text-zinc-200 focus:outline-none focus:border-blue-500"
+                      className="bg-ink-100 border border-ink-200 rounded-md px-2 py-1 text-caption text-ink-700 focus:outline-none focus:border-brand-600 focus:ring-2 focus:ring-brand-600/20 transition-colors duration-(--duration-base)"
                     >
                       <option value="member">member</option>
                       <option value="admin">admin</option>
                     </select>
                   </td>
                   <td className="px-4 py-3 hidden lg:table-cell">
-                    <span className="text-xs text-zinc-500">{new Date(u.created_at * 1000).toLocaleDateString()}</span>
+                    <span className="text-caption text-ink-500 tnum">
+                      {new Date(u.created_at * 1000).toLocaleDateString()}
+                    </span>
                   </td>
                   <td className="px-4 py-3 text-right">
                     {u.id !== me?.id && (
@@ -204,14 +206,14 @@ export default function AdminUsers() {
                         <button
                           type="button"
                           onClick={() => openEdit(u)}
-                          className="btn-ghost p-1.5 btn-sm text-zinc-400"
+                          className="btn-ghost p-1.5 btn-sm text-ink-400 hover:text-ink-700"
                         >
                           <Pencil size={13} />
                         </button>
                         <button
                           type="button"
                           onClick={() => setDeleteTarget(u)}
-                          className="btn-ghost p-1.5 text-red-400 btn-sm"
+                          className="btn-ghost p-1.5 text-danger-600 btn-sm"
                         >
                           <Trash2 size={13} />
                         </button>
@@ -227,8 +229,8 @@ export default function AdminUsers() {
 
       {/* Pagination */}
       {total > limit && (
-        <div className="flex items-center justify-between mt-4">
-          <span className="text-sm text-zinc-500">
+        <div className="flex items-center justify-between -mt-3">
+          <span className="text-body text-ink-500 tnum">
             {page * limit + 1}–{Math.min((page + 1) * limit, total)} / {total}
           </span>
           <div className="flex gap-2">
@@ -254,22 +256,19 @@ export default function AdminUsers() {
 
       {/* Delete confirmation modal */}
       {deleteTarget && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-          <div className="card w-full max-w-sm p-6 shadow-2xl">
+        <div className="fixed inset-0 z-(--z-modal) flex items-center justify-center p-4 bg-ink-950/50 backdrop-blur-sm">
+          <div className="card w-full max-w-sm p-6 shadow-lg">
             <div className="flex items-center justify-between mb-4">
-              <h2 className="text-base font-semibold text-zinc-900 dark:text-zinc-100">
-                {t('admin_users.confirm_delete')}
-              </h2>
+              <h2 className="text-heading text-ink-900">{t('admin_users.confirm_delete')}</h2>
               <button type="button" onClick={() => setDeleteTarget(null)} className="btn-ghost p-1.5 rounded-lg">
                 <X size={16} />
               </button>
             </div>
-            <p className="text-sm text-zinc-500 dark:text-zinc-400">
+            <p className="text-body text-ink-500">
               {t('admin_users.confirm_delete_desc')}{' '}
-              <span className="font-medium text-zinc-800 dark:text-zinc-200">{deleteTarget.name}</span> (
-              {deleteTarget.email})?
+              <span className="font-medium text-ink-900">{deleteTarget.name}</span> ({deleteTarget.email})?
             </p>
-            <p className="text-sm text-zinc-500 dark:text-zinc-400 mt-1">{t('admin_users.confirm_delete_warn')}</p>
+            <p className="text-body text-ink-500 mt-1">{t('admin_users.confirm_delete_warn')}</p>
             <div className="mt-6 flex gap-3">
               <button type="button" onClick={() => setDeleteTarget(null)} className="btn-secondary flex-1">
                 {t('admin_users.cancel')}
@@ -289,10 +288,10 @@ export default function AdminUsers() {
 
       {/* Add / Edit modal */}
       {modal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-          <div className="card w-full max-w-md p-6 shadow-2xl">
+        <div className="fixed inset-0 z-(--z-modal) flex items-center justify-center p-4 bg-ink-950/50 backdrop-blur-sm">
+          <div className="card w-full max-w-md p-6 shadow-lg">
             <div className="flex items-center justify-between mb-6">
-              <h2 className="text-lg font-semibold text-zinc-900 dark:text-zinc-100">
+              <h2 className="text-heading text-ink-900">
                 {modal.mode === 'create' ? t('admin_users.new_user') : t('admin_users.edit_user')}
               </h2>
               <button type="button" onClick={closeModal} className="btn-ghost p-1.5 rounded-lg">
@@ -359,7 +358,7 @@ export default function AdminUsers() {
               </div>
             </div>
 
-            {formError && <p className="text-sm text-red-400 mt-3">{formError}</p>}
+            {formError && <p className="text-body text-danger-600 mt-3">{formError}</p>}
 
             <div className="mt-6 flex gap-3">
               <button type="button" onClick={closeModal} className="btn-secondary flex-1">

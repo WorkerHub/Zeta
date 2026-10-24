@@ -1,8 +1,8 @@
 import { useState } from 'react'
 import { Link, useSearchParams, useNavigate } from 'react-router-dom'
-import { Database } from 'lucide-react'
 import { authApi } from '../lib/api'
 import { useLocale } from '../hooks/useLocale'
+import Logo from '../components/Logo'
 
 export default function ResetPassword() {
   const { t } = useLocale()
@@ -38,9 +38,9 @@ export default function ResetPassword() {
 
   if (!token) {
     return (
-      <div className="min-h-screen flex items-center justify-center p-4 bg-zinc-50 dark:bg-zinc-950">
+      <div className="min-h-screen flex items-center justify-center p-4 bg-ink-50">
         <div className="card p-6 text-center">
-          <p className="text-red-400 mb-4">{t('auth.invalid_reset')}</p>
+          <p className="text-body text-danger-600 mb-4">{t('auth.invalid_reset')}</p>
           <Link to="/forgot-password" className="btn-primary">
             {t('auth.request_new')}
           </Link>
@@ -50,17 +50,15 @@ export default function ResetPassword() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-4 bg-zinc-50 dark:bg-zinc-950">
+    <div className="min-h-screen flex items-center justify-center p-4 bg-ink-50">
       <div className="w-full max-w-sm">
         <div className="flex items-center justify-center gap-2 mb-8">
-          <div className="w-9 h-9 bg-blue-600 rounded-lg flex items-center justify-center">
-            <Database size={20} className="text-white" />
-          </div>
-          <span className="text-xl font-semibold text-zinc-900 dark:text-zinc-100">{t('app.name')}</span>
+          <Logo size="md" />
+          <span className="text-title text-ink-900">{t('app.name')}</span>
         </div>
 
         <div className="card p-6">
-          <h1 className="text-lg font-semibold text-zinc-900 mb-6 dark:text-zinc-100">{t('auth.reset_title')}</h1>
+          <h1 className="text-heading text-ink-900 mb-6">{t('auth.reset_title')}</h1>
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
               <label htmlFor="reset-password" className="label">
@@ -92,7 +90,7 @@ export default function ResetPassword() {
                 required
               />
             </div>
-            {error && <p className="text-sm text-red-400">{error}</p>}
+            {error && <p className="text-body text-danger-600">{error}</p>}
             <button type="submit" className="btn-primary w-full" disabled={loading}>
               {loading ? t('auth.saving') : t('auth.set_password')}
             </button>

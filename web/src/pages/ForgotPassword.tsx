@@ -1,8 +1,9 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Database, Globe } from 'lucide-react'
+import { Globe } from 'lucide-react'
 import { authApi } from '../lib/api'
 import { useLocale } from '../hooks/useLocale'
+import Logo from '../components/Logo'
 
 export default function ForgotPassword() {
   const { t, locale, changeLocale } = useLocale()
@@ -27,7 +28,7 @@ export default function ForgotPassword() {
   }
 
   return (
-    <div className="relative min-h-screen flex items-center justify-center p-4 bg-zinc-50 dark:bg-zinc-950">
+    <div className="relative min-h-screen flex items-center justify-center p-4 bg-ink-50">
       <button
         type="button"
         onClick={() => changeLocale(locale === 'en' ? 'zh' : 'en')}
@@ -38,19 +39,17 @@ export default function ForgotPassword() {
       </button>
       <div className="w-full max-w-sm">
         <div className="flex items-center justify-center gap-2 mb-8">
-          <div className="w-9 h-9 bg-blue-600 rounded-lg flex items-center justify-center">
-            <Database size={20} className="text-white" />
-          </div>
-          <span className="text-xl font-semibold text-zinc-900 dark:text-zinc-100">{t('app.name')}</span>
+          <Logo size="md" />
+          <span className="text-title text-ink-900">{t('app.name')}</span>
         </div>
 
         <div className="card p-6">
-          <h1 className="text-lg font-semibold text-zinc-900 mb-2 dark:text-zinc-100">{t('auth.forgot_title')}</h1>
-          <p className="text-sm text-zinc-500 mb-6">{t('auth.forgot_desc')}</p>
+          <h1 className="text-heading text-ink-900 mb-2">{t('auth.forgot_title')}</h1>
+          <p className="text-body text-ink-500 mb-6">{t('auth.forgot_desc')}</p>
 
           {message ? (
             <div className="space-y-4">
-              <p className="text-sm text-emerald-500 dark:text-emerald-400" role="status">
+              <p className="text-body text-success-600" role="status">
                 {message}
               </p>
               <Link to="/login" className="btn-secondary w-full block text-center">
@@ -76,14 +75,17 @@ export default function ForgotPassword() {
                 />
               </div>
               {error && (
-                <p className="text-sm text-red-400" role="alert">
+                <p className="text-body text-danger-600" role="alert">
                   {error}
                 </p>
               )}
               <button type="submit" className="btn-primary w-full" disabled={loading}>
                 {loading ? t('auth.sending') : t('auth.send_reset')}
               </button>
-              <Link to="/login" className="block text-center text-sm text-zinc-500 hover:text-zinc-300">
+              <Link
+                to="/login"
+                className="block text-center text-body text-ink-500 hover:text-ink-900 transition-colors duration-(--duration-base)"
+              >
                 {t('auth.back_to_signin')}
               </Link>
             </form>

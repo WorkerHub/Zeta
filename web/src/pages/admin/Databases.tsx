@@ -151,21 +151,21 @@ export default function AdminDatabases() {
   const availableOptions = available.filter((d) => !d.added)
 
   return (
-    <div className="p-4 sm:p-6 max-w-5xl">
-      <div className="flex items-center justify-between mb-6">
-        <h1 className="text-lg font-semibold text-zinc-900 dark:text-zinc-100">{t('admin.databases')}</h1>
+    <div className="p-4 sm:p-6 max-w-5xl flex flex-col gap-6">
+      <div className="flex items-center justify-between">
+        <h1 className="text-title text-ink-950">{t('admin.databases')}</h1>
         <button type="button" onClick={toggleAdd} className="btn-primary btn-sm gap-1.5">
           <Plus size={13} /> {t('admin_db.add_database')}
         </button>
       </div>
 
-      {error && <p className="mb-4 text-sm text-red-400">{error}</p>}
+      {error && <p className="-mt-3 text-body text-danger-600">{error}</p>}
 
       {/* Add form */}
       {showAdd && (
-        <div className="card p-5 mb-4 space-y-4">
-          <h2 className="text-sm font-semibold text-zinc-700 dark:text-zinc-300">{t('admin_db.register_title')}</h2>
-          <p className="text-xs text-zinc-500">{t('admin_db.register_desc')}</p>
+        <div className="card p-5 space-y-4">
+          <h2 className="text-heading text-ink-900">{t('admin_db.register_title')}</h2>
+          <p className="text-caption text-ink-500">{t('admin_db.register_desc')}</p>
           <div className="grid sm:grid-cols-2 gap-4">
             <div className="sm:col-span-2">
               <label htmlFor="db-cf" className="label">
@@ -188,11 +188,11 @@ export default function AdminDatabases() {
                 <ChevronDown
                   size={14}
                   aria-hidden="true"
-                  className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-zinc-400 dark:text-zinc-500"
+                  className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-ink-400"
                 />
               </div>
               {availableOptions.length === 0 && (
-                <p className="mt-1 text-xs text-zinc-500">{t('admin_db.no_available')}</p>
+                <p className="mt-1 text-caption text-ink-500">{t('admin_db.no_available')}</p>
               )}
             </div>
             <div>
@@ -222,7 +222,7 @@ export default function AdminDatabases() {
               />
             </div>
           </div>
-          {addError && <p className="text-sm text-red-400">{addError}</p>}
+          {addError && <p className="text-body text-danger-600">{addError}</p>}
           <div className="flex gap-3">
             <button type="button" onClick={() => setShowAdd(false)} className="btn-secondary">
               {t('admin_db.cancel')}
@@ -236,11 +236,11 @@ export default function AdminDatabases() {
 
       {/* Link (migration) form */}
       {linking && (
-        <div className="card p-5 mb-4 space-y-4">
-          <h2 className="text-sm font-semibold text-zinc-700 dark:text-zinc-300">
-            {t('admin_db.link_title')} — <span className="text-zinc-900 dark:text-zinc-100">{linking.name}</span>
+        <div className="card p-5 space-y-4">
+          <h2 className="text-heading text-ink-900">
+            {t('admin_db.link_title')} — <span className="text-ink-700 font-medium">{linking.name}</span>
           </h2>
-          <p className="text-xs text-zinc-500">{t('admin_db.link_desc')}</p>
+          <p className="text-caption text-ink-500">{t('admin_db.link_desc')}</p>
           <select className="input" value={linkCfId} onChange={(e) => setLinkCfId(e.target.value)}>
             <option value="">{t('admin_db.select_database')}</option>
             {availableOptions.map((d) => (
@@ -249,7 +249,7 @@ export default function AdminDatabases() {
               </option>
             ))}
           </select>
-          {linkError && <p className="text-sm text-red-400">{linkError}</p>}
+          {linkError && <p className="text-body text-danger-600">{linkError}</p>}
           <div className="flex gap-3">
             <button type="button" onClick={() => setLinking(null)} className="btn-secondary">
               {t('admin_db.cancel')}
@@ -262,20 +262,20 @@ export default function AdminDatabases() {
       )}
 
       {/* Database list */}
-      <div className="card overflow-hidden mb-6">
+      <div className="card overflow-hidden">
         {loading ? (
-          <p className="px-4 py-8 text-center text-sm text-zinc-500">{t('admin_db.loading')}</p>
+          <p className="px-4 py-8 text-center text-body text-ink-500">{t('admin_db.loading')}</p>
         ) : databases.length === 0 ? (
-          <p className="px-4 py-8 text-center text-sm text-zinc-500">{t('admin_db.no_databases')}</p>
+          <p className="px-4 py-8 text-center text-body text-ink-500">{t('admin_db.no_databases')}</p>
         ) : (
-          <table className="w-full text-sm">
+          <table className="w-full text-body">
             <thead>
-              <tr className="border-b border-zinc-200 dark:border-zinc-800 bg-zinc-100/50 dark:bg-zinc-800/30">
-                <th className="text-left px-4 py-3 text-xs font-medium text-zinc-500">{t('admin_db.name')}</th>
-                <th className="text-left px-4 py-3 text-xs font-medium text-zinc-500 hidden md:table-cell">
+              <tr className="border-b border-ink-200 bg-ink-50">
+                <th className="text-left px-4 py-3 text-label text-ink-500">{t('admin_db.name')}</th>
+                <th className="text-left px-4 py-3 text-label text-ink-500 hidden md:table-cell">
                   {t('admin_db.cf_database_id')}
                 </th>
-                <th className="text-left px-4 py-3 text-xs font-medium text-zinc-500">{t('admin_db.status')}</th>
+                <th className="text-left px-4 py-3 text-label text-ink-500">{t('admin_db.status')}</th>
                 <th className="px-4 py-3" />
               </tr>
             </thead>
@@ -283,15 +283,15 @@ export default function AdminDatabases() {
               {databases.map((db) => (
                 <tr
                   key={db.id}
-                  className="border-b border-zinc-100 hover:bg-zinc-50 dark:border-zinc-800/50 dark:hover:bg-zinc-800/20 transition-colors"
+                  className="border-b border-ink-100 hover:bg-ink-50 transition-colors duration-(--duration-base)"
                 >
                   <td className="px-4 py-3">
-                    <p className="font-medium text-zinc-800 dark:text-zinc-200">{db.name}</p>
-                    {db.description && <p className="text-xs text-zinc-500">{db.description}</p>}
+                    <p className="text-body-strong text-ink-900">{db.name}</p>
+                    {db.description && <p className="text-caption text-ink-500">{db.description}</p>}
                   </td>
                   <td className="px-4 py-3 hidden md:table-cell">
                     {db.cf_database_id ? (
-                      <code className="text-xs text-amber-400 font-mono bg-amber-400/10 px-1.5 py-0.5 rounded">
+                      <code className="text-caption text-ink-700 font-mono bg-ink-100 px-1.5 py-0.5 rounded tnum">
                         {db.cf_database_id}
                       </code>
                     ) : (
@@ -326,12 +326,12 @@ export default function AdminDatabases() {
                         className="btn-ghost btn-sm p-1.5"
                         title={t('admin_db.toggle_active')}
                       >
-                        <Power size={13} className={db.is_active ? 'text-emerald-400' : 'text-zinc-600'} />
+                        <Power size={13} className={db.is_active ? 'text-success-600' : 'text-ink-400'} />
                       </button>
                       <button
                         type="button"
                         onClick={() => deleteDb(db.id, db.name)}
-                        className="btn-ghost btn-sm p-1.5 text-red-400"
+                        className="btn-ghost btn-sm p-1.5 text-danger-600"
                       >
                         <Trash2 size={13} />
                       </button>
@@ -347,10 +347,10 @@ export default function AdminDatabases() {
       {/* Permissions panel */}
       {selectedDb && (
         <div className="card p-5">
-          <h2 className="text-sm font-semibold text-zinc-700 dark:text-zinc-300 mb-4">
-            {t('admin_db.permissions_for')} <span className="text-zinc-900 dark:text-zinc-100">{selectedDb.name}</span>
+          <h2 className="text-heading text-ink-900 mb-4">
+            {t('admin_db.permissions_for')} <span className="text-ink-700 font-medium">{selectedDb.name}</span>
           </h2>
-          <p className="text-xs text-zinc-500 mb-4">{t('admin_db.perm_note')}</p>
+          <p className="text-caption text-ink-500 mb-4">{t('admin_db.perm_note')}</p>
 
           {/* Grant form */}
           <div className="flex gap-2 mb-4 flex-wrap">
@@ -380,17 +380,14 @@ export default function AdminDatabases() {
 
           {/* Current permissions */}
           {permissions.length === 0 ? (
-            <p className="text-sm text-zinc-500">{t('admin_db.no_permissions')}</p>
+            <p className="text-body text-ink-500">{t('admin_db.no_permissions')}</p>
           ) : (
             <ul className="space-y-2">
               {permissions.map((p) => (
-                <li
-                  key={p.id}
-                  className="flex items-center justify-between bg-zinc-100 dark:bg-zinc-800 rounded-lg px-4 py-2.5"
-                >
+                <li key={p.id} className="flex items-center justify-between bg-ink-100 rounded-lg px-4 py-2.5">
                   <div>
-                    <p className="text-sm text-zinc-800 dark:text-zinc-200">{p.user_name}</p>
-                    <p className="text-xs text-zinc-500">{p.email}</p>
+                    <p className="text-body-strong text-ink-900">{p.user_name}</p>
+                    <p className="text-caption text-ink-500">{p.email}</p>
                   </div>
                   <div className="flex items-center gap-2">
                     <span
@@ -405,7 +402,7 @@ export default function AdminDatabases() {
                     <button
                       type="button"
                       onClick={() => revokePerm(p.user_id)}
-                      className="btn-ghost p-1.5 text-red-400 btn-sm"
+                      className="btn-ghost p-1.5 text-danger-600 btn-sm"
                     >
                       <Trash2 size={13} />
                     </button>

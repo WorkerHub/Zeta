@@ -44,28 +44,28 @@ interface AdminSetupCardProps {
 export function AdminSetupCard({ t, upgraded, error, running, onRun }: AdminSetupCardProps) {
   return (
     <div className="card p-5 space-y-4">
-      <h2 className="text-sm font-semibold text-zinc-400 uppercase tracking-wider">{t('admin_setup.title')}</h2>
-      <p className="text-sm text-zinc-600 dark:text-zinc-300">{t('admin_setup.desc')}</p>
+      <h2 className="text-micro uppercase text-ink-500">{t('admin_setup.title')}</h2>
+      <p className="text-body text-ink-700">{t('admin_setup.desc')}</p>
 
       {upgraded !== null && (
         <div role="status" className="space-y-3">
           {upgraded.length > 0 ? (
             <>
-              <p className="text-sm text-emerald-500">{t('admin_setup.upgraded_title')}</p>
-              <ul className="text-sm text-zinc-700 dark:text-zinc-300 list-disc list-inside space-y-1">
+              <p className="text-body text-success-600">{t('admin_setup.upgraded_title')}</p>
+              <ul className="text-body text-ink-700 list-disc list-inside space-y-1">
                 {upgraded.map((item) => (
                   <li key={item}>{item}</li>
                 ))}
               </ul>
             </>
           ) : (
-            <p className="text-sm text-emerald-500">{t('admin_setup.up_to_date')}</p>
+            <p className="text-body text-success-600">{t('admin_setup.up_to_date')}</p>
           )}
         </div>
       )}
 
       {error && (
-        <p role="alert" className="text-sm text-red-400">
+        <p role="alert" className="text-body text-danger-600">
           {error}
         </p>
       )}
@@ -220,29 +220,27 @@ export default function AdminSettings() {
     }
   }
 
-  if (loading) return <div className="p-6 text-sm text-zinc-500">{t('admin_settings.loading')}</div>
+  if (loading) return <div className="p-6 text-body text-ink-500">{t('admin_settings.loading')}</div>
 
   // The setup page is enabled unless explicitly disabled; new installs default to enabled ('1').
   const setupPageEnabled = (settings.setup_page_enabled ?? '1') !== '0'
 
   return (
-    <div className="p-4 sm:p-6 max-w-5xl">
-      <div className="flex items-center justify-between mb-6">
-        <h1 className="text-lg font-semibold text-zinc-900 dark:text-zinc-100">{t('admin.settings')}</h1>
+    <div className="p-4 sm:p-6 max-w-5xl flex flex-col gap-6">
+      <div className="flex items-center justify-between">
+        <h1 className="text-title text-ink-950">{t('admin.settings')}</h1>
         <button type="button" onClick={save} disabled={saving} className="btn-primary gap-2">
           {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
           {saved ? t('admin_settings.saved') : t('admin_settings.save_changes')}
         </button>
       </div>
 
-      {error && <p className="text-sm text-red-400 mb-4">{error}</p>}
+      {error && <p className="-mt-3 text-body text-danger-600">{error}</p>}
 
-      <div className="space-y-6">
+      <div className="flex flex-col gap-6">
         {/* General */}
         <div className="card p-5 space-y-4">
-          <h2 className="text-sm font-semibold text-zinc-400 uppercase tracking-wider">
-            {t('admin_settings.general')}
-          </h2>
+          <h2 className="text-micro uppercase text-ink-500">{t('admin_settings.general')}</h2>
           <div>
             <label htmlFor="settings-app-name" className="label">
               {t('admin_settings.app_name')}
@@ -257,10 +255,8 @@ export default function AdminSettings() {
           </div>
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm font-medium text-zinc-700 dark:text-zinc-200">
-                {t('admin_settings.registration_open')}
-              </p>
-              <p className="text-xs text-zinc-500">{t('admin_settings.registration_desc')}</p>
+              <p className="text-body-strong text-ink-900">{t('admin_settings.registration_open')}</p>
+              <p className="text-caption text-ink-500">{t('admin_settings.registration_desc')}</p>
             </div>
             <button
               type="button"
@@ -274,10 +270,8 @@ export default function AdminSettings() {
           </div>
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm font-medium text-zinc-700 dark:text-zinc-200">
-                {t('admin_settings.require_verification')}
-              </p>
-              <p className="text-xs text-zinc-500">{t('admin_settings.require_verification_desc')}</p>
+              <p className="text-body-strong text-ink-900">{t('admin_settings.require_verification')}</p>
+              <p className="text-caption text-ink-500">{t('admin_settings.require_verification_desc')}</p>
             </div>
             <button
               type="button"
@@ -291,8 +285,8 @@ export default function AdminSettings() {
           </div>
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm font-medium text-zinc-700 dark:text-zinc-200">{t('admin_settings.enforce_2fa')}</p>
-              <p className="text-xs text-zinc-500">{t('admin_settings.enforce_2fa_desc')}</p>
+              <p className="text-body-strong text-ink-900">{t('admin_settings.enforce_2fa')}</p>
+              <p className="text-caption text-ink-500">{t('admin_settings.enforce_2fa_desc')}</p>
             </div>
             <button
               type="button"
@@ -306,8 +300,8 @@ export default function AdminSettings() {
           </div>
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm font-medium text-zinc-700 dark:text-zinc-200">{t('admin_settings.setup_page')}</p>
-              <p className="text-xs text-zinc-500">{t('admin_settings.setup_page_desc')}</p>
+              <p className="text-body-strong text-ink-900">{t('admin_settings.setup_page')}</p>
+              <p className="text-caption text-ink-500">{t('admin_settings.setup_page_desc')}</p>
             </div>
             <button
               type="button"
@@ -333,9 +327,7 @@ export default function AdminSettings() {
 
         {/* Saved query runs */}
         <div className="card p-5 space-y-4">
-          <h2 className="text-sm font-semibold text-zinc-400 uppercase tracking-wider">
-            {t('admin_settings.saved_runs')}
-          </h2>
+          <h2 className="text-micro uppercase text-ink-500">{t('admin_settings.saved_runs')}</h2>
           <div>
             <label htmlFor="settings-run-limit" className="label">
               {t('admin_settings.run_limit')}
@@ -350,7 +342,7 @@ export default function AdminSettings() {
               value={settings.notebook_run_limit ?? '100'}
               onChange={(e) => set('notebook_run_limit', e.target.value)}
             />
-            <p className="text-xs text-zinc-500 mt-1">{t('admin_settings.run_limit_desc')}</p>
+            <p className="text-caption text-ink-500 mt-1 tnum">{t('admin_settings.run_limit_desc')}</p>
           </div>
           <div>
             <label htmlFor="settings-run-quota" className="label">
@@ -366,15 +358,13 @@ export default function AdminSettings() {
               value={settings.run_storage_quota_mb ?? '50'}
               onChange={(e) => set('run_storage_quota_mb', e.target.value)}
             />
-            <p className="text-xs text-zinc-500 mt-1">{t('admin_settings.run_quota_desc')}</p>
+            <p className="text-caption text-ink-500 mt-1 tnum">{t('admin_settings.run_quota_desc')}</p>
           </div>
         </div>
 
         {/* Email */}
         <div className="card p-5 space-y-4">
-          <h2 className="text-sm font-semibold text-zinc-400 uppercase tracking-wider">
-            {t('admin_settings.email_provider')}
-          </h2>
+          <h2 className="text-micro uppercase text-ink-500">{t('admin_settings.email_provider')}</h2>
 
           <div className="flex gap-4">
             {(['none', 'smtp', 'resend'] as EmailProvider[]).map((p) => (
@@ -385,9 +375,9 @@ export default function AdminSettings() {
                   value={p}
                   checked={emailProvider === p}
                   onChange={() => setEmailProvider(p)}
-                  className="accent-primary"
+                  className="accent-(--color-brand-600)"
                 />
-                <span className="text-sm font-medium">
+                <span className="text-body-strong text-ink-900">
                   {p === 'none' ? t('admin_settings.provider_none') : p === 'smtp' ? 'SMTP' : 'Resend'}
                 </span>
               </label>
@@ -395,7 +385,7 @@ export default function AdminSettings() {
           </div>
 
           {emailProvider === 'smtp' && (
-            <div className="space-y-3 pt-2 border-t border-zinc-200 dark:border-zinc-700">
+            <div className="space-y-3 pt-2 border-t border-ink-200">
               <div className="grid grid-cols-3 gap-3">
                 <div className="col-span-2">
                   <label htmlFor="smtp-host" className="label">
@@ -463,7 +453,7 @@ export default function AdminSettings() {
                     <button
                       type="button"
                       onClick={() => setSmtpClearSecret(true)}
-                      className="mt-1 text-xs text-zinc-500 hover:text-red-400"
+                      className="mt-1 text-caption text-ink-500 hover:text-danger-600 transition-colors duration-(--duration-base)"
                     >
                       {t('admin_settings.clear_secret')}
                     </button>
@@ -500,7 +490,7 @@ export default function AdminSettings() {
           )}
 
           {emailProvider === 'resend' && (
-            <div className="space-y-3 pt-2 border-t border-zinc-200 dark:border-zinc-700">
+            <div className="space-y-3 pt-2 border-t border-ink-200">
               <div>
                 <label htmlFor="resend-api-key" className="label">
                   {t('admin_settings.resend_api_key')}
@@ -527,7 +517,7 @@ export default function AdminSettings() {
                   <button
                     type="button"
                     onClick={() => setResendClearSecret(true)}
-                    className="mt-1 text-xs text-zinc-500 hover:text-red-400"
+                    className="mt-1 text-caption text-ink-500 hover:text-danger-600 transition-colors duration-(--duration-base)"
                   >
                     {t('admin_settings.clear_secret')}
                   </button>
@@ -566,9 +556,7 @@ export default function AdminSettings() {
         {/* Test Email */}
         {emailProvider !== 'none' && (
           <div className="card p-5 space-y-4">
-            <h2 className="text-sm font-semibold text-zinc-400 uppercase tracking-wider">
-              {t('admin_settings.test_email')}
-            </h2>
+            <h2 className="text-micro uppercase text-ink-500">{t('admin_settings.test_email')}</h2>
             <div>
               <label htmlFor="test-email-to" className="label">
                 {t('admin_settings.test_email_address')}
@@ -592,8 +580,8 @@ export default function AdminSettings() {
                 {testEmailLoading ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
                 {t('admin_settings.test_email')}
               </button>
-              {testEmailMsg && <span className="text-sm text-green-500">{testEmailMsg}</span>}
-              {testEmailError && <span className="text-sm text-red-400">{testEmailError}</span>}
+              {testEmailMsg && <span className="text-body text-success-600">{testEmailMsg}</span>}
+              {testEmailError && <span className="text-body text-danger-600">{testEmailError}</span>}
             </div>
           </div>
         )}

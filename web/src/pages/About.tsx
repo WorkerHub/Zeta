@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom'
-import { Database, ArrowLeft, Server, Zap } from 'lucide-react'
+import { ArrowLeft, Server, Zap, Database } from 'lucide-react'
 import { useLocale } from '../hooks/useLocale'
+import Logo from '../components/Logo'
 
 const FEATURE_KEYS = [
   'about.feature_1',
@@ -24,43 +25,39 @@ export default function AboutPage() {
   const { t } = useLocale()
 
   return (
-    <div className="min-h-screen bg-zinc-50 dark:bg-zinc-950">
+    <div className="min-h-screen bg-ink-50">
       {/* Header */}
-      <header className="px-4 py-3 border-b border-zinc-200 dark:border-zinc-800 flex items-center gap-3">
-        <div className="w-7 h-7 bg-blue-600 rounded-md flex items-center justify-center">
-          <Database size={15} className="text-white" />
-        </div>
-        <span className="font-semibold text-zinc-900 dark:text-zinc-100">{t('app.name')}</span>
+      <header className="px-6 py-3 border-b border-ink-200 flex items-center gap-2.5 bg-ink-0">
+        <Logo size="sm" />
+        <span className="text-body-strong text-ink-900">{t('app.name')}</span>
         <div className="flex-1" />
         <Link to="/query" className="btn-ghost btn-sm gap-1.5">
           <ArrowLeft size={14} /> {t('profile.back_to_query')}
         </Link>
       </header>
 
-      <div className="max-w-2xl mx-auto p-4 sm:p-6 space-y-6">
+      <div className="max-w-2xl mx-auto px-6 py-8 flex flex-col gap-8">
         {/* Title block */}
         <div className="flex items-center gap-4">
-          <div className="w-12 h-12 bg-blue-600 rounded-2xl flex items-center justify-center shrink-0">
-            <Database size={22} className="text-white" />
-          </div>
+          <Logo size="lg" />
           <div>
-            <h1 className="text-xl font-semibold text-zinc-900 dark:text-zinc-100">Zeta</h1>
-            <p className="text-sm text-zinc-400 dark:text-zinc-500">{__APP_VERSION__}</p>
+            <h1 className="text-display text-ink-950">Zeta</h1>
+            <p className="text-caption text-ink-500 tnum">{__APP_VERSION__}</p>
           </div>
         </div>
 
-        {/* Description */}
+        {/* Description — the "Data Workbench" statement (design-system.md §1) */}
         <div className="card p-5">
-          <p className="text-sm text-zinc-600 dark:text-zinc-400 leading-relaxed">{t('about.description')}</p>
+          <p className="text-body text-ink-700 leading-relaxed">{t('about.description')}</p>
         </div>
 
         {/* Features */}
         <div className="card p-5">
-          <h2 className="text-sm font-semibold text-zinc-700 dark:text-zinc-300 mb-4">{t('about.features')}</h2>
-          <ul className="space-y-2">
+          <h2 className="text-heading text-ink-900 mb-4">{t('about.features')}</h2>
+          <ul className="flex flex-col gap-2">
             {FEATURE_KEYS.map((key) => (
-              <li key={key} className="flex items-start gap-2.5 text-sm text-zinc-600 dark:text-zinc-400">
-                <span className="text-blue-500 mt-0.5 shrink-0">·</span>
+              <li key={key} className="flex items-start gap-2.5 text-body text-ink-700">
+                <span className="text-brand-500 mt-0.5 shrink-0">·</span>
                 {t(key)}
               </li>
             ))}
@@ -69,11 +66,11 @@ export default function AboutPage() {
 
         {/* Tech stack */}
         <div className="card p-5">
-          <h2 className="text-sm font-semibold text-zinc-700 dark:text-zinc-300 mb-4">{t('about.tech_stack')}</h2>
-          <div className="space-y-2.5">
+          <h2 className="text-heading text-ink-900 mb-4">{t('about.tech_stack')}</h2>
+          <div className="flex flex-col gap-2.5">
             {STACK.map(({ icon: Icon, label }) => (
-              <div key={label} className="flex items-center gap-2.5 text-sm text-zinc-600 dark:text-zinc-400">
-                <Icon size={14} className="text-zinc-400 shrink-0" />
+              <div key={label} className="flex items-center gap-2.5 text-body text-ink-700">
+                <Icon size={14} className="text-ink-400 shrink-0" />
                 {label}
               </div>
             ))}

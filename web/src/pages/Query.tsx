@@ -6,7 +6,6 @@ import { oneDark } from '@codemirror/theme-one-dark'
 import { keymap } from '@codemirror/view'
 import { Prec } from '@codemirror/state'
 import {
-  Database,
   Play,
   ChevronDown,
   LogOut,
@@ -34,6 +33,7 @@ import { useNotebookRuns } from '../hooks/useNotebookRuns'
 import ResultsPanel from '../components/ResultsPanel'
 import RunHistoryBar from '../components/RunHistoryBar'
 import RunHistoryDrawer from '../components/RunHistoryDrawer'
+import Logo from '../components/Logo'
 import { splitSqlStatements } from '../lib/sql'
 import type { Database as DbType, NotebookRunSummary, StatementResult } from '../types'
 
@@ -273,18 +273,20 @@ export default function QueryPage() {
   }
 
   if (notebooksLoading) {
-    return <div className="flex h-screen items-center justify-center text-zinc-500 text-sm">{t('common.loading')}</div>
+    return (
+      <div className="flex h-screen items-center justify-center bg-ink-50 text-ink-500 text-body">
+        {t('common.loading')}
+      </div>
+    )
   }
 
   return (
-    <div className="flex flex-col h-screen bg-zinc-50 dark:bg-zinc-950">
+    <div className="flex flex-col h-screen bg-ink-50">
       {/* Top bar */}
-      <header className="flex items-center gap-3 px-4 py-2.5 border-b border-zinc-200 dark:border-zinc-800 shrink-0">
+      <header className="flex items-center gap-3 px-4 py-2.5 border-b border-ink-200 bg-ink-0 shrink-0">
         <div className="flex items-center gap-2 mr-2">
-          <div className="w-7 h-7 bg-blue-600 rounded-md flex items-center justify-center">
-            <Database size={15} className="text-white" />
-          </div>
-          <span className="font-semibold text-zinc-900 dark:text-zinc-100 hidden sm:block">{t('app.name')}</span>
+          <Logo size="sm" />
+          <span className="text-body-strong text-ink-900 hidden sm:block">{t('app.name')}</span>
         </div>
 
         {/* Database selector — hidden on mobile (shown in bottom bar) */}
@@ -292,16 +294,15 @@ export default function QueryPage() {
           <button
             type="button"
             onClick={() => setShowDbMenu(!showDbMenu)}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-zinc-100 hover:bg-zinc-200 border border-zinc-200 text-sm text-zinc-700 dark:bg-zinc-800 dark:hover:bg-zinc-700 dark:border-zinc-700 dark:text-zinc-200 transition-colors max-w-[200px]"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-ink-100 hover:bg-ink-200 border border-ink-200 text-body-strong text-ink-700 transition-colors duration-(--duration-base) max-w-[200px]"
           >
-            <Database size={13} className="text-zinc-400 shrink-0" />
             <span className="truncate">{selectedDb?.name ?? t('query.select_db')}</span>
-            <ChevronDown size={13} className="text-zinc-500 shrink-0 ml-0.5" />
+            <ChevronDown size={13} className="text-ink-400 shrink-0 ml-0.5" />
           </button>
           {showDbMenu && (
-            <div className="absolute left-0 top-full mt-1 w-64 bg-white border border-zinc-200 dark:bg-zinc-900 dark:border-zinc-700 rounded-xl shadow-xl z-20 overflow-hidden">
+            <div className="absolute left-0 top-full mt-1 w-64 bg-ink-0 border border-ink-200 rounded-lg shadow-md z-(--z-dropdown) overflow-hidden">
               {databases.length === 0 ? (
-                <p className="px-4 py-3 text-sm text-zinc-500">{t('query.no_databases')}</p>
+                <p className="px-4 py-3 text-body text-ink-500">{t('query.no_databases')}</p>
               ) : (
                 databases.map((db) => (
                   <button
@@ -311,7 +312,9 @@ export default function QueryPage() {
                       if (activeId) updateDatabase(activeId, db.id)
                       setShowDbMenu(false)
                     }}
-                    className={`w-full text-left px-4 py-2.5 text-sm hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors ${selectedDb?.id === db.id ? 'text-blue-500' : 'text-zinc-700 dark:text-zinc-200'}`}
+                    className={`w-full text-left px-4 py-2.5 text-body hover:bg-ink-100 transition-colors duration-(--duration-base) ${
+                      selectedDb?.id === db.id ? 'text-brand-600 dark:text-brand-400 font-medium' : 'text-ink-700'
+                    }`}
                   >
                     {db.name}
                   </button>
@@ -338,7 +341,7 @@ export default function QueryPage() {
           aria-controls={showRunHistory ? 'run-history-panel' : undefined}
           aria-label={t('runs.open_history')}
           title={t('runs.history')}
-          className={`btn-ghost btn-sm gap-1.5 ${showRunHistory ? 'text-blue-500 bg-blue-500/10' : ''}`}
+          className={`btn-ghost btn-sm gap-1.5 ${showRunHistory ? 'text-brand-600 dark:text-brand-400 bg-brand-50' : ''}`}
         >
           <History size={15} />
           <span className="hidden sm:inline">{t('query.history')}</span>
@@ -369,20 +372,20 @@ export default function QueryPage() {
           <button
             type="button"
             onClick={() => setShowUserMenu(!showUserMenu)}
-            className="w-8 h-8 rounded-full bg-zinc-100 border border-zinc-200 flex items-center justify-center text-zinc-500 hover:text-zinc-800 hover:bg-zinc-200 dark:bg-zinc-800 dark:border-zinc-700 dark:text-zinc-400 dark:hover:text-zinc-200 dark:hover:bg-zinc-700 transition-colors text-xs font-semibold"
+            className="w-8 h-8 rounded-full bg-ink-100 border border-ink-200 flex items-center justify-center text-ink-500 hover:text-ink-900 hover:bg-ink-200 transition-colors duration-(--duration-base) text-caption font-semibold"
           >
             {user?.name?.[0]?.toUpperCase() ?? '?'}
           </button>
           {showUserMenu && (
-            <div className="absolute right-0 top-full mt-1 w-48 bg-white border border-zinc-200 dark:bg-zinc-900 dark:border-zinc-700 rounded-xl shadow-xl z-20 overflow-hidden">
-              <div className="px-4 py-3 border-b border-zinc-100 dark:border-zinc-800">
-                <p className="text-sm font-medium text-zinc-800 dark:text-zinc-200 truncate">{user?.name}</p>
-                <p className="text-xs text-zinc-500 truncate">{user?.email}</p>
+            <div className="absolute right-0 top-full mt-1 w-48 bg-ink-0 border border-ink-200 rounded-lg shadow-md z-(--z-dropdown) overflow-hidden">
+              <div className="px-4 py-3 border-b border-ink-200">
+                <p className="text-body-strong text-ink-900 truncate">{user?.name}</p>
+                <p className="text-caption text-ink-500 truncate">{user?.email}</p>
               </div>
               <Link
                 to="/profile"
                 onClick={() => setShowUserMenu(false)}
-                className="flex items-center gap-2 px-4 py-2.5 text-sm text-zinc-600 hover:bg-zinc-50 hover:text-zinc-900 dark:text-zinc-300 dark:hover:bg-zinc-800 dark:hover:text-zinc-100 transition-colors"
+                className="flex items-center gap-2 px-4 py-2.5 text-body text-ink-700 hover:bg-ink-100 hover:text-ink-950 transition-colors duration-(--duration-base)"
               >
                 <UserIcon size={14} /> {t('user.profile_security')}
               </Link>
@@ -390,7 +393,7 @@ export default function QueryPage() {
                 <Link
                   to="/admin"
                   onClick={() => setShowUserMenu(false)}
-                  className="flex items-center gap-2 px-4 py-2.5 text-sm text-zinc-600 hover:bg-zinc-50 hover:text-zinc-900 dark:text-zinc-300 dark:hover:bg-zinc-800 dark:hover:text-zinc-100 transition-colors"
+                  className="flex items-center gap-2 px-4 py-2.5 text-body text-ink-700 hover:bg-ink-100 hover:text-ink-950 transition-colors duration-(--duration-base)"
                 >
                   <Shield size={14} /> {t('user.admin_panel')}
                 </Link>
@@ -398,14 +401,14 @@ export default function QueryPage() {
               <Link
                 to="/about"
                 onClick={() => setShowUserMenu(false)}
-                className="flex items-center gap-2 px-4 py-2.5 text-sm text-zinc-600 hover:bg-zinc-50 hover:text-zinc-900 dark:text-zinc-300 dark:hover:bg-zinc-800 dark:hover:text-zinc-100 transition-colors"
+                className="flex items-center gap-2 px-4 py-2.5 text-body text-ink-700 hover:bg-ink-100 hover:text-ink-950 transition-colors duration-(--duration-base)"
               >
                 <Info size={14} /> {t('user.about')}
               </Link>
               <button
                 type="button"
                 onClick={logout}
-                className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-red-400 hover:bg-zinc-50 dark:hover:bg-zinc-800 transition-colors border-t border-zinc-100 dark:border-zinc-800"
+                className="w-full flex items-center gap-2 px-4 py-2.5 text-body text-danger-600 hover:bg-ink-100 transition-colors duration-(--duration-base) border-t border-ink-200"
               >
                 <LogOut size={14} /> {t('user.sign_out')}
               </button>
@@ -418,7 +421,7 @@ export default function QueryPage() {
       <div
         id="notebook-tabs"
         role="tablist"
-        className="flex items-center border-b border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 shrink-0 overflow-x-auto scrollbar-none min-h-[36px]"
+        className="flex items-center border-b border-ink-200 bg-ink-0 shrink-0 overflow-x-auto min-h-[36px] [scrollbar-width:thin]"
       >
         {notebooks.map((nb) => (
           <div
@@ -426,10 +429,10 @@ export default function QueryPage() {
             role="tab"
             tabIndex={0}
             aria-selected={nb.id === activeId}
-            className={`group flex items-center gap-1 px-3 py-1.5 text-sm border-r border-zinc-200 dark:border-zinc-800 cursor-pointer shrink-0 select-none transition-colors ${
+            className={`group flex items-center gap-1 px-3 py-1.5 text-body border-r border-ink-200 cursor-pointer shrink-0 select-none transition-colors duration-(--duration-base) ${
               nb.id === activeId
-                ? 'text-blue-600 dark:text-blue-400 bg-zinc-50 dark:bg-zinc-900 border-b-2 border-b-blue-500'
-                : 'text-zinc-500 dark:text-zinc-400 hover:text-zinc-800 dark:hover:text-zinc-200 hover:bg-zinc-50 dark:hover:bg-zinc-900'
+                ? 'text-brand-700 dark:text-brand-400 bg-ink-50 font-medium border-b-2 border-b-brand-500'
+                : 'text-ink-500 hover:text-ink-900 hover:bg-ink-50'
             }`}
             onClick={() => setActiveId(nb.id)}
             onKeyDown={(e) => {
@@ -463,7 +466,7 @@ export default function QueryPage() {
                   if (e.key === 'Escape') setRenamingId(null)
                 }}
                 onClick={(e) => e.stopPropagation()}
-                className="bg-transparent outline-none border-b border-blue-400 w-24 text-sm"
+                className="bg-transparent outline-none border-b border-brand-500 w-24 text-body"
               />
             ) : (
               // biome-ignore lint/a11y/noStaticElementInteractions: double-click rename is a mouse shortcut; keyboard users press F2 on the focused tab
@@ -491,7 +494,7 @@ export default function QueryPage() {
                       setPageError(err instanceof Error ? err.message : t('errors.delete_notebook_failed'))
                     )
                 }}
-                className="opacity-0 group-hover:opacity-100 p-0.5 rounded hover:bg-zinc-200 dark:hover:bg-zinc-700 text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 transition-opacity"
+                className="opacity-0 group-hover:opacity-100 p-0.5 rounded hover:bg-ink-200 text-ink-400 hover:text-ink-700 transition-opacity duration-(--duration-base)"
               >
                 <X size={11} />
               </button>
@@ -503,7 +506,7 @@ export default function QueryPage() {
           onClick={createNotebook}
           disabled={!canCreate}
           title={canCreate ? t('notebook.new') : t('notebook.limit_reached')}
-          className="shrink-0 px-2.5 py-1.5 text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+          className="shrink-0 px-2.5 py-1.5 text-ink-400 hover:text-ink-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors duration-(--duration-base)"
         >
           <Plus size={14} />
         </button>
@@ -520,24 +523,22 @@ export default function QueryPage() {
         <div className={`flex ${layout === 'horizontal' ? 'flex-row' : 'flex-col'} flex-1 overflow-hidden`}>
           {/* SQL Editor */}
           <div
-            className={`flex flex-col ${layout === 'horizontal' ? 'border-r' : 'border-b'} border-zinc-200 dark:border-zinc-800`}
+            className={`flex flex-col ${layout === 'horizontal' ? 'border-r' : 'border-b'} border-ink-200`}
             style={
               layout === 'horizontal'
                 ? { width: `${editorPct}%`, minWidth: 200 }
                 : { height: `${editorPct}%`, minHeight: 120 }
             }
           >
-            <div className="flex items-center justify-between px-4 py-2 border-b border-zinc-200 dark:border-zinc-800 shrink-0">
-              <span className="text-xs font-medium text-zinc-500 uppercase tracking-wider">
-                {t('query.sql_editor')}
-              </span>
+            <div className="flex items-center justify-between px-4 py-2 border-b border-ink-200 shrink-0">
+              <span className="text-micro uppercase text-ink-500">{t('query.sql_editor')}</span>
               <div className="flex items-center gap-2">
                 {/* Layout toggle buttons */}
-                <div className="hidden sm:flex items-center gap-0.5 rounded-md border border-zinc-200 dark:border-zinc-700 p-0.5">
+                <div className="hidden sm:flex items-center gap-0.5 rounded-md border border-ink-200 p-0.5">
                   <button
                     type="button"
                     onClick={() => changeLayout('vertical')}
-                    className={`p-1 rounded transition-colors ${layout === 'vertical' ? 'bg-zinc-200 dark:bg-zinc-700 text-zinc-800 dark:text-zinc-200' : 'text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300'}`}
+                    className={`p-1 rounded transition-colors duration-(--duration-base) ${layout === 'vertical' ? 'bg-ink-200 text-ink-900' : 'text-ink-400 hover:text-ink-700'}`}
                     title={t('query.layout_vertical')}
                   >
                     <LayoutPanelTop size={13} />
@@ -545,18 +546,18 @@ export default function QueryPage() {
                   <button
                     type="button"
                     onClick={() => changeLayout('horizontal')}
-                    className={`p-1 rounded transition-colors ${layout === 'horizontal' ? 'bg-zinc-200 dark:bg-zinc-700 text-zinc-800 dark:text-zinc-200' : 'text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300'}`}
+                    className={`p-1 rounded transition-colors duration-(--duration-base) ${layout === 'horizontal' ? 'bg-ink-200 text-ink-900' : 'text-ink-400 hover:text-ink-700'}`}
                     title={t('query.layout_horizontal')}
                   >
                     <Columns2 size={13} />
                   </button>
                 </div>
                 {saveError && (
-                  <span className="text-xs text-amber-500" title={t('query.autosave_failed_desc')}>
+                  <span className="text-caption text-warning-600" title={t('query.autosave_failed_desc')}>
                     {t('query.autosave_failed')}
                   </span>
                 )}
-                <span className="text-xs text-zinc-400 dark:text-zinc-600 hidden sm:block">{t('query.shortcut')}</span>
+                <span className="text-caption text-ink-400 hidden sm:block tnum">{t('query.shortcut')}</span>
                 <button
                   type="button"
                   onClick={runQuery}
@@ -591,21 +592,21 @@ export default function QueryPage() {
 
           {/* Draggable divider */}
           <div
-            className={`${layout === 'horizontal' ? 'w-1.5 cursor-col-resize' : 'h-1.5 cursor-row-resize'} bg-zinc-200 dark:bg-zinc-800 hover:bg-blue-400 dark:hover:bg-blue-600 transition-colors shrink-0 touch-none`}
+            className={`${layout === 'horizontal' ? 'w-1.5 cursor-col-resize' : 'h-1.5 cursor-row-resize'} bg-ink-200 hover:bg-brand-400 transition-colors duration-(--duration-base) shrink-0 touch-none`}
             onPointerDown={onDividerPointerDown}
           />
 
           {/* Results */}
           <div className="flex-1 overflow-hidden flex flex-col">
             {(pageError || notebooksLoadError) && (
-              <div className="mx-4 mt-4 flex items-start gap-2 p-3 bg-red-500/10 border border-red-500/20 rounded-xl shrink-0">
-                <AlertCircle size={16} className="text-red-400 shrink-0 mt-0.5" />
-                <p className="flex-1 text-sm text-red-400">{pageError || t('errors.load_notebooks_failed')}</p>
+              <div className="mx-4 mt-4 flex items-start gap-2 p-3 bg-danger-50 border border-danger-200 rounded-lg shrink-0">
+                <AlertCircle size={16} className="text-danger-600 shrink-0 mt-0.5" />
+                <p className="flex-1 text-body text-danger-600">{pageError || t('errors.load_notebooks_failed')}</p>
                 {pageError && (
                   <button
                     type="button"
                     onClick={() => setPageError('')}
-                    className="p-0.5 rounded text-red-400 hover:bg-red-500/10"
+                    className="p-0.5 rounded text-danger-600 hover:bg-danger-100 transition-colors duration-(--duration-base)"
                     title={t('common.dismiss')}
                     aria-label={t('common.dismiss')}
                   >
@@ -615,17 +616,17 @@ export default function QueryPage() {
               </div>
             )}
             {running && (
-              <div className="flex items-center justify-center h-full gap-2 text-zinc-500">
+              <div className="flex items-center justify-center h-full gap-2 text-ink-500">
                 <Loader2 size={18} className="animate-spin" />
-                <span className="text-sm">{t('query.running')}</span>
+                <span className="text-body">{t('query.running')}</span>
               </div>
             )}
             {!running && runError && (
-              <div className="m-4 flex items-start gap-3 p-4 bg-red-500/10 border border-red-500/20 rounded-xl">
-                <AlertCircle size={18} className="text-red-400 shrink-0 mt-0.5" />
+              <div className="m-4 flex items-start gap-3 p-4 bg-danger-50 border border-danger-200 rounded-lg">
+                <AlertCircle size={18} className="text-danger-600 shrink-0 mt-0.5" />
                 <div>
-                  <p className="text-sm font-medium text-red-400 mb-1">{t('query.error')}</p>
-                  <pre className="text-xs text-red-300 whitespace-pre-wrap font-mono">{runError}</pre>
+                  <p className="text-body-strong text-danger-600 mb-1">{t('query.error')}</p>
+                  <pre className="text-caption text-danger-700 whitespace-pre-wrap font-mono">{runError}</pre>
                 </div>
               </div>
             )}
@@ -651,7 +652,7 @@ export default function QueryPage() {
               </div>
             )}
             {!running && !runError && !transient && selectedResults && selectedResults.status !== 'ready' && (
-              <div className="flex items-center justify-center flex-1 gap-2 px-4 text-center text-sm text-zinc-400 dark:text-zinc-600">
+              <div className="flex items-center justify-center flex-1 gap-2 px-4 text-center text-body text-ink-400">
                 {selectedResults.status === 'loading' && <Loader2 size={16} className="animate-spin" />}
                 {selectedResults.status === 'loading'
                   ? t('runs.loading')
@@ -661,7 +662,7 @@ export default function QueryPage() {
               </div>
             )}
             {!running && !runError && !transient && !selectedRun && (
-              <div className="flex items-center justify-center h-full text-zinc-400 dark:text-zinc-600 text-sm">
+              <div className="flex items-center justify-center h-full text-ink-400 text-body">
                 {runs.loading ? t('common.loading') : runs.loadError ? t('runs.list_failed') : t('query.no_results')}
               </div>
             )}
@@ -670,7 +671,7 @@ export default function QueryPage() {
       </div>
 
       {/* Mobile bottom bar */}
-      <div className="sm:hidden fixed bottom-0 left-0 right-0 z-10 flex items-center gap-2 px-3 py-2 bg-white dark:bg-zinc-900 border-t border-zinc-200 dark:border-zinc-800">
+      <div className="sm:hidden fixed bottom-0 left-0 right-0 z-(--z-sticky-bar) flex items-center gap-2 px-3 py-2 bg-ink-0 border-t border-ink-200">
         {/* DB selector */}
         <div className="relative flex-1" ref={dbMenuRef}>
           <button
@@ -678,14 +679,13 @@ export default function QueryPage() {
             onClick={() => {
               setShowDbMenu(!showDbMenu)
             }}
-            className="w-full flex items-center gap-1.5 px-3 py-2 rounded-lg bg-zinc-100 border border-zinc-200 text-sm text-zinc-700 dark:bg-zinc-800 dark:border-zinc-700 dark:text-zinc-200 transition-colors"
+            className="w-full flex items-center gap-1.5 px-3 py-2 rounded-md bg-ink-100 border border-ink-200 text-body-strong text-ink-700 transition-colors duration-(--duration-base)"
           >
-            <Database size={13} className="text-zinc-400 shrink-0" />
             <span className="truncate flex-1 text-left">{selectedDb?.name ?? t('query.select_db')}</span>
-            <ChevronDown size={13} className="text-zinc-500 shrink-0" />
+            <ChevronDown size={13} className="text-ink-400 shrink-0" />
           </button>
           {showDbMenu && (
-            <div className="absolute left-0 bottom-full mb-1 w-56 bg-white border border-zinc-200 dark:bg-zinc-900 dark:border-zinc-700 rounded-xl shadow-xl z-20 overflow-hidden">
+            <div className="absolute left-0 bottom-full mb-1 w-56 bg-ink-0 border border-ink-200 rounded-lg shadow-md z-(--z-dropdown) overflow-hidden">
               {databases.map((db) => (
                 <button
                   type="button"
@@ -694,7 +694,7 @@ export default function QueryPage() {
                     if (activeId) updateDatabase(activeId, db.id)
                     setShowDbMenu(false)
                   }}
-                  className={`w-full text-left px-4 py-2.5 text-sm hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors ${selectedDb?.id === db.id ? 'text-blue-500' : 'text-zinc-700 dark:text-zinc-200'}`}
+                  className={`w-full text-left px-4 py-2.5 text-body hover:bg-ink-100 transition-colors duration-(--duration-base) ${selectedDb?.id === db.id ? 'text-brand-600 dark:text-brand-400 font-medium' : 'text-ink-700'}`}
                 >
                   {db.name}
                 </button>
