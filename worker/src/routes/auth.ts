@@ -133,6 +133,18 @@ auth.post('/register', async (c) => {
   return c.json({ message: 'Registered. Please verify your email.' }, 201)
 })
 
+// ── GET /api/auth/register-status ─────────────────────────────────────────────
+
+auth.get('/register-status', async (c) => {
+  const T = tables(c.env)
+  const regEnabled = await getSetting(c.env, 'registration_enabled')
+  if (regEnabled === 'false') {
+    const anyUser = await c.env.DB.prepare(`SELECT 1 FROM ${T.users} LIMIT 1`).first()
+    if (anyUser) return c.json({ enabled: false })
+  }
+  return c.json({ enabled: true })
+})
+
 // ── GET /api/auth/verify-email ────────────────────────────────────────────────
 
 auth.get('/verify-email', async (c) => {

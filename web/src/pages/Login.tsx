@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { Eye, EyeOff, Globe } from 'lucide-react'
 import { authApi } from '../lib/api'
@@ -18,6 +18,20 @@ export default function Login() {
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
   const [pending, setPending] = useState<{ pendingToken: string } | null>(null)
+  const [registrationEnabled, setRegistrationEnabled] = useState(false)
+
+  useEffect(() => {
+    let active = true
+    authApi
+      .registerStatus()
+      .then((r) => {
+        if (active) setRegistrationEnabled(r.enabled)
+      })
+      .catch(() => {})
+    return () => {
+      active = false
+    }
+  }, [])
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -118,12 +132,14 @@ export default function Login() {
             >
               {t('auth.forgot_password')}
             </Link>
-            <Link
-              to="/register"
-              className="text-brand-600 hover:text-brand-700 dark:text-brand-400 dark:hover:text-brand-300 transition-colors duration-(--duration-base)"
-            >
-              {t('auth.create_account')}
-            </Link>
+            {registrationEnabled && (
+              <Link
+                to="/register"
+                className="text-brand-600 hover:text-brand-700 dark:text-brand-400 dark:hover:text-brand-300 transition-colors duration-(--duration-base)"
+              >
+                {t('auth.create_account')}
+              </Link>
+            )}
           </div>
         </div>
       </div>
