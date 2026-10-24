@@ -95,6 +95,11 @@ export function fakeEnv(overrides: Partial<Env> = {}): Env {
     ENCRYPTION_KEY: 'ab'.repeat(32),
     SETUP_SECRET: 'test-setup-secret',
     APP_URL: 'http://localhost:8787',
+    // The three-state contract resolves an unset TABLE_PREFIX to the default `zeta_` prefix.
+    // Most tests model an explicitly-unprefixed deployment instead (a still-supported state) so
+    // their SQL expectations stay meaningful; the default state gets dedicated coverage in
+    // db.test.ts and the prefix-guard tests.
+    TABLE_PREFIX: '',
     ...overrides,
   } as Env
 }
