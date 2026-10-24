@@ -117,11 +117,13 @@
 | 名称 | 值 |
 |------|----|
 | `APP_URL` | 你的 Worker 地址，例如 `https://zeta.yourname.workers.dev` 或自定义域名。请填写用户实际访问的 `https://` 地址：它是 CORS 唯一允许的来源、Passkey 的 RP ID、邮件链接的前缀，也是所有登录令牌的签发方/受众（之后修改会让所有用户重新登录） |
-| `TABLE_PREFIX` | *（可选）* 所有内部 D1 表的前缀，例如 `kp` → 表名变为 `kp_users`、`kp_settings` 等。必须在**调用 setup 接口之前**设置，初始化后不可更改。 |
+| `TABLE_PREFIX` | *（可选）* 所有内部 D1 表的前缀。三态：**未设置** → 默认前缀 `zeta`（`zeta_users`、`zeta_settings` 等）；**设为某个值** → 原样使用该值（大小写保留）并自动补尾 `_`（`kp` → `kp_users`，`ZETA` → `ZETA_users`；非法字符会报错）；**设为空字符串** → 不带前缀（由你自行承担表名冲突风险）。必须在**调用 setup 接口之前**定好，初始化后不可更改。 |
 
 > `CF_ACCOUNT_ID` 与 `ZETA_APP_DB_ID` 会在部署时由 GitHub Variables `CLOUDFLARE_ACCOUNT_ID`、`D1_DATABASE_ID` 自动注入，**不要在这里手动设置**。你只需要配置上面的 `CF_D1_API_TOKEN`。
 
 > 以上配置完全隔离于 GitHub。`wrangler.toml` 中的 `keep_vars = true` 确保每次部署不会覆盖你在此处设置的值。
+
+> **升级警告：** 从未设置过 `TABLE_PREFIX` 的老部署，在三态改造前使用的是**无前缀**表名（如 `users`、`settings`）。升级后，未设置的前缀会解析为默认值 `zeta`，指向另一套表。升级前请显式设置 `TABLE_PREFIX` 以保留现有表——设为空字符串可保留旧的无前缀表——或依赖启动/setup 的防静默切换守卫（它会中止并报错，而不是静默切换前缀）。如果你共享 D1 数据库，请注意：Zeta 的迁移与守卫只对照 Zeta 自己的表族，绝不会触碰其他项目的表（`SL_*`、`eNotify_*`、`TP_*`、`YL_*`、`TEMP_*` 等）。
 
 ---
 
@@ -297,9 +299,11 @@ git config blame.ignoreRevsFile .git-blame-ignore-revs
 | `SETUP_SECRET` | 密钥 | 保护 `POST /api/setup` 初始化端点 |
 | `CF_D1_API_TOKEN` | 密钥 | 拥有 `D1 → Edit` 权限的 API Token — 列出并查询后台添加的 D1 数据库 |
 | `APP_URL` | 变量 | 部署的完整 URL，例如 `https://zeta.example.com`；同时作为 JWT 的 `iss`/`aud`，其他共用 `JWT_SECRET` 的部署签发的令牌会被拒绝 |
-| `TABLE_PREFIX` | 变量 | *（可选）* 内部表名前缀（例如 `kp`）。首次 setup 前设置，初始化后不可更改。 |
+| `TABLE_PREFIX` | 变量 | *（可选）* 内部表名前缀。三态：**未设置** → 默认前缀 `zeta`；**设为某个值** → 原样使用该值（大小写保留）并补尾 `_`（`kp` → `kp_users`，`ZETA` → `ZETA_users`）；**设为空字符串** → 不带前缀。首次 setup 前设置，初始化后不可更改。 |
 
 `CF_ACCOUNT_ID` 与 `ZETA_APP_DB_ID` 不在此处设置：`wrangler.toml` 的 `[vars]` 会在部署时从 GitHub Variables `CLOUDFLARE_ACCOUNT_ID`、`D1_DATABASE_ID` 自动注入。
+
+**升级警告：** 从未设置过 `TABLE_PREFIX` 的老部署，在三态改造前使用的是**无前缀**表名（如 `users`、`settings`）。升级后，未设置的前缀会解析为默认值 `zeta`，指向另一套表。升级前请显式设置 `TABLE_PREFIX` 以保留现有表（设为空字符串可保留旧的无前缀表），或依赖启动/setup 的防静默切换守卫——它会中止并报错，而不是静默切换前缀。在共享 D1 数据库中，Zeta 的迁移与守卫只对照 Zeta 自己的表族，绝不会触碰其他项目的表（`SL_*`、`eNotify_*`、`TP_*`、`YL_*`、`TEMP_*` 等）。
 
 ---
 
