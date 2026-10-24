@@ -125,6 +125,8 @@ export default function AdminDatabases() {
 
   async function fetchPermissions(db: AdminDatabase) {
     setSelectedDb(db)
+    // write_drop is never offered for the app database; clamp any stale selection.
+    if (db.is_app_db && permLevel === 'write_drop') setPermLevel('write')
     const [perms, users] = await Promise.all([adminApi.getPermissions(db.id), adminApi.users({ limit: 200 })])
     setPermissions(perms.results)
     setAllUsers(users.results.map((u) => ({ id: u.id, email: u.email, name: u.name })))
@@ -150,6 +152,11 @@ export default function AdminDatabases() {
   }
 
   const availableOptions = available.filter((d) => !d.added)
+  // Whether the currently picked add/link target is Zeta's own application database.
+  const newDbIsApp = newDb.cf_database_id
+    ? available.some((d) => d.uuid === newDb.cf_database_id && d.is_app_db)
+    : false
+  const linkIsApp = linkCfId ? available.some((d) => d.uuid === linkCfId && d.is_app_db) : false
 
   return (
     <div className="p-4 sm:p-6 max-w-5xl flex flex-col gap-6">
@@ -182,7 +189,7 @@ export default function AdminDatabases() {
                   <option value="">{t('admin_db.select_database')}</option>
                   {availableOptions.map((d) => (
                     <option key={d.uuid} value={d.uuid}>
-                      {d.name} ({d.uuid})
+                      {d.name} ({d.uuid}){d.is_app_db ? ` — ${t('admin_db.app_db_badge')}` : ''}
                     </option>
                   ))}
                 </select>
@@ -194,6 +201,12 @@ export default function AdminDatabases() {
               </div>
               {availableOptions.length === 0 && (
                 <p className="mt-1 text-caption text-ink-500">{t('admin_db.no_available')}</p>
+              )}
+              {newDbIsApp && (
+                <p className="mt-2 flex items-center gap-2 text-caption text-warning-600">
+                  <span className="badge badge-brand">{t('admin_db.app_db_badge')}</span>
+                  <span>{t('admin_db.app_db_warning')}</span>
+                </p>
               )}
             </div>
             <div>
@@ -246,10 +259,16 @@ export default function AdminDatabases() {
             <option value="">{t('admin_db.select_database')}</option>
             {availableOptions.map((d) => (
               <option key={d.uuid} value={d.uuid}>
-                {d.name} ({d.uuid})
+                {d.name} ({d.uuid}){d.is_app_db ? ` — ${t('admin_db.app_db_badge')}` : ''}
               </option>
             ))}
           </select>
+          {linkIsApp && (
+            <p className="mt-2 flex items-center gap-2 text-caption text-warning-600">
+              <span className="badge badge-brand">{t('admin_db.app_db_badge')}</span>
+              <span>{t('admin_db.app_db_warning')}</span>
+            </p>
+          )}
           {linkError && <p className="text-body text-danger-600">{linkError}</p>}
           <div className="flex gap-3">
             <button type="button" onClick={() => setLinking(null)} className="btn-secondary">
@@ -287,7 +306,10 @@ export default function AdminDatabases() {
                   className="border-b border-ink-100 hover:bg-ink-50 transition-colors duration-(--duration-base)"
                 >
                   <td className="px-4 py-3">
-                    <p className="text-body-strong text-ink-900">{db.name}</p>
+                    <p className="flex items-center gap-2 text-body-strong text-ink-900">
+                      {db.name}
+                      {db.is_app_db && <span className="badge badge-brand">{t('admin_db.app_db_badge')}</span>}
+                    </p>
                     {db.description && <p className="text-caption text-ink-500">{db.description}</p>}
                   </td>
                   <td className="px-4 py-3 hidden md:table-cell">
@@ -348,10 +370,14 @@ export default function AdminDatabases() {
       {/* Permissions panel */}
       {selectedDb && (
         <div className="card p-5">
-          <h2 className="text-heading text-ink-900 mb-4">
-            {t('admin_db.permissions_for')} <span className="text-ink-700 font-medium">{selectedDb.name}</span>
+          <h2 className="text-heading text-ink-900 mb-4 flex flex-wrap items-center gap-2">
+            <span>
+              {t('admin_db.permissions_for')} <span className="text-ink-700 font-medium">{selectedDb.name}</span>
+            </span>
+            {selectedDb.is_app_db && <span className="badge badge-brand">{t('admin_db.app_db_badge')}</span>}
           </h2>
           <p className="text-caption text-ink-500 mb-4">{t('admin_db.perm_note')}</p>
+          {selectedDb.is_app_db && <p className="mb-4 text-caption text-warning-600">{t('admin_db.app_db_warning')}</p>}
 
           {/* Grant form */}
           <div className="flex gap-2 mb-4 flex-wrap">
@@ -372,7 +398,7 @@ export default function AdminDatabases() {
             <select value={permLevel} onChange={(e) => setPermLevel(e.target.value)} className="input w-52">
               <option value="read">{t('admin_db.perm_read')}</option>
               <option value="write">{t('admin_db.perm_write')}</option>
-              <option value="write_drop">{t('admin_db.perm_write_drop')}</option>
+              {!selectedDb.is_app_db && <option value="write_drop">{t('admin_db.perm_write_drop')}</option>}
             </select>
             <button type="button" onClick={grantPerm} disabled={!permUserId} className="btn-primary btn-sm">
               {t('admin_db.grant')}

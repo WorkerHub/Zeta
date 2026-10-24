@@ -319,7 +319,10 @@ export default function QueryPage() {
                       selectedDb?.id === db.id ? 'text-brand-600 dark:text-brand-400 font-medium' : 'text-ink-700'
                     }`}
                   >
-                    {db.name}
+                    <span className="flex items-center gap-2">
+                      {db.name}
+                      {db.is_app_db && <span className="badge badge-brand">{t('admin_db.app_db_badge')}</span>}
+                    </span>
                   </button>
                 ))
               )}
@@ -693,7 +696,10 @@ export default function QueryPage() {
                   }}
                   className={`w-full text-left px-4 py-2.5 text-body hover:bg-ink-100 transition-colors duration-(--duration-base) ${selectedDb?.id === db.id ? 'text-brand-600 dark:text-brand-400 font-medium' : 'text-ink-700'}`}
                 >
-                  {db.name}
+                  <span className="flex items-center gap-2">
+                    {db.name}
+                    {db.is_app_db && <span className="badge badge-brand">{t('admin_db.app_db_badge')}</span>}
+                  </span>
                 </button>
               ))}
             </div>
