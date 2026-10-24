@@ -115,6 +115,8 @@ async function doRefresh(): Promise<boolean> {
 // ── Auth endpoints ─────────────────────────────────────────────────────────────
 
 export const authApi = {
+  registerStatus: () => apiFetch<{ enabled: boolean }>('/auth/register-status'),
+
   register: (body: { email: string; password: string; name: string }) =>
     apiFetch<{ message: string }>('/auth/register', { method: 'POST', body: JSON.stringify(body) }),
 

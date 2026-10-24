@@ -17,6 +17,29 @@ function registerEnv(opts: { registration: string | null; hasUsers: boolean }) {
 const signup = { email: 'new@example.com', password: 'long enough', name: 'New' }
 const inserted = (calls: { sql: string }[]) => calls.some((c) => c.sql.startsWith('INSERT INTO users'))
 
+describe('GET /api/auth/register-status', () => {
+  it('reports registration as disabled when it is closed and users exist', async () => {
+    const { env } = registerEnv({ registration: 'false', hasUsers: true })
+    const res = await callWorker(env, '/api/auth/register-status')
+    expect(res.status).toBe(200)
+    await expect(res.json()).resolves.toEqual({ enabled: false })
+  })
+
+  it('allows the first account while registration is closed', async () => {
+    const { env } = registerEnv({ registration: 'false', hasUsers: false })
+    const res = await callWorker(env, '/api/auth/register-status')
+    expect(res.status).toBe(200)
+    await expect(res.json()).resolves.toEqual({ enabled: true })
+  })
+
+  it('reports registration as enabled when it is open', async () => {
+    const { env } = registerEnv({ registration: 'true', hasUsers: true })
+    const res = await callWorker(env, '/api/auth/register-status')
+    expect(res.status).toBe(200)
+    await expect(res.json()).resolves.toEqual({ enabled: true })
+  })
+})
+
 describe('POST /api/auth/register', () => {
   it('lets the first account register even though registration is closed by default', async () => {
     const { env, calls } = registerEnv({ registration: 'false', hasUsers: false })
