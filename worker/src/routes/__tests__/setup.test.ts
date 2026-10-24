@@ -12,6 +12,27 @@ describe('setup endpoint', () => {
     expect(calls.some((c) => c.sql.includes('CREATE TABLE IF NOT EXISTS rate_limits'))).toBe(true)
   })
 
+  it('initialises under the default zeta_ prefix and reports it when TABLE_PREFIX is unset', async () => {
+    const { db, calls } = fakeD1()
+    const res = await callWorker(
+      fakeEnv({ DB: db, TABLE_PREFIX: undefined }),
+      '/api/setup',
+      postJson({ secret: 'test-setup-secret' })
+    )
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as Record<string, unknown>
+    expect(body).toMatchObject({ ok: true, tablePrefix: 'zeta_' })
+    expect(typeof body.message === 'string' && body.message.includes('zeta_')).toBe(true)
+    expect(calls.some((c) => c.sql.includes('CREATE TABLE IF NOT EXISTS zeta_users'))).toBe(true)
+    expect(calls.some((c) => c.sql.includes('INSERT OR IGNORE INTO zeta_settings'))).toBe(true)
+    expect(calls.some((c) => c.sql.includes('CREATE TABLE IF NOT EXISTS zeta_rate_limits'))).toBe(true)
+    // The schema inspection of the anti-silent-switch guard runs before any DDL
+    const guardIdx = calls.findIndex((c) => c.sql === "SELECT name FROM sqlite_master WHERE type = 'table'")
+    const ddlIdx = calls.findIndex((c) => c.sql.includes('CREATE TABLE IF NOT EXISTS zeta_users'))
+    expect(guardIdx).toBeGreaterThan(-1)
+    expect(ddlIdx).toBeGreaterThan(guardIdx)
+  })
+
   it('seeds registration as closed (the first account can still register)', async () => {
     const { db, calls } = fakeD1()
     await callWorker(fakeEnv({ DB: db }), '/api/setup', postJson({ secret: 'test-setup-secret' }))
@@ -106,6 +127,13 @@ describe('setup endpoint', () => {
       const res = await callWorker(fakeEnv({ DB: db }), '/api/setup/state')
       expect(res.status).toBe(200)
       expect(await res.json()).toEqual({ enabled: true })
+    })
+
+    it('reads the settings table under the default prefix when TABLE_PREFIX is unset', async () => {
+      const { db, calls } = fakeD1(() => null)
+      const res = await callWorker(fakeEnv({ DB: db, TABLE_PREFIX: undefined }), '/api/setup/state')
+      expect(res.status).toBe(200)
+      expect(calls.some((c) => c.sql.includes('FROM zeta_settings'))).toBe(true)
     })
 
     it('reflects the toggle: 0 → false, 1 → true (not swallowed by the 405 fallback)', async () => {

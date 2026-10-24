@@ -3,7 +3,9 @@ import { sealSecret, openSecret, isEncryptedSecret, sealLegacySecret } from '../
 import type { Env } from '../../types'
 import { fakeD1 } from '../../routes/__tests__/fakes'
 
-const env = { ENCRYPTION_KEY: 'ab'.repeat(32) } as Env
+// An explicitly-unprefixed deployment (TABLE_PREFIX set to the empty string): the SQL this test
+// asserts on is generated for that state.
+const env = { ENCRYPTION_KEY: 'ab'.repeat(32), TABLE_PREFIX: '' } as Env
 
 describe('secrets', () => {
   it('round-trips and does not store plaintext', async () => {
