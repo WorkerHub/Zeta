@@ -1,8 +1,201 @@
 @import "tailwindcss";
 
+/*
+ * Zeta Design System token layer (frozen contract: docs/design-system.md §2).
+ * `@theme` is the single source of tokens; dark theme overrides the same CSS
+ * variables under `.dark`. Components must never use bare hex / hsl().
+ */
 @theme {
-  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
-  --font-mono: "JetBrains Mono", ui-monospace, monospace;
+  /* §2.4 Font families */
+  --font-sans: "Inter", ui-sans-serif, system-ui, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei",
+    "Noto Sans CJK SC", sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  /* §2.1 Brand (terracotta) — actions / selection / focus only */
+  --color-brand-50: #fbf3ef;
+  --color-brand-100: #f6e4db;
+  --color-brand-200: #efc9b8;
+  --color-brand-300: #e5a98f;
+  --color-brand-400: #dd8a6c;
+  --color-brand-500: #d97757;
+  --color-brand-600: #c25e3f;
+  --color-brand-700: #a34b30;
+  --color-brand-800: #7e3a25;
+  --color-brand-900: #5c2b1c;
+
+  /* §2.2 Warm neutrals (light values; dark overrides below) */
+  --color-ink-0: #ffffff;
+  --color-ink-50: #f7f5f2;
+  --color-ink-100: #f0ece8;
+  --color-ink-200: #e6e1dc;
+  --color-ink-300: #d3ccc5;
+  --color-ink-400: #a29a93;
+  --color-ink-500: #7a706a;
+  --color-ink-700: #4a423c;
+  --color-ink-900: #2e2824;
+  --color-ink-950: #1c1815;
+
+  /* §2.3 Functional / status colors (light values) */
+  --color-success-50: #e4f4ec;
+  --color-success-100: #cce9da;
+  --color-success-200: #9fd4bb;
+  --color-success-500: #1d9d63;
+  --color-success-600: #0f7b4d;
+  --color-success-700: #0b5f3c;
+
+  --color-warning-50: #faf0db;
+  --color-warning-100: #f5e3bd;
+  --color-warning-200: #eccd85;
+  --color-warning-500: #c0860d;
+  --color-warning-600: #96650a;
+  --color-warning-700: #744e08;
+
+  --color-danger-50: #fae8e7;
+  --color-danger-100: #f6d2d0;
+  --color-danger-200: #efa9a5;
+  --color-danger-500: #d43a31;
+  --color-danger-600: #b3261e;
+  --color-danger-700: #8c1d17;
+
+  --color-info-50: #eaeffc;
+  --color-info-100: #d7e1f8;
+  --color-info-200: #b2c3f0;
+  --color-info-500: #5473b8;
+  --color-info-600: #3d5a99;
+  --color-info-700: #304779;
+
+  /* §2.5 Type scale (size / line-height / weight / letter-spacing) */
+  --text-display: 2rem;
+  --text-display--line-height: 1.15;
+  --text-display--font-weight: 700;
+  --text-display--letter-spacing: -0.02em;
+  --text-title: 1.5rem;
+  --text-title--line-height: 1.2;
+  --text-title--font-weight: 600; /* contract 650; Inter variable weight unavailable, falls back to 600 */
+  --text-title--letter-spacing: -0.015em;
+  --text-heading: 1.125rem;
+  --text-heading--line-height: 1.3;
+  --text-heading--font-weight: 600;
+  --text-heading--letter-spacing: -0.01em;
+  --text-body: 0.875rem;
+  --text-body--line-height: 1.55;
+  --text-body--font-weight: 400;
+  --text-body--letter-spacing: 0;
+  --text-body-strong: 0.875rem;
+  --text-body-strong--line-height: 1.55;
+  --text-body-strong--font-weight: 500;
+  --text-body-strong--letter-spacing: 0;
+  --text-label: 0.8125rem;
+  --text-label--line-height: 1.4;
+  --text-label--font-weight: 500;
+  --text-label--letter-spacing: 0.01em;
+  --text-caption: 0.75rem;
+  --text-caption--line-height: 1.4;
+  --text-caption--font-weight: 400;
+  --text-caption--letter-spacing: 0.01em;
+  --text-micro: 0.6875rem;
+  --text-micro--line-height: 1.3;
+  --text-micro--font-weight: 500;
+  --text-micro--letter-spacing: 0.04em;
+
+  /* §2.6 Radius */
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+
+  /* §2.6 Shadows (light; dark doubles opacity below) */
+  --shadow-xs: 0 1px 2px rgb(28 24 21 / 0.05);
+  --shadow-sm:
+    0 1px 3px rgb(28 24 21 / 0.07),
+    0 1px 2px rgb(28 24 21 / 0.04);
+  --shadow-md:
+    0 4px 12px -2px rgb(28 24 21 / 0.1),
+    0 2px 6px -2px rgb(28 24 21 / 0.06);
+  --shadow-lg:
+    0 12px 32px -8px rgb(28 24 21 / 0.16),
+    0 4px 12px -4px rgb(28 24 21 / 0.08);
+
+  /* §2.6 Easing & duration */
+  --ease-standard: cubic-bezier(0.2, 0, 0, 1);
+  --ease-enter: cubic-bezier(0, 0, 0, 1);
+  --ease-exit: cubic-bezier(0.4, 0, 1, 1);
+  --duration-fast: 100ms;
+  --duration-base: 150ms;
+  --duration-slow: 250ms;
+  --duration-slower: 400ms;
+
+  /* §2.7 z-index ladder */
+  --z-dropdown: 30;
+  --z-sticky-bar: 40;
+  --z-drawer: 50;
+  --z-modal: 60;
+  --z-toast: 70;
+}
+
+/* Dark theme: same tokens, warm-dark values (§2.1/§2.2/§2.3 dark columns) */
+.dark {
+  --color-brand-50: #2a1a14;
+  --color-brand-100: #3a241b;
+  --color-brand-200: #57352a;
+  --color-brand-300: #7a4a38;
+  --color-brand-400: #c9714f;
+  --color-brand-500: #d97757;
+  --color-brand-600: #e08a68;
+  --color-brand-700: #eba183;
+  --color-brand-800: #f3bca4;
+  --color-brand-900: #fad7c5;
+
+  --color-ink-0: #191512;
+  --color-ink-50: #211d1a;
+  --color-ink-100: #2a2622;
+  --color-ink-200: #37322d;
+  --color-ink-300: #4a433d;
+  --color-ink-400: #6e655e;
+  --color-ink-500: #948a82;
+  --color-ink-700: #c4bbb3;
+  --color-ink-900: #e8e3de;
+  --color-ink-950: #f5f2ef;
+
+  --color-success-50: #122b20;
+  --color-success-100: #173826;
+  --color-success-200: #1f5136;
+  --color-success-500: #35b379;
+  --color-success-600: #4ec98e;
+  --color-success-700: #7adcae;
+
+  --color-warning-50: #2e2410;
+  --color-warning-100: #3c2f14;
+  --color-warning-200: #5c4a1f;
+  --color-warning-500: #d0a02f;
+  --color-warning-600: #e3b341;
+  --color-warning-700: #efc96f;
+
+  --color-danger-50: #331514;
+  --color-danger-100: #441b19;
+  --color-danger-200: #662722;
+  --color-danger-500: #e56f67;
+  --color-danger-600: #f0877f;
+  --color-danger-700: #f7a9a3;
+
+  --color-info-50: #171e33;
+  --color-info-100: #1d2742;
+  --color-info-200: #2a3760;
+  --color-info-500: #7c95da;
+  --color-info-600: #8fa8e8;
+  --color-info-700: #b1c1f1;
+
+  /* Dark shadows: opacity ×1.8 (§2.6) */
+  --shadow-xs: 0 1px 2px rgb(0 0 0 / 0.09);
+  --shadow-sm:
+    0 1px 3px rgb(0 0 0 / 0.13),
+    0 1px 2px rgb(0 0 0 / 0.07);
+  --shadow-md:
+    0 4px 12px -2px rgb(0 0 0 / 0.18),
+    0 2px 6px -2px rgb(0 0 0 / 0.11);
+  --shadow-lg:
+    0 12px 32px -8px rgb(0 0 0 / 0.29),
+    0 4px 12px -4px rgb(0 0 0 / 0.14);
 }
 
 @custom-variant dark (&:where(.dark, .dark *));
@@ -10,6 +203,9 @@
 @layer base {
   * {
     box-sizing: border-box;
+  }
+  body {
+    text-rendering: optimizeLegibility;
   }
   ::-webkit-scrollbar {
     width: 6px;
@@ -19,115 +215,140 @@
     background: transparent;
   }
   ::-webkit-scrollbar-thumb {
-    @apply bg-zinc-300 rounded-full dark:bg-zinc-700;
+    @apply bg-ink-300 rounded-full;
   }
   ::-webkit-scrollbar-thumb:hover {
-    @apply bg-zinc-400 dark:bg-zinc-600;
+    @apply bg-ink-400;
+  }
+  /* §2.6 motion: reduced-motion fallback — motion becomes opacity crossfade only.
+     !important is intentional: this media query must override every other rule. */
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      /* biome-ignore lint/complexity/noImportantStyles: reduced-motion must override all animations */
+      animation-duration: 1ms !important;
+      /* biome-ignore lint/complexity/noImportantStyles: reduced-motion must override all transitions */
+      transition-duration: 1ms !important;
+      /* biome-ignore lint/complexity/noImportantStyles: keep only opacity transitions */
+      transition-property: opacity !important;
+      /* biome-ignore lint/complexity/noImportantStyles: disable smooth scrolling */
+      scroll-behavior: auto !important;
+    }
   }
 }
 
-/* CodeMirror light mode: override default gray foreground with near-black */
+@layer utilities {
+  /* §2.4: tabular numbers for dense numeric content */
+  .tnum {
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: "tnum";
+  }
+}
+
+/* CodeMirror light mode: tokenized overrides (§0 audit — no bare hex) */
 :root:not(.dark) .cm-editor .cm-content,
 :root:not(.dark) .cm-editor .cm-line {
-  color: #18181b;
+  color: var(--color-ink-950);
 }
 :root:not(.dark) .cm-editor .cm-gutters {
-  background-color: #fafafa;
-  color: #a1a1aa;
-  border-right: 1px solid #e4e4e7;
+  background-color: var(--color-ink-50);
+  color: var(--color-ink-400);
+  border-right: 1px solid var(--color-ink-200);
 }
 :root:not(.dark) .cm-editor .cm-activeLineGutter {
-  background-color: #f4f4f5;
+  background-color: var(--color-ink-100);
 }
 
 @layer components {
+  /* Shared button base — repeated per variant because Tailwind v4 @apply
+     cannot inline custom component classes. Focus ring (§3.1): ring-2 brand + offset. */
   .btn {
-    @apply inline-flex items-center justify-center gap-2 px-4 py-2 rounded-lg font-medium text-sm transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-white dark:focus-visible:ring-offset-zinc-950 disabled:opacity-50 disabled:cursor-not-allowed;
+    @apply inline-flex items-center justify-center gap-2 px-4 py-2 rounded-md text-body-strong transition-colors duration-(--duration-base) ease-(--ease-standard) focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-600 dark:focus-visible:ring-brand-400 focus-visible:ring-offset-2 focus-visible:ring-offset-ink-0 dark:focus-visible:ring-offset-ink-50 disabled:opacity-50 disabled:cursor-not-allowed;
   }
   .btn-primary {
-    @apply inline-flex items-center justify-center gap-2 px-4 py-2 rounded-lg font-medium text-sm transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-white dark:focus-visible:ring-offset-zinc-950 disabled:opacity-50 disabled:cursor-not-allowed bg-blue-600 hover:bg-blue-500 text-white focus-visible:ring-blue-500;
+    @apply inline-flex items-center justify-center gap-2 px-4 py-2 rounded-md text-body-strong transition-colors duration-(--duration-base) ease-(--ease-standard) focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-600 dark:focus-visible:ring-brand-400 focus-visible:ring-offset-2 focus-visible:ring-offset-ink-0 dark:focus-visible:ring-offset-ink-50 disabled:opacity-50 disabled:cursor-not-allowed bg-brand-600 hover:bg-brand-500 active:bg-brand-700 text-white shadow-xs dark:bg-brand-400 dark:text-ink-950 dark:hover:bg-brand-500 dark:active:bg-brand-300;
   }
   .btn-secondary {
-    @apply inline-flex items-center justify-center gap-2 px-4 py-2 rounded-lg font-medium text-sm transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-white dark:focus-visible:ring-offset-zinc-950 disabled:opacity-50 disabled:cursor-not-allowed bg-zinc-100 hover:bg-zinc-200 text-zinc-800 border border-zinc-200 focus-visible:ring-zinc-400 dark:bg-zinc-800 dark:hover:bg-zinc-700 dark:text-zinc-200 dark:border-zinc-700 dark:focus-visible:ring-zinc-500;
+    @apply inline-flex items-center justify-center gap-2 px-4 py-2 rounded-md text-body-strong transition-colors duration-(--duration-base) ease-(--ease-standard) focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-600 dark:focus-visible:ring-brand-400 focus-visible:ring-offset-2 focus-visible:ring-offset-ink-0 dark:focus-visible:ring-offset-ink-50 disabled:opacity-50 disabled:cursor-not-allowed bg-ink-100 hover:bg-ink-200 text-ink-900 border border-ink-200 shadow-xs dark:bg-ink-100 dark:hover:bg-ink-200 dark:text-ink-900 dark:border-ink-300;
   }
   .btn-danger {
-    @apply inline-flex items-center justify-center gap-2 px-4 py-2 rounded-lg font-medium text-sm transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-white dark:focus-visible:ring-offset-zinc-950 disabled:opacity-50 disabled:cursor-not-allowed bg-red-600 hover:bg-red-500 text-white focus-visible:ring-red-500;
+    @apply inline-flex items-center justify-center gap-2 px-4 py-2 rounded-md text-body-strong transition-colors duration-(--duration-base) ease-(--ease-standard) focus:outline-none focus-visible:ring-2 focus-visible:ring-danger-600 focus-visible:ring-offset-2 focus-visible:ring-offset-ink-0 dark:focus-visible:ring-offset-ink-50 disabled:opacity-50 disabled:cursor-not-allowed bg-danger-600 hover:bg-danger-500 active:bg-danger-700 text-white shadow-xs;
   }
   .btn-ghost {
-    @apply inline-flex items-center justify-center gap-2 px-4 py-2 rounded-lg font-medium text-sm transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-white dark:focus-visible:ring-offset-zinc-950 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-zinc-100 text-zinc-600 hover:text-zinc-900 focus-visible:ring-zinc-400 dark:hover:bg-zinc-800 dark:text-zinc-400 dark:hover:text-zinc-100 dark:focus-visible:ring-zinc-500;
+    @apply inline-flex items-center justify-center gap-2 px-4 py-2 rounded-md text-body-strong transition-colors duration-(--duration-base) ease-(--ease-standard) focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-600 dark:focus-visible:ring-brand-400 focus-visible:ring-offset-2 focus-visible:ring-offset-ink-0 dark:focus-visible:ring-offset-ink-50 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-ink-100 text-ink-700 hover:text-ink-950 dark:hover:bg-ink-100 dark:text-ink-700 dark:hover:text-ink-950;
   }
   .btn-sm {
-    @apply px-3 py-1.5 text-xs;
+    @apply px-3 py-1.5 text-caption font-medium;
   }
   .input {
-    @apply w-full px-3 py-2 rounded-lg bg-zinc-50 border border-zinc-300 text-zinc-900 placeholder:text-zinc-400 text-sm focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-colors dark:bg-zinc-900 dark:border-zinc-700 dark:text-zinc-100 dark:placeholder:text-zinc-500;
+    @apply w-full px-3 py-2 rounded-md bg-ink-50 border border-ink-300 text-body text-ink-950 placeholder:text-ink-400 focus:outline-none focus:border-brand-600 focus:ring-2 focus:ring-brand-600/20 transition-colors duration-(--duration-base) ease-(--ease-standard) dark:bg-ink-50 dark:border-ink-300 dark:text-ink-950 dark:placeholder:text-ink-400 dark:focus:border-brand-400 dark:focus:ring-brand-400/20;
   }
   .label {
-    @apply block text-sm font-medium text-zinc-600 mb-1.5 dark:text-zinc-400;
+    @apply block text-label text-ink-700 mb-1.5;
   }
   .card {
-    @apply bg-white border border-zinc-200 rounded-xl dark:bg-zinc-900 dark:border-zinc-800;
+    @apply bg-ink-0 border border-ink-200 rounded-lg shadow-sm;
   }
   .badge {
-    @apply inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium;
+    @apply inline-flex items-center px-2 py-0.5 rounded-sm text-micro;
   }
   .badge-blue {
-    @apply inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-blue-500/10 text-blue-600 border border-blue-500/20 dark:text-blue-400;
+    @apply inline-flex items-center px-2 py-0.5 rounded-sm text-micro bg-brand-50 text-brand-700 border border-brand-200;
   }
   .badge-green {
-    @apply inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-emerald-500/10 text-emerald-600 border border-emerald-500/20 dark:text-emerald-400;
+    @apply inline-flex items-center px-2 py-0.5 rounded-sm text-micro bg-success-50 text-success-600 border border-success-200;
   }
   .badge-yellow {
-    @apply inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-amber-500/10 text-amber-600 border border-amber-500/20 dark:text-amber-400;
+    @apply inline-flex items-center px-2 py-0.5 rounded-sm text-micro bg-warning-50 text-warning-600 border border-warning-200;
   }
   .badge-red {
-    @apply inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-red-500/10 text-red-600 border border-red-500/20 dark:text-red-400;
+    @apply inline-flex items-center px-2 py-0.5 rounded-sm text-micro bg-danger-50 text-danger-600 border border-danger-200;
   }
   .badge-zinc {
-    @apply inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-zinc-200 text-zinc-600 dark:bg-zinc-700 dark:text-zinc-400;
+    @apply inline-flex items-center px-2 py-0.5 rounded-sm text-micro bg-ink-200 text-ink-700;
   }
 
-  /* iOS-style skeuomorphic toggle switch */
+  /* iOS-style toggle switch, tokenized (§0 audit) */
   .toggle-track {
-    @apply relative inline-flex shrink-0 w-11 h-6 rounded-full;
+    @apply relative inline-flex shrink-0 w-11 h-6 rounded-full bg-ink-300;
     appearance: none;
     border: none;
     padding: 0;
     margin: 0;
-    background: #d1d5db;
     cursor: pointer;
     transition:
-      background 0.2s,
-      box-shadow 0.2s;
+      background var(--duration-base) var(--ease-standard),
+      box-shadow var(--duration-base) var(--ease-standard);
     box-shadow:
-      inset 0 1px 3px rgba(0, 0, 0, 0.15),
-      inset 0 0 1px rgba(0, 0, 0, 0.1);
+      inset 0 1px 3px rgb(28 24 21 / 0.15),
+      inset 0 0 1px rgb(28 24 21 / 0.1);
   }
   .toggle-track[aria-checked="true"] {
-    background: #2563eb;
+    background: var(--color-brand-600);
     box-shadow:
-      inset 0 1px 3px rgba(37, 99, 235, 0.3),
-      inset 0 0 1px rgba(0, 0, 0, 0.1);
+      inset 0 1px 3px rgb(194 94 63 / 0.3),
+      inset 0 0 1px rgb(28 24 21 / 0.1);
   }
   :where(.dark) .toggle-track {
-    background: #3f3f46;
+    background: var(--color-ink-300);
     box-shadow:
-      inset 0 1px 3px rgba(0, 0, 0, 0.4),
-      inset 0 0 1px rgba(0, 0, 0, 0.2);
+      inset 0 1px 3px rgb(0 0 0 / 0.4),
+      inset 0 0 1px rgb(0 0 0 / 0.2);
   }
   :where(.dark) .toggle-track[aria-checked="true"] {
-    background: #2563eb;
+    background: var(--color-brand-400);
     box-shadow:
-      inset 0 1px 3px rgba(37, 99, 235, 0.3),
-      inset 0 0 1px rgba(0, 0, 0, 0.1);
+      inset 0 1px 3px rgb(201 113 79 / 0.3),
+      inset 0 0 1px rgb(0 0 0 / 0.1);
   }
   .toggle-thumb {
     @apply absolute top-0.5 w-5 h-5 rounded-full;
-    background: white;
+    background: #ffffff;
     box-shadow:
-      0 1px 3px rgba(0, 0, 0, 0.25),
-      0 0 0 0.5px rgba(0, 0, 0, 0.08);
-    transition: transform 0.2s;
+      0 1px 3px rgb(0 0 0 / 0.25),
+      0 0 0 0.5px rgb(0 0 0 / 0.08);
+    transition: transform var(--duration-slow) var(--ease-standard);
   }
   .toggle-track[aria-checked="true"] .toggle-thumb {
     transform: translateX(1.25rem);

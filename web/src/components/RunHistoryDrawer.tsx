@@ -224,7 +224,7 @@ export default function RunHistoryDrawer({
   }
 
   return (
-    <div className="fixed inset-0 z-40 flex justify-end">
+    <div className="fixed inset-0 z-(--z-drawer) flex justify-end">
       {/* biome-ignore lint/a11y/useKeyWithClickEvents: backdrop is a pointer-only dismiss target; Esc and the close button close the drawer */}
       {/* biome-ignore lint/a11y/noStaticElementInteractions: pointer-only backdrop; the drawer has its own close button */}
       <div className="absolute inset-0 bg-black/40" onClick={onClose} />
@@ -237,7 +237,7 @@ export default function RunHistoryDrawer({
         tabIndex={-1}
         onKeyDown={trapFocus}
         style={{ '--history-drawer-width': `${width}px` } as CSSProperties}
-        className="relative flex h-full w-full flex-col border-l border-zinc-200 bg-white shadow-2xl outline-none @container sm:w-[var(--history-drawer-width)] dark:border-zinc-800 dark:bg-zinc-950"
+        className="relative flex h-full w-full flex-col border-l border-ink-200 bg-ink-0 shadow-lg outline-none @container sm:w-[var(--history-drawer-width)]"
       >
         {/* Resize handle on the drawer's inner edge; phones keep the full-width stacked layout */}
         {/* biome-ignore lint/a11y/useSemanticElements: a draggable splitter must be focusable and expose aria-value* attributes; <hr> cannot */}
@@ -260,15 +260,15 @@ export default function RunHistoryDrawer({
           onKeyDown={resizeByKey}
           className="group absolute inset-y-0 -left-2 z-10 hidden w-2 cursor-col-resize touch-none outline-none sm:block"
         >
-          <div className="mx-auto h-full w-px bg-transparent transition-all group-hover:w-0.5 group-hover:bg-blue-500 group-focus-visible:w-0.5 group-focus-visible:bg-blue-500 group-active:w-0.5 group-active:bg-blue-500" />
+          <div className="mx-auto h-full w-px bg-transparent transition-all duration-(--duration-base) group-hover:w-0.5 group-hover:bg-brand-600 group-focus-visible:w-0.5 group-focus-visible:bg-brand-600 group-active:w-0.5 group-active:bg-brand-600 dark:group-hover:bg-brand-400 dark:group-focus-visible:bg-brand-400 dark:group-active:bg-brand-400" />
         </div>
 
-        <div className="flex shrink-0 items-center gap-2 border-b border-zinc-200 px-4 py-3 dark:border-zinc-800">
-          <History size={16} className="shrink-0 text-zinc-400" aria-hidden="true" />
-          <h2 id="run-history-title" className="text-sm font-semibold text-zinc-900 dark:text-zinc-100">
+        <div className="flex shrink-0 items-center gap-2 border-b border-ink-200 px-4 py-3">
+          <History size={16} className="shrink-0 text-ink-400" aria-hidden="true" />
+          <h2 id="run-history-title" className="text-heading text-ink-950">
             {t('runs.history_title')}
           </h2>
-          <span className="text-xs tabular-nums text-zinc-500">
+          <span className="text-caption tnum text-ink-500">
             {t('runs.history_count', { n: hasMore ? `${runs.length}+` : runs.length })}
           </span>
           <div className="flex-1" />
@@ -276,7 +276,7 @@ export default function RunHistoryDrawer({
             type="button"
             onClick={clearAll}
             disabled={runs.length === 0 || busy !== null}
-            className="flex shrink-0 items-center gap-1 rounded-md px-2 py-1 text-xs text-red-500 transition-colors hover:bg-red-500/10 disabled:cursor-not-allowed disabled:opacity-40"
+            className="flex shrink-0 items-center gap-1 rounded-md px-2 py-1 text-caption text-danger-600 transition-colors duration-(--duration-fast) hover:bg-danger-50 disabled:cursor-not-allowed disabled:opacity-40"
             title={t('runs.clear')}
             aria-label={t('runs.clear')}
           >
@@ -296,13 +296,13 @@ export default function RunHistoryDrawer({
         </div>
 
         {actionError && (
-          <div className="flex shrink-0 items-start gap-2 border-b border-red-500/20 bg-red-500/10 px-4 py-2">
-            <AlertCircle size={14} className="mt-0.5 shrink-0 text-red-400" aria-hidden="true" />
-            <p className="flex-1 text-xs text-red-400">{actionError}</p>
+          <div className="flex shrink-0 items-start gap-2 border-b border-danger-200 bg-danger-50 px-4 py-2">
+            <AlertCircle size={14} className="mt-0.5 shrink-0 text-danger-600" aria-hidden="true" />
+            <p className="flex-1 text-caption text-danger-600">{actionError}</p>
             <button
               type="button"
               onClick={() => setActionError('')}
-              className="rounded p-0.5 text-red-400 hover:bg-red-500/10"
+              className="rounded p-0.5 text-danger-600 hover:bg-danger-100"
               title={t('common.dismiss')}
               aria-label={t('common.dismiss')}
             >
@@ -312,7 +312,7 @@ export default function RunHistoryDrawer({
         )}
 
         {runs.length === 0 ? (
-          <div className="flex flex-1 flex-col items-center justify-center gap-3 px-6 text-center text-sm text-zinc-400 dark:text-zinc-600">
+          <div className="flex flex-1 flex-col items-center justify-center gap-3 px-6 text-center text-body text-ink-400">
             <p className="flex items-center gap-2">
               {loading && <Loader2 size={14} className="animate-spin" />}
               {loading
@@ -328,7 +328,7 @@ export default function RunHistoryDrawer({
               <button
                 type="button"
                 onClick={onLoadMore}
-                className="rounded-md px-3 py-1.5 text-xs text-blue-500 hover:bg-zinc-100 dark:hover:bg-zinc-800"
+                className="rounded-md px-3 py-1.5 text-caption text-brand-600 dark:text-brand-400 hover:bg-ink-100"
               >
                 {loadError ? `${t('runs.list_failed')} · ${t('runs.load_more')}` : t('runs.load_more')}
               </button>
@@ -337,7 +337,7 @@ export default function RunHistoryDrawer({
         ) : (
           <div className="flex min-h-0 flex-1 flex-col @min-[600px]:flex-row">
             {/* Run list */}
-            <div className="flex max-h-[40%] min-h-0 shrink-0 flex-col border-b border-zinc-200 @min-[600px]:max-h-none @min-[600px]:w-72 @min-[600px]:border-r @min-[600px]:border-b-0 dark:border-zinc-800">
+            <div className="flex max-h-[40%] min-h-0 shrink-0 flex-col border-b border-ink-200 @min-[600px]:max-h-none @min-[600px]:w-72 @min-[600px]:border-r @min-[600px]:border-b-0">
               <div ref={listRef} onScroll={loadMoreAtEnd} className="min-h-0 flex-1 overflow-y-auto">
                 <ul>
                   {runs.map((run) => {
@@ -347,7 +347,7 @@ export default function RunHistoryDrawer({
                       <li key={run.id}>
                         <div
                           className={`flex items-stretch pr-1.5 ${
-                            active ? 'bg-blue-50 dark:bg-blue-950/30' : 'hover:bg-zinc-50 dark:hover:bg-zinc-900'
+                            active ? 'bg-brand-50' : 'hover:bg-ink-50'
                           }`}
                         >
                           <button
@@ -359,26 +359,26 @@ export default function RunHistoryDrawer({
                             onClick={() => onSelect(run.id)}
                             aria-current={active ? 'true' : undefined}
                             title={t('runs.view_run', { n: run.seq })}
-                            className={`min-w-0 flex-1 border-l-2 px-3 py-2 text-left focus-visible:outline-2 focus-visible:outline-blue-500 ${
-                              active ? 'border-l-blue-500' : 'border-l-transparent'
+                            className={`min-w-0 flex-1 border-l-2 px-3 py-2 text-left focus-visible:outline-2 focus-visible:outline-brand-600 dark:focus-visible:outline-brand-400 ${
+                              active ? 'border-l-brand-600' : 'border-l-transparent'
                             }`}
                           >
                             <span className="flex items-center gap-1.5">
                               {failed ? (
-                                <AlertCircle size={11} className="shrink-0 text-red-400" aria-hidden="true" />
+                                <AlertCircle size={11} className="shrink-0 text-danger-600" aria-hidden="true" />
                               ) : (
-                                <CheckCircle2 size={11} className="shrink-0 text-emerald-400" aria-hidden="true" />
+                                <CheckCircle2 size={11} className="shrink-0 text-success-600" aria-hidden="true" />
                               )}
-                              <span className="font-mono text-xs tabular-nums text-zinc-700 dark:text-zinc-300">
+                              <span className="font-mono text-caption tnum text-ink-700">
                                 #{run.seq}
                               </span>
-                              <span className="truncate text-[11px] text-zinc-500">{ago(run)}</span>
+                              <span className="truncate text-micro text-ink-500">{ago(run)}</span>
                               <span className="sr-only">{t(failed ? 'runs.failed' : 'runs.succeeded')}</span>
                             </span>
-                            <span className="mt-0.5 block truncate text-[11px] text-zinc-500">
+                            <span className="mt-0.5 block truncate text-micro text-ink-500">
                               {outcome(run)} · {run.duration_ms}ms
                             </span>
-                            <span className="mt-0.5 block truncate font-mono text-[11px] text-zinc-400 dark:text-zinc-500">
+                            <span className="mt-0.5 block truncate font-mono text-micro text-ink-400">
                               {run.sql}
                             </span>
                           </button>
@@ -386,7 +386,7 @@ export default function RunHistoryDrawer({
                             type="button"
                             onClick={() => remove(run.id)}
                             disabled={busy !== null}
-                            className="my-1 shrink-0 self-start rounded p-1 text-zinc-400 transition-colors hover:bg-zinc-200/70 hover:text-red-400 disabled:opacity-40 dark:hover:bg-zinc-800"
+                            className="my-1 shrink-0 self-start rounded p-1 text-ink-400 transition-colors duration-(--duration-fast) hover:bg-ink-200/70 hover:text-danger-600 disabled:opacity-40"
                             title={t('runs.delete_run', { n: run.seq })}
                             aria-label={t('runs.delete_run', { n: run.seq })}
                           >
@@ -400,7 +400,7 @@ export default function RunHistoryDrawer({
                 {hasMore && (
                   <div className="p-2">
                     {loading ? (
-                      <div className="flex items-center justify-center gap-2 py-2 text-xs text-zinc-400">
+                      <div className="flex items-center justify-center gap-2 py-2 text-caption text-ink-400">
                         <Loader2 size={12} className="animate-spin" />
                         {t('common.loading')}
                       </div>
@@ -408,7 +408,7 @@ export default function RunHistoryDrawer({
                       <button
                         type="button"
                         onClick={onLoadMore}
-                        className="w-full rounded-md py-1.5 text-xs text-red-400 hover:bg-zinc-100 dark:hover:bg-zinc-800"
+                        className="w-full rounded-md py-1.5 text-caption text-danger-600 hover:bg-ink-100"
                       >
                         {t('runs.list_failed')} · {t('runs.load_more')}
                       </button>
@@ -416,7 +416,7 @@ export default function RunHistoryDrawer({
                       <button
                         type="button"
                         onClick={onLoadMore}
-                        className="w-full rounded-md py-1.5 text-xs text-blue-500 hover:bg-zinc-100 dark:hover:bg-zinc-800"
+                        className="w-full rounded-md py-1.5 text-caption text-brand-600 dark:text-brand-400 hover:bg-ink-100"
                       >
                         {t('runs.load_more')}
                       </button>
@@ -430,38 +430,38 @@ export default function RunHistoryDrawer({
             <div className="flex min-h-0 flex-1 flex-col">
               {selectedRun ? (
                 <>
-                  <div className="shrink-0 border-b border-zinc-200 px-4 py-2.5 dark:border-zinc-800">
-                    <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs">
+                  <div className="shrink-0 border-b border-ink-200 px-4 py-2.5">
+                    <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-caption">
                       {selectedRun.error_count > 0 ? (
-                        <AlertCircle size={12} className="shrink-0 text-red-400" aria-hidden="true" />
+                        <AlertCircle size={12} className="shrink-0 text-danger-600" aria-hidden="true" />
                       ) : (
-                        <CheckCircle2 size={12} className="shrink-0 text-emerald-400" aria-hidden="true" />
+                        <CheckCircle2 size={12} className="shrink-0 text-success-600" aria-hidden="true" />
                       )}
-                      <span className="font-mono tabular-nums text-zinc-700 dark:text-zinc-300">
+                      <span className="font-mono tnum text-ink-700">
                         #{selectedRun.seq}
                       </span>
-                      <span className="text-zinc-500">{new Date(selectedRun.executed_at).toLocaleString()}</span>
-                      <span className="text-zinc-300 dark:text-zinc-700">·</span>
-                      <span className="text-zinc-500">{outcome(selectedRun)}</span>
-                      <span className="text-zinc-300 dark:text-zinc-700">·</span>
-                      <span className="text-zinc-500">{selectedRun.duration_ms}ms</span>
+                      <span className="text-ink-500">{new Date(selectedRun.executed_at).toLocaleString()}</span>
+                      <span className="text-ink-300">·</span>
+                      <span className="text-ink-500">{outcome(selectedRun)}</span>
+                      <span className="text-ink-300">·</span>
+                      <span className="text-ink-500">{selectedRun.duration_ms}ms</span>
                       {selectedRun.database_name && (
                         <>
-                          <span className="text-zinc-300 dark:text-zinc-700">·</span>
-                          <span className="truncate text-zinc-500">{selectedRun.database_name}</span>
+                          <span className="text-ink-300">·</span>
+                          <span className="truncate text-ink-500">{selectedRun.database_name}</span>
                         </>
                       )}
                     </div>
                     {selectedRun.storage_truncated > 0 && (
-                      <p className="mt-1 text-xs text-amber-500">{t('runs.storage_truncated')}</p>
+                      <p className="mt-1 text-caption text-warning-600">{t('runs.storage_truncated')}</p>
                     )}
                   </div>
 
-                  <div className="shrink-0 border-b border-zinc-200 px-4 py-2 dark:border-zinc-800">
-                    <p className="mb-1 text-[10px] uppercase tracking-wider text-zinc-400 dark:text-zinc-600">
+                  <div className="shrink-0 border-b border-ink-200 px-4 py-2">
+                    <p className="mb-1 text-micro uppercase text-ink-400">
                       {t('runs.sql')}
                     </p>
-                    <pre className="max-h-32 overflow-auto whitespace-pre-wrap break-words rounded-lg bg-zinc-50 p-2 font-mono text-xs text-zinc-700 dark:bg-zinc-900 dark:text-zinc-300">
+                    <pre className="max-h-32 overflow-auto whitespace-pre-wrap break-words rounded-lg bg-ink-50 p-2 font-mono text-caption text-ink-700">
                       {selectedRun.sql}
                     </pre>
                   </div>
@@ -476,7 +476,7 @@ export default function RunHistoryDrawer({
                         />
                       </div>
                     ) : (
-                      <div className="flex flex-1 items-center justify-center gap-2 px-4 text-center text-sm text-zinc-400 dark:text-zinc-600">
+                      <div className="flex flex-1 items-center justify-center gap-2 px-4 text-center text-body text-ink-400">
                         {(!selectedResults || selectedResults.status === 'loading') && (
                           <Loader2 size={16} className="animate-spin" />
                         )}
@@ -490,7 +490,7 @@ export default function RunHistoryDrawer({
                   </div>
                 </>
               ) : (
-                <div className="flex flex-1 items-center justify-center px-6 text-center text-sm text-zinc-400 dark:text-zinc-600">
+                <div className="flex flex-1 items-center justify-center px-6 text-center text-body text-ink-400">
                   {t('runs.history_hint')}
                 </div>
               )}

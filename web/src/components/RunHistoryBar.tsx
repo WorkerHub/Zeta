@@ -133,9 +133,9 @@ export default function RunHistoryBar({
   }
 
   return (
-    <div className="shrink-0 border-b border-zinc-200 dark:border-zinc-800">
-      <div className="flex items-center gap-2 px-3 py-1 text-xs text-zinc-500 min-w-0">
-        <History size={12} className="text-zinc-400 shrink-0" />
+    <div className="shrink-0 border-b border-ink-200">
+      <div className="flex items-center gap-2 px-3 py-1 text-caption text-ink-500 min-w-0">
+        <History size={12} className="text-ink-400 shrink-0" />
         <span
           className="hidden sm:block truncate min-w-0 max-w-[40%]"
           title={new Date(selected.executed_at).toLocaleString()}
@@ -159,8 +159,8 @@ export default function RunHistoryBar({
                     key={run.id}
                     className={`flex items-center shrink-0 rounded-md border ${
                       active
-                        ? 'border-blue-300 bg-blue-50 text-blue-700 dark:border-blue-800 dark:bg-blue-950/40 dark:text-blue-300'
-                        : 'border-transparent text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-800'
+                        ? 'border-brand-200 bg-brand-50 text-brand-700'
+                        : 'border-transparent text-ink-500 hover:bg-ink-100'
                     }`}
                   >
                     <button
@@ -176,12 +176,12 @@ export default function RunHistoryBar({
                       onClick={() => onSelect(run.id)}
                       onKeyDown={(e) => onTabKeyDown(e, index)}
                       title={tooltip(run)}
-                      className="flex items-center gap-1 pl-1.5 pr-1 py-0.5 rounded-md font-mono tabular-nums focus-visible:outline-2 focus-visible:outline-blue-500"
+                      className="flex items-center gap-1 pl-1.5 pr-1 py-0.5 rounded-md font-mono tnum focus-visible:outline-2 focus-visible:outline-brand-600 dark:focus-visible:outline-brand-400"
                     >
                       {failed ? (
-                        <AlertCircle size={11} className="text-red-400 shrink-0" aria-hidden="true" />
+                        <AlertCircle size={11} className="text-danger-600 shrink-0" aria-hidden="true" />
                       ) : (
-                        <CheckCircle2 size={11} className="text-emerald-400 shrink-0" aria-hidden="true" />
+                        <CheckCircle2 size={11} className="text-success-600 shrink-0" aria-hidden="true" />
                       )}
                       <span className="sr-only">{t(failed ? 'runs.failed' : 'runs.succeeded')}</span>#{run.seq}
                     </button>
@@ -190,7 +190,7 @@ export default function RunHistoryBar({
                       type="button"
                       tabIndex={-1}
                       onClick={() => onDelete(run.id)}
-                      className="mr-0.5 p-0.5 rounded text-zinc-400 hover:text-red-400 hover:bg-zinc-200/70 dark:hover:bg-zinc-700"
+                      className="mr-0.5 p-0.5 rounded text-ink-400 hover:text-danger-600 hover:bg-ink-200/70 transition-colors duration-(--duration-fast)"
                       title={t('runs.delete_run', { n: run.seq })}
                       aria-label={t('runs.delete_run', { n: run.seq })}
                     >
@@ -202,12 +202,12 @@ export default function RunHistoryBar({
             </div>
             {hasMore &&
               (loading ? (
-                <Loader2 size={12} className="animate-spin text-zinc-400 shrink-0 mx-1" />
+                <Loader2 size={12} className="animate-spin text-ink-400 shrink-0 mx-1" />
               ) : (
                 <button
                   type="button"
                   onClick={onLoadMore}
-                  className="shrink-0 px-1.5 py-0.5 rounded text-blue-500 hover:bg-zinc-100 dark:hover:bg-zinc-800"
+                  className="shrink-0 px-1.5 py-0.5 rounded text-brand-600 dark:text-brand-400 hover:bg-ink-100"
                 >
                   {t('runs.load_more')}
                 </button>
@@ -216,7 +216,7 @@ export default function RunHistoryBar({
         </div>
       </div>
       {selected.storage_truncated > 0 && (
-        <p className="px-3 pb-1.5 text-xs text-amber-500">{t('runs.storage_truncated')}</p>
+        <p className="px-3 pb-1.5 text-caption text-warning-600">{t('runs.storage_truncated')}</p>
       )}
     </div>
   )

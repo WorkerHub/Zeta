@@ -7,20 +7,20 @@ interface Props {
 export default function ResultTable({ rows }: Props) {
   const { t } = useLocale()
   if (rows.length === 0) {
-    return <p className="text-sm text-zinc-500 py-4 text-center">{t('results.no_rows')}</p>
+    return <p className="text-body text-ink-500 py-4 text-center">{t('results.no_rows')}</p>
   }
 
   const columns = Array.from(new Set(rows.flatMap((r) => Object.keys(r))))
 
   return (
-    <div className="overflow-x-auto rounded-lg border border-zinc-200 dark:border-zinc-800">
-      <table className="w-full text-sm font-mono">
+    <div className="overflow-x-auto rounded-lg border border-ink-200 shadow-sm">
+      <table className="w-full text-caption font-mono tnum">
         <thead>
-          <tr className="bg-zinc-100/50 border-b border-zinc-200 dark:bg-zinc-800/50 dark:border-zinc-800">
+          <tr className="bg-ink-100/50 border-b border-ink-200">
             {columns.map((col) => (
               <th
                 key={col}
-                className="text-left px-3 py-2 text-xs font-medium text-zinc-500 dark:text-zinc-400 whitespace-nowrap"
+                className="text-left px-3 py-2 text-label text-ink-500 whitespace-nowrap"
               >
                 {col}
               </th>
@@ -32,19 +32,19 @@ export default function ResultTable({ rows }: Props) {
             <tr
               // biome-ignore lint/suspicious/noArrayIndexKey: result rows have no stable id; position is their identity
               key={i}
-              className="border-b border-zinc-100 hover:bg-zinc-50 dark:border-zinc-800/50 dark:hover:bg-zinc-800/30 transition-colors"
+              className="border-b border-ink-100 hover:bg-ink-50 transition-colors duration-(--duration-fast) ease-(--ease-standard)"
             >
               {columns.map((col) => {
                 const val = row[col]
                 return (
                   <td
                     key={col}
-                    className="px-3 py-2 text-xs text-zinc-700 dark:text-zinc-300 whitespace-nowrap max-w-[300px] truncate"
+                    className="px-3 py-2 text-caption text-ink-700 whitespace-nowrap max-w-[300px] truncate"
                   >
                     {val === null || val === undefined ? (
-                      <span className="text-zinc-400 italic dark:text-zinc-600">NULL</span>
+                      <span className="text-ink-400 italic">NULL</span>
                     ) : typeof val === 'object' ? (
-                      <span className="text-amber-600 dark:text-amber-400">{JSON.stringify(val)}</span>
+                      <span className="text-warning-600">{JSON.stringify(val)}</span>
                     ) : (
                       String(val)
                     )}
