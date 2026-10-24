@@ -239,6 +239,9 @@ export const translations: Record<Locale, Record<string, string>> = {
     'admin_db.link_desc':
       'This database is not linked to a Cloudflare database yet, so it cannot be queried. Link it to switch it to the D1 HTTP API; permissions, history and saved runs are kept.',
     'admin_db.no_available': 'No unregistered D1 databases found in this account.',
+    'admin_db.app_db_badge': 'Application database',
+    'admin_db.app_db_warning':
+      "This is Zeta's own application database. Its internal tables are read-only and drop-type operations are disabled.",
 
     // Admin Settings
     'admin_settings.save_changes': 'Save changes',
@@ -601,6 +604,8 @@ export const translations: Record<Locale, Record<string, string>> = {
     'admin_db.link_desc':
       '该数据库尚未关联到 Cloudflare 数据库，因此暂时无法查询。将其关联到某个 Cloudflare 数据库即可切换为 D1 HTTP API；权限、历史与已保存的运行记录都会保留。',
     'admin_db.no_available': '该账号中没有未注册的 D1 数据库。',
+    'admin_db.app_db_badge': '应用数据库',
+    'admin_db.app_db_warning': '该库为 Zeta 自身应用库：内部表只读，删除类操作已禁用。',
 
     // Admin Settings
     'admin_settings.save_changes': '保存更改',

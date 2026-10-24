@@ -21,6 +21,7 @@ export interface Database {
   binding_name?: string
   cf_database_id?: string | null
   permission: DbPermission
+  is_app_db?: boolean
 }
 
 // A registered database as the admin API returns it
@@ -32,6 +33,7 @@ export interface AdminDatabase {
   cf_database_id: string | null
   is_active: number
   created_at: number
+  is_app_db?: boolean
 }
 
 // A Cloudflare account D1 database as returned by GET /admin/d1/databases
@@ -41,6 +43,7 @@ export interface CfD1Database {
   created_at: string
   added: boolean
   database_id: string | null
+  is_app_db?: boolean
 }
 
 export interface DatabaseGrant {
