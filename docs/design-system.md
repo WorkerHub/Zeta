@@ -164,6 +164,23 @@
 
 ## 3. 8 维度逐项落地路线图
 
+### 3.0 逐维度参照基准（作品名 + 链接；奖项级条目均为 Awwwards / Webby / FWA 获奖或当届公认标杆作品）
+
+| 维度 | 奖项级基准（达标口径） | 工具类校准参照 |
+| --- | --- | --- |
+| typography | **Raycast**（https://www.raycast.com，Awwwards Site of the Day）：无衬线家族内仅靠字重/字号/字距/色阶建立完整层级 | **Vercel Dashboard**（https://vercel.com/dashboard）：等宽数字 / tabular-nums 在数据区的密度与稳定性 |
+| whitespace | **Linear**（https://linear.app，Awwwards Site of the Day）：同组紧、区块松的节奏差；容器内边距与内容密度成比例 | **Arc**（https://arc.net）：工具界面留白的「呼吸感」边界（紧凑但不拥挤） |
+| visual_hierarchy | **Stripe Press**（https://press.stripe.com，Awwwards Site of the Day 级排印驱动页面）：一屏内主/次/辅三级一眼可分，层级四要素（字号+字重+色阶+留白）协同 | **Linear**（https://linear.app）：单一主 CTA 纪律，次级操作一律弱化为 secondary/ghost |
+| color | **Raycast**（https://www.raycast.com，Awwwards Site of the Day）：暖色品牌色在开发者工具中高级成立的实证；品牌色只给 action/选中/焦点 | **Supabase**（https://supabase.com/dashboard）：品牌色与状态色零冲突的功能色体系 |
+| motion | **Lusion**（https://lusion.co，FWA of the Day）：动效时长/缓动成体系、每处动效有信息职责、不阻碍操作 | **Linear**（https://linear.app）：100–250ms 的毫秒级反馈式微动效上限纪律 |
+| micro_interaction | **Active Theory**（https://activetheory.net，多届 Awwwards/FWA 获奖工作室站）：hover/press/focus 反馈精确到帧的一致性 | **Raycast**（https://www.raycast.com）：键盘全路径可达 + focus 环始终清晰的工具类标杆 |
+| responsive | **Webby Awards 获奖响应式作品的通行口径**（三档无横向滚动/无截断/触控目标 ≥ 44px；参照 https://www.webbyawards.com 获奖画廊中工具类条目） | **Vercel Dashboard**（https://vercel.com/dashboard）：数据密集界面窄屏降级策略（表格→卡片、侧栏→抽屉） |
+| originality | 见 §1 裁决（Linear / Raycast 两条奖项级条目 +  terracotta 品牌色论证） | **Supabase**（绿）/ **Turso**（https://turso.tech，黄绿）：开发者工具「非模板脸」品牌色成立的相邻案例 |
+
+说明：以上条目作为 Stage 5/6 评审与终验的对照锚点；「达到基准」的判定口径是**纪律层面逐项对齐**（令牌单一来源、状态色不混、时长成体系、层级四要素协同），而非视觉风格的表面模仿。
+
+### 3.1 落地路线
+
 | 维度 | 契约落点 | Stage 2（令牌与基础组件层） | Stage 3（页面级重构） | Stage 4（动效/微交互/响应式） |
 | --- | --- | --- | --- | --- |
 | typography | §2.4 §2.5 | `@theme` 字号/行高/字距 token + `.tnum` 工具类；全站组件类改用 token | 逐页替换散落的 `text-sm/text-2xl` 裸用；CJK 行高复核；数字区全量 `tabular-nums` | 路由切换/加载态的文本防跳动（骨架屏等宽占位） |
