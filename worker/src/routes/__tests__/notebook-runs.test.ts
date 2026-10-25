@@ -1,16 +1,11 @@
-import { describe, it, expect, vi, afterEach } from 'vitest'
 import type { DatabaseSync } from 'node:sqlite'
-import init from '../../../migrations/0001_init.sql?raw'
-import historyNullable from '../../../migrations/0002_history_nullable_refs.sql?raw'
-import rateLimits from '../../../migrations/0003_rate_limits_history_set_null.sql?raw'
-import notebookRuns from '../../../migrations/0004_notebook_runs.sql?raw'
-import runSeq from '../../../migrations/0005_notebook_run_seq.sql?raw'
-import cfDatabaseId from '../../../migrations/0006_d1_cf_database_id.sql?raw'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { getMigrations } from '../../lib/migrations'
 import type { Env } from '../../types'
 import { bearer, callWorker, fakeEnv, postJson } from './fakes'
 import { sqliteD1 } from './sqlite-d1'
 
-// Real SQLite for both the app database (migrations 0001–0006) and the queried database, so the
+// Real SQLite for both the app database (the unprefixed schema_v1) and the queried database, so the
 // SQL-level row limit, the pruning window queries and the cascades run for real.
 
 const ADMIN = 'admin-1'
@@ -25,9 +20,8 @@ type Row = Record<string, unknown>
 const rows = (sqlite: DatabaseSync, sql: string) => sqlite.prepare(sql).all() as Row[]
 const count = (sqlite: DatabaseSync, sql: string) => Number(rows(sqlite, sql)[0]!.n)
 
-const MIGRATIONS = [init, historyNullable, rateLimits, notebookRuns, runSeq, cfDatabaseId]
-// Every migration except runSeq, to test a schema that predates run numbers.
-const WITHOUT_RUN_SEQ = [init, historyNullable, rateLimits, notebookRuns, cfDatabaseId]
+// The unprefixed schema_v1 as plain SQL — the single schema definition in lib/migrations.ts.
+const SCHEMA_V1 = getMigrations({ TABLE_PREFIX: '' }).find((m) => m.name === 'schema_v1')!.sql
 
 // Runs the SQL sent over the D1 HTTP API against the real target SQLite, returning the D1 HTTP
 // response shape. A failed statement returns its error message instead of throwing.
@@ -49,10 +43,9 @@ function jsonResponse(payload: unknown) {
   return new Response(JSON.stringify(payload), { status: 200, headers: { 'Content-Type': 'application/json' } })
 }
 
-// `migrations` lets a test start from an older schema
-function setup(migrations = MIGRATIONS) {
+function setup() {
   const app = sqliteD1()
-  for (const migration of migrations) app.sqlite.exec(migration)
+  app.sqlite.exec(SCHEMA_V1)
   app.sqlite.exec(`
     INSERT INTO users (id, email, name, role, created_at, updated_at) VALUES
       ('${ADMIN}', 'admin@example.com', 'Admin', 'admin', 0, 0),
@@ -66,6 +59,11 @@ function setup(migrations = MIGRATIONS) {
       ('nb-1', '${MEMBER}', 'One', 'db-1', 0, 0, 0),
       ('nb-2', '${MEMBER}', 'Two', 'db-1', 1, 0, 0),
       ('nb-other', '${OTHER}', 'Theirs', NULL, 0, 0, 0);
+    -- The default settings runSetup() seeds (a setup step, not part of schema_v1)
+    INSERT INTO settings (key, value, updated_at) VALUES
+      ('registration_enabled', 'false', 0), ('require_email_verification', 'false', 0),
+      ('enforce_2fa', 'false', 0), ('email_provider', 'resend', 0), ('app_name', 'Zeta', 0),
+      ('notebook_run_limit', '100', 0), ('run_storage_quota_mb', '50', 0);
   `)
 
   // The queried database: t holds x = 1..6000. Every statement sent over HTTP is recorded.
@@ -485,18 +483,6 @@ describe('setup', () => {
     ])
     expect(rows(sqlite, 'PRAGMA table_info(kp_users)').some((c) => c.name === 'notebook_run_limit')).toBe(true)
   })
-
-  it('adds the user limit column to an older users table once', async () => {
-    const { db, sqlite } = sqliteD1()
-    sqlite.exec(`CREATE TABLE kp_users (
-      id TEXT PRIMARY KEY, email TEXT NOT NULL UNIQUE, password_hash TEXT, name TEXT NOT NULL DEFAULT '',
-      role TEXT NOT NULL DEFAULT 'member', email_verified INTEGER NOT NULL DEFAULT 0,
-      two_factor_required INTEGER NOT NULL DEFAULT 0, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL)`)
-    const env = fakeEnv({ DB: db, TABLE_PREFIX: 'kp' })
-    expect(await runSetup(env)).toMatchObject({ ok: true, upgraded: ['kp_users: added notebook_run_limit'] })
-    expect(rows(sqlite, 'PRAGMA table_info(kp_users)').some((c) => c.name === 'notebook_run_limit')).toBe(true)
-    expect(await runSetup(env)).not.toHaveProperty('upgraded')
-  })
 })
 
 describe('run numbers', () => {
@@ -582,114 +568,5 @@ describe('run numbers', () => {
     await call(env, '/api/notebooks/nb-1/runs/r5', 'DELETE')
     expect(await listed(env, '?limit=2&before=4')).toEqual({ seqs: [3, 2], hasMore: true })
     expect(await listed(env, '?limit=2&before=2')).toEqual({ seqs: [1], hasMore: false })
-  })
-
-  it('numbers existing runs oldest first when migrating', async () => {
-    const { env, app } = setup(WITHOUT_RUN_SEQ)
-    seedRuns(
-      app,
-      [
-        { id: 'b', at: 1000 },
-        { id: 'a', at: 1000 }, // same time: ordered by id
-        { id: 'c', at: 500 },
-        { id: 'd', nb: 'nb-2', at: 3000 },
-      ],
-      false
-    )
-    app.exec(runSeq)
-    expect(rows(app, 'SELECT id, seq FROM notebook_runs ORDER BY notebook_id, seq')).toEqual([
-      { id: 'c', seq: 1 },
-      { id: 'a', seq: 2 },
-      { id: 'b', seq: 3 },
-      { id: 'd', seq: 1 },
-    ])
-    expect(rows(app, 'SELECT last_run_seq AS n FROM notebooks ORDER BY id').map((r) => r.n)).toEqual([3, 1, 0])
-    expect((await query(env, { sql: 'SELECT 1', notebookId: 'nb-1' })).body.seq).toBe(4)
-  })
-
-  it('still runs queries, unsaved, until the schema has run numbers', async () => {
-    const { env, app } = setup(WITHOUT_RUN_SEQ)
-    const single = await query(env, { sql: 'SELECT 1 AS a', notebookId: 'nb-1' })
-    expect(single.status).toBe(200)
-    expect(single.body.results).toEqual([{ a: 1 }])
-    expect(single.body).not.toHaveProperty('run_id')
-    const multi = await batch(env, { statements: ['SELECT 1', 'SELECT 2'], notebookId: 'nb-1' })
-    expect(multi.status).toBe(200)
-    expect(multi.body).not.toHaveProperty('run_id')
-    expect(count(app, 'SELECT COUNT(*) AS n FROM notebook_runs')).toBe(0)
-    expect((await query(env, { sql: 'SELECT 1', notebookId: 'nb-other' })).status).toBe(404)
-  })
-})
-
-describe('setup: run numbers', () => {
-  const runSetup = async (env: Env) => {
-    const res = await callWorker(env, '/api/setup', postJson({ secret: 'test-setup-secret' }))
-    return (await res.json()) as Row
-  }
-  const indexes = (sqlite: DatabaseSync) =>
-    rows(sqlite, `SELECT name, sql FROM sqlite_master WHERE type = 'index' AND tbl_name = 'kp_notebook_runs'`)
-
-  // A prefixed database as set up before run numbers existed, with runs in two notebooks
-  async function olderDatabase() {
-    const { db, sqlite } = sqliteD1()
-    const env = fakeEnv({ DB: db, TABLE_PREFIX: 'kp' })
-    expect(await runSetup(env)).toMatchObject({ ok: true })
-    sqlite.exec(`
-      DROP INDEX idx_kp_notebook_runs_seq;
-      ALTER TABLE kp_notebook_runs DROP COLUMN seq;
-      ALTER TABLE kp_notebooks DROP COLUMN last_run_seq;
-      CREATE INDEX idx_kp_notebook_runs_notebook ON kp_notebook_runs(notebook_id, executed_at);
-      INSERT INTO kp_users (id, email, name, role, created_at, updated_at) VALUES ('${MEMBER}', 'm@example.com', 'M', 'member', 0, 0);
-      INSERT INTO kp_d1_databases (id, name, binding_name, created_at) VALUES ('db-1', 'one', 'QUERY_DB_1', 0);
-      INSERT INTO kp_notebooks (id, user_id, name, position, created_at, updated_at) VALUES
-        ('nb-1', '${MEMBER}', 'One', 0, 0, 0), ('nb-2', '${MEMBER}', 'Two', 1, 0, 0);
-    `)
-    seedRuns(
-      sqlite,
-      [
-        { id: 'r2', at: 2000 },
-        { id: 'r1', at: 1000 },
-        { id: 'x1', nb: 'nb-2', at: 1500 },
-      ],
-      false,
-      'kp_notebook_runs'
-    )
-    return { env, sqlite }
-  }
-
-  it('adds and backfills the numbers once, with the unique index', async () => {
-    const { env, sqlite } = await olderDatabase()
-    expect(await runSetup(env)).toMatchObject({
-      ok: true,
-      upgraded: ['kp_notebook_runs: added seq, kp_notebooks.last_run_seq; numbered 3 saved run(s)'],
-    })
-    expect(rows(sqlite, 'SELECT id, seq FROM kp_notebook_runs ORDER BY notebook_id, seq')).toEqual([
-      { id: 'r1', seq: 1 },
-      { id: 'r2', seq: 2 },
-      { id: 'x1', seq: 1 },
-    ])
-    expect(rows(sqlite, 'SELECT id, last_run_seq FROM kp_notebooks ORDER BY id')).toEqual([
-      { id: 'nb-1', last_run_seq: 2 },
-      { id: 'nb-2', last_run_seq: 1 },
-    ])
-    const idx = indexes(sqlite).filter((i) => i.sql !== null)
-    expect(idx.map((i) => i.name).sort()).toEqual(['idx_kp_notebook_runs_seq', 'idx_kp_notebook_runs_user'])
-    expect(idx.find((i) => i.name === 'idx_kp_notebook_runs_seq')!.sql).toMatch(/^CREATE UNIQUE INDEX/)
-
-    // Idempotent
-    expect(await runSetup(env)).not.toHaveProperty('upgraded')
-    expect(rows(sqlite, 'SELECT seq FROM kp_notebook_runs ORDER BY notebook_id, seq').map((r) => r.seq)).toEqual([
-      1, 2, 1,
-    ])
-  })
-
-  it('numbers runs saved by an older Worker after the highest number', async () => {
-    const { env, sqlite } = await olderDatabase()
-    await runSetup(env)
-    seedRuns(sqlite, [{ id: 'late', at: 500 }], false, 'kp_notebook_runs')
-    expect(await runSetup(env)).toMatchObject({ upgraded: ['kp_notebook_runs: numbered 1 saved run(s)'] })
-    expect(rows(sqlite, `SELECT seq FROM kp_notebook_runs WHERE id = 'late'`)).toEqual([{ seq: 3 }])
-    expect(rows(sqlite, `SELECT last_run_seq FROM kp_notebooks WHERE id = 'nb-1'`)).toEqual([{ last_run_seq: 3 }])
-    expect(await runSetup(env)).not.toHaveProperty('upgraded')
   })
 })

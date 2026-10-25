@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import type { Env } from '../../types'
 import { appDbWriteTargetError, appInternalTables, capAppDbPermission } from '../app-db-guard'
+import { migrationsTable } from '../db'
+import { checkSqlAccess, classifySql, isWriteClass, type Permission } from '../sql-guard'
 
 const env = (overrides: Partial<Env> = {}) =>
   ({ TABLE_PREFIX: undefined, ...overrides }) as unknown as Pick<Env, 'TABLE_PREFIX'>
@@ -149,5 +151,48 @@ describe('appDbWriteTargetError', () => {
     internal('INSERT INTO users VALUES (1);;')
     internal('-- note\n/* x */ DELETE FROM users')
     internal("INSERT INTO users VALUES ('DELETE FROM logs; DROP TABLE logs')")
+  })
+})
+
+// ── ONE-352 checkpoint: the schema-migration ledger on the application database ───────────────
+// `appInternalTables()` is derived from tables(env), so the ledger is NOT in the read-only set.
+// This measures what that means end to end through the query route's actual decision path:
+// classifySql → capped permission (app DB) → checkSqlAccess → appDbWriteTargetError.
+describe('migration ledger as a query target on the application database', () => {
+  const APP = env({ TABLE_PREFIX: 'ZETA' })
+  const LEDGER = migrationsTable(APP) // _ZETA_schema_migrations
+  // The effective guard outcome for a statement on the app DB; null means "runs".
+  const outcome = (sql: string, permission: Permission = 'write_drop') => {
+    const kind = classifySql(sql)
+    const denied = checkSqlAccess(kind, capAppDbPermission(permission))
+    if (denied !== null) return denied
+    return isWriteClass(kind) ? appDbWriteTargetError(sql, appInternalTables(APP)) : null
+  }
+
+  it('is not part of the internal-table set', () => {
+    expect(LEDGER).toBe('_ZETA_schema_migrations')
+    expect(appInternalTables(APP).has(LEDGER.toLowerCase())).toBe(false)
+  })
+
+  it('is visible to read queries', () => {
+    expect(outcome(`SELECT * FROM ${LEDGER}`)).toBeNull()
+  })
+
+  it('is writable: INSERT / UPDATE / DELETE are only subject to the ordinary permission check', () => {
+    expect(outcome(`INSERT INTO ${LEDGER} (name) VALUES ('schema_v1')`)).toBeNull()
+    expect(outcome(`UPDATE ${LEDGER} SET name = 'x' WHERE name = 'schema_v1'`)).toBeNull()
+    expect(outcome(`DELETE FROM ${LEDGER}`)).toBeNull()
+    // ... and a read-only grant still blocks them
+    expect(outcome(`DELETE FROM ${LEDGER}`, 'read')).toMatch(/only have read access/i)
+  })
+
+  it('can be reshaped but not destroyed: ALTER … ADD COLUMN passes, DROP is capped', () => {
+    // ALTER … ADD COLUMN classifies as `write`, and the internal-table rule does not cover the
+    // ledger, so it runs; the destructive forms are stopped by the app-DB permission cap.
+    expect(outcome(`ALTER TABLE ${LEDGER} ADD COLUMN forged TEXT`)).toBeNull()
+    expect(outcome(`DROP TABLE ${LEDGER}`)).toMatch(/elevated permissions/i)
+    expect(outcome(`ALTER TABLE ${LEDGER} DROP COLUMN name`)).toMatch(/elevated permissions/i)
+    // A trigger body is unresolvable and therefore rejected fail-closed
+    expect(outcome(`CREATE TRIGGER t AFTER INSERT ON t1 BEGIN DELETE FROM ${LEDGER}; END`)).not.toBeNull()
   })
 })

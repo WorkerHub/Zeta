@@ -37,6 +37,20 @@ export function tables(env: Pick<Env, 'TABLE_PREFIX'>) {
   }
 }
 
+// ── Schema-migration ledger ──────────────────────────────────────────────────────────────────
+
+// The ledger table records which migrations of lib/migrations.ts have been applied: `_` + the
+// prefix core + `_schema_migrations`, where the prefix core is the effective prefix without its
+// trailing '_' (kept verbatim — never case-folded). `_ZETA_schema_migrations` for TABLE_PREFIX=ZETA,
+// `_zeta_schema_migrations` for an unset one, `_schema_migrations` when there is no prefix.
+// This is the single place the ledger name is built: the runner, the guard and the tests all go
+// through it, and no other code may concatenate the name itself.
+export function migrationsTable(env: Pick<Env, 'TABLE_PREFIX'>): string {
+  const prefix = tablePrefix(env)
+  const core = prefix.endsWith('_') ? prefix.slice(0, -1) : prefix
+  return core === '' ? '_schema_migrations' : `_${core}_schema_migrations`
+}
+
 // ── Existing-schema detection (anti-silent-switch guard) ─────────────────────────────────────
 
 // The unprefixed names of the 11 Zeta tables double as the family suffixes: any table named
@@ -79,6 +93,32 @@ export async function detectExistingTableFamily(db: D1Database): Promise<Existin
     if (tableCount >= MIN_FAMILY_TABLES && tableCount > (best?.tableCount ?? 0)) best = { prefix, tableCount }
   }
   return best
+}
+
+// A migration ledger found in sqlite_master: `prefix` is '' for `_schema_migrations`, otherwise the
+// prefix with its trailing '_' (e.g. '_ZETA_schema_migrations' → 'ZETA_').
+export interface ExistingMigrationLedger {
+  prefix: string
+  table: string
+}
+
+// Scans sqlite_master for migration-ledger tables under any prefix. Read-only, names only.
+// NOTE: `_<prefix>_schema_migrations` is a fleet-wide convention, so a ledger alone does not say
+// whose it is — the sibling projects sharing a D1 database (SL_*, nav_*, post_*, eNotify_*) use the
+// very same shape. The anti-silent-switch guard (lib/migrations-runner.ts) therefore only treats a
+// ledger as *this* project's when the same prefix also carries Zeta's business-table family.
+export async function detectExistingMigrationLedgers(db: D1Database): Promise<ExistingMigrationLedger[]> {
+  const rows = await db.prepare("SELECT name FROM sqlite_master WHERE type = 'table'").all<{ name: string }>()
+  const ledgers: ExistingMigrationLedger[] = []
+  for (const { name } of rows.results) {
+    if (name.toLowerCase() === '_schema_migrations') {
+      ledgers.push({ prefix: '', table: name })
+      continue
+    }
+    const match = /^_(.+)_schema_migrations$/i.exec(name)
+    if (match !== null) ledgers.push({ prefix: `${match[1]}_`, table: name })
+  }
+  return ledgers
 }
 
 export function now(): number {

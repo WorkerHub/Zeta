@@ -13,8 +13,3 @@ declare module 'node:sqlite' {
     prepare(sql: string): StatementSync
   }
 }
-
-declare module '*?raw' {
-  const content: string
-  export default content
-}

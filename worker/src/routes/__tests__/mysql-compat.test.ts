@@ -1,7 +1,6 @@
-import { describe, it, expect, vi, afterEach } from 'vitest'
 import type { DatabaseSync } from 'node:sqlite'
-import init from '../../../migrations/0001_init.sql?raw'
-import cfDatabaseId from '../../../migrations/0006_d1_cf_database_id.sql?raw'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { getMigrations } from '../../lib/migrations'
 import type { Env } from '../../types'
 import { bearer, callWorker, fakeEnv, postJson } from './fakes'
 import { sqliteD1 } from './sqlite-d1'
@@ -40,8 +39,7 @@ function jsonResponse(payload: unknown) {
 
 function setup() {
   const app = sqliteD1()
-  app.sqlite.exec(init)
-  app.sqlite.exec(cfDatabaseId)
+  app.sqlite.exec(getMigrations({ TABLE_PREFIX: '' }).find((m) => m.name === 'schema_v1')!.sql)
   app.sqlite.exec(`
     INSERT INTO users (id, email, name, role, created_at, updated_at) VALUES
       ('${MEMBER}', 'member@example.com', 'Member', 'member', 0, 0);

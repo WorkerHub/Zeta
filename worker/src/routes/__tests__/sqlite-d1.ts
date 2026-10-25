@@ -1,5 +1,5 @@
-import type { D1Database } from '@cloudflare/workers-types'
 import { DatabaseSync, type StatementSync } from 'node:sqlite'
+import type { D1Database } from '@cloudflare/workers-types'
 
 type Row = Record<string, unknown>
 
@@ -43,6 +43,11 @@ export function sqliteD1() {
         sqlite.exec('ROLLBACK')
         throw err
       }
+    },
+    // D1's multi-statement exec(): runs the whole string, throwing on the first bad statement.
+    exec: async (sql: string) => {
+      sqlite.exec(sql)
+      return { count: 0, duration: 0 }
     },
   }
   return { db: db as unknown as D1Database, sqlite }

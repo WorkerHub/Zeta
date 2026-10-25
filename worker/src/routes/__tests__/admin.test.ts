@@ -568,34 +568,21 @@ describe('application database as a query target (ALLOW_APP_DB_AS_TARGET)', () =
 })
 
 describe('POST /api/admin/setup', () => {
-  const upToDate = [
-    { name: 'id', notnull: 0 },
-    { name: 'user_id', notnull: 0 },
-    { name: 'database_id', notnull: 0 },
-    { name: 'notebook_run_limit', notnull: 0 },
-    { name: 'last_run_seq', notnull: 1 },
-    { name: 'seq', notnull: 0 },
-    { name: 'cf_database_id', notnull: 0 },
-  ]
-
   it('runs the setup routine for an admin, without requiring SETUP_SECRET', async () => {
-    const { db, calls } = fakeD1((sql) => {
-      if (!sql.startsWith('PRAGMA table_info')) return null
-      return sql.includes('d1_databases')
-        ? [
-            { name: 'id', notnull: 0 },
-            { name: 'binding_name', notnull: 1 },
-          ]
-        : upToDate
-    })
+    const { db, calls } = fakeD1()
     const env = fakeEnv({ DB: db, SETUP_SECRET: '' })
     const res = await callWorker(env, '/api/admin/setup', {
       method: 'POST',
       headers: await bearer(env, 'admin-1', 'admin'),
     })
     expect(res.status).toBe(200)
-    expect(await res.json()).toMatchObject({ ok: true, upgraded: [expect.stringContaining('cf_database_id')] })
-    expect(calls.some((c) => c.sql === 'ALTER TABLE d1_databases ADD COLUMN cf_database_id TEXT')).toBe(true)
+    expect(await res.json()).toMatchObject({
+      ok: true,
+      migrations: [{ name: 'schema_v1', status: 'applied' }],
+      upgraded: ['schema_v1: applied'],
+    })
+    expect(calls.some((c) => c.sql.includes('CREATE TABLE IF NOT EXISTS users'))).toBe(true)
+    expect(calls.some((c) => c.sql.includes('INSERT OR IGNORE INTO settings'))).toBe(true)
   })
 
   it('rejects a non-admin user with 403', async () => {
@@ -612,22 +599,21 @@ describe('POST /api/admin/setup', () => {
     expect(res.status).toBe(401)
   })
 
-  it('actually applies the upgrade: adds cf_database_id to an older database', async () => {
+  it('shares the setup ledger: a second run reports the migration as skipped', async () => {
     const { db, sqlite } = sqliteD1()
     const env = fakeEnv({ DB: db })
-    // Initialise a full current schema through the keyed endpoint, then rewind d1_databases to a
-    // pre-cf_database_id state to simulate a database created by an older version.
     expect((await callWorker(env, '/api/setup', postJson({ secret: 'test-setup-secret' }))).status).toBe(200)
-    sqlite.exec('ALTER TABLE d1_databases DROP COLUMN cf_database_id')
+    const schema = sqlite.prepare('SELECT type, name, sql FROM sqlite_master ORDER BY name').all()
 
+    // Same database, same ledger — the admin endpoint applies nothing a second time.
     const res = await callWorker(env, '/api/admin/setup', {
       method: 'POST',
       headers: await bearer(env, 'admin-1', 'admin'),
     })
     expect(res.status).toBe(200)
-    expect(await res.json()).toMatchObject({ ok: true, upgraded: [expect.stringContaining('cf_database_id')] })
-
-    const cols = sqlite.prepare('PRAGMA table_info(d1_databases)').all() as Array<{ name: string }>
-    expect(cols.some((c) => c.name === 'cf_database_id')).toBe(true)
+    const body = (await res.json()) as Record<string, unknown>
+    expect(body).toMatchObject({ ok: true, migrations: [{ name: 'schema_v1', status: 'skipped' }] })
+    expect(body).not.toHaveProperty('upgraded')
+    expect(sqlite.prepare('SELECT type, name, sql FROM sqlite_master ORDER BY name').all()).toEqual(schema)
   })
 })

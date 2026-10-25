@@ -1,6 +1,13 @@
-import { describe, it, expect } from 'vitest'
-import { DEFAULT_TABLE_PREFIX, detectExistingTableFamily, tablePrefix, tables } from '../db'
+import { describe, expect, it } from 'vitest'
 import { fakeD1 } from '../../routes/__tests__/fakes'
+import {
+  DEFAULT_TABLE_PREFIX,
+  detectExistingMigrationLedgers,
+  detectExistingTableFamily,
+  migrationsTable,
+  tablePrefix,
+  tables,
+} from '../db'
 
 describe('tablePrefix', () => {
   it('resolves an unset TABLE_PREFIX to the default prefix', () => {
@@ -90,5 +97,59 @@ describe('detectExistingTableFamily', () => {
       prefix: 'ZETA_',
       tableCount: 11,
     })
+  })
+})
+
+describe('migrationsTable', () => {
+  it('uses the default prefix when TABLE_PREFIX is unset (the zeta_ business prefix)', () => {
+    expect(migrationsTable({})).toBe('_zeta_schema_migrations')
+    expect(migrationsTable({ TABLE_PREFIX: undefined })).toBe('_zeta_schema_migrations')
+  })
+
+  it('keeps a configured value verbatim, including its case', () => {
+    expect(migrationsTable({ TABLE_PREFIX: 'ZETA' })).toBe('_ZETA_schema_migrations')
+    expect(migrationsTable({ TABLE_PREFIX: 'kp' })).toBe('_kp_schema_migrations')
+    expect(migrationsTable({ TABLE_PREFIX: 'my_app' })).toBe('_my_app_schema_migrations')
+  })
+
+  it('drops the trailing underscore and the extra one for an explicitly empty prefix', () => {
+    expect(migrationsTable({ TABLE_PREFIX: '' })).toBe('_schema_migrations')
+  })
+
+  it('never normalises case', () => {
+    expect(migrationsTable({ TABLE_PREFIX: 'Zeta' })).not.toBe(migrationsTable({ TABLE_PREFIX: 'zeta' }))
+  })
+
+  it('rejects an invalid TABLE_PREFIX through the single prefix helper', () => {
+    expect(() => migrationsTable({ TABLE_PREFIX: 'kp!drop' })).toThrow('TABLE_PREFIX contains invalid characters')
+  })
+})
+
+describe('detectExistingMigrationLedgers', () => {
+  const names = (...list: string[]) => fakeD1(() => list.map((name) => ({ name }))).db
+
+  it('finds nothing in an empty database', async () => {
+    expect(await detectExistingMigrationLedgers(names())).toEqual([])
+  })
+
+  it('finds the unprefixed ledger', async () => {
+    expect(await detectExistingMigrationLedgers(names('_schema_migrations'))).toEqual([
+      { prefix: '', table: '_schema_migrations' },
+    ])
+  })
+
+  it('finds prefixed ledgers and keeps their case', async () => {
+    expect(await detectExistingMigrationLedgers(names('_ZETA_schema_migrations', '_kp_schema_migrations'))).toEqual([
+      { prefix: 'ZETA_', table: '_ZETA_schema_migrations' },
+      { prefix: 'kp_', table: '_kp_schema_migrations' },
+    ])
+  })
+
+  it('ignores business tables and anything that is not a ledger', async () => {
+    expect(
+      await detectExistingMigrationLedgers(
+        names('ZETA_users', 'SL_schema_migrations', '_schema_migration', '_migrations')
+      )
+    ).toEqual([])
   })
 })
