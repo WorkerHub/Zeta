@@ -164,7 +164,7 @@ curl -X POST https://<你的域名>/api/setup \
 
 > 现在也有一个 `/setup` 页面入口，对大多数用户而言比在终端里敲命令更方便：它提交的是同一个 `POST /api/setup` 请求（带上密钥），因此受到相同的限流保护。管理员可以在**管理后台 → 设置**里隐藏该页面（`setup_page_enabled`，默认开启）——这个开关**只影响页面**；`POST /api/setup` 仍可用密钥调用，作为升级 / 救急通道。`POST /api/setup` 按来源 IP 限流：**每 10 分钟 3 次**（超限返回 `429` 并带 `Retry-After` 头），计数发生在密钥校验之前。
 
-> 该接口是幂等的，重复调用不会造成任何破坏，可安全地多次调用。**每次升级部署后请再调用一次**：它还会对旧版本创建的数据库执行 Schema 升级（例如让 `query_history` 在删除用户或数据库时保留记录——升级前删除用户或数据库会失败；以及创建 `rate_limits` 表，让登录 / 两步验证 / 邮件的限流计数精确生效——该表创建前会退回到近似的 KV 计数；以及在 `user_database_permissions` 表的外键仍指向不带前缀的 `users` / `d1_databases` 表时重建该表——修复前授权、撤销数据库权限以及删除用户或数据库都会报 `no such table` 错误。用户或数据库已不存在的权限记录会被丢弃，丢弃的行数会在响应的 `permissionsRepair` 字段中给出；以及为[查询结果保留](#查询结果保留)创建 `notebook_runs` 表并给 `users` 表添加 `notebook_run_limit` 列——升级前运行结果不会被保存，运行记录列表也无法加载；以及为运行记录编号：添加 `notebook_runs.seq` 和 `notebooks.last_run_seq` 列，把每个 Notebook 已有的运行记录按时间从早到晚从 1 开始编号，并建立唯一索引 `(notebook_id, seq)`——**部署带编号运行标签页的版本后，请再调用一次**：调用前查询仍可正常执行，但不会被保存，运行记录标签页也无法加载；以及为[通过 HTTP 接口添加 D1 数据库](#接入更多-d1-数据库)添加 `d1_databases.cf_database_id` 列——升级前后台的添加/关联数据库会报 `no such column: cf_database_id`）。通过迁移文件创建的数据库可执行 `pnpm migrate:remote`（`0004_notebook_runs.sql`、`0005_notebook_run_seq.sql`、`0006_d1_cf_database_id.sql`）完成同样的升级。
+> 该接口是幂等的，重复调用不会造成任何破坏，可安全地多次调用。它执行 `worker/src/lib/migrations.ts` 里版本化的 Schema 迁移，并把每条已执行的迁移记录在账本表 `_<前缀>_schema_migrations` 中（见[Schema 迁移](#schema-迁移)）。重复调用只会执行账本里尚未记录的迁移，并在响应的 `migrations` 字段里逐条给出 `applied` / `skipped`；部署带新迁移的版本后仍应调用一次。
 >
 > 旧版本使用的 `GET /api/setup/<SETUP_SECRET>` 已废弃：现在会返回 `405` 且不执行任何操作。如果曾经访问过旧 URL，建议轮换 `SETUP_SECRET`。
 
@@ -182,6 +182,33 @@ curl -X POST https://<你的域名>/api/setup \
 - 在 **管理后台 → 数据库 → 权限** 中为用户分配访问权限
 
 ---
+
+## Schema 迁移
+
+Schema 只在一处定义：`worker/src/lib/migrations.ts`，一个按生效 `TABLE_PREFIX` 参数化的有序
+`{ name, sql }` 列表。`POST /api/setup`（以及管理后台的「检查并升级数据库」按钮，走同一个 runner）
+按顺序执行账本里尚未记录的迁移，并且只在一条迁移的 SQL 成功后才把它记入账本。
+
+- **账本表名**：`_` + 前缀核 + `_schema_migrations`。`TABLE_PREFIX=ZETA` →
+  `_ZETA_schema_migrations`，默认前缀 → `_zeta_schema_migrations`，无前缀 →
+  `_schema_migrations`。与业务表一样，表名只在 `worker/src/lib/db.ts` 的 `migrationsTable()`
+  一处生成。
+- **历史塌缩**：Zeta 没有生产数据，原先 `worker/migrations/0001–0006` 的文件迁移链与 PRAGMA
+  探测式升级已塌缩为一条 `schema_v1`（即当前完整 Schema）。不需要 baseline 播种，也没有逐级
+  版本链；今后的变更从 `schema_v2` 起追加。`pnpm migrate:*`（wrangler `d1 migrations apply`）
+  路径已删除——包括带前缀 / 共享部署在内，setup 账本是唯一的 Schema 路径。
+- **新增迁移的著述规则**：在列表末尾追加一条，名字依次为 `schema_v2`、`schema_v3`……；
+  **已合并的条目不可修改、不可重排、不可改名**——已经记录过它的数据库不会再执行一次。迁移必须
+  只增不毁（`CREATE TABLE/INDEX IF NOT EXISTS`、`ALTER TABLE … ADD COLUMN`、`INSERT OR IGNORE`）：
+  不删表、不改名、不重写存量数据；破坏性变更须另行立规格。
+- **守卫**：数据库里已经有一套其他前缀的 Zeta Schema 时，setup 会中止并报出应保留的
+  `TABLE_PREFIX`；若账本已记录迁移、但旁边的表缺失，同样会中止——确实要重新初始化时，需要把
+  账本表一并删除。
+
+> **对外部自部署旧版的破坏性说明。** 本版用账本取代了探测式升级，旧部署的表不会被就地补齐
+> （旧逻辑会补列、重建表）。升级已有的外部部署要么停留在旧版，要么删除该部署自己前缀的业务表
+> **以及账本表**后重新执行 `POST /api/setup`。Zeta 自身的部署没有生产数据，此条只针对外部
+> 自部署副本。
 
 ## 接入更多 D1 数据库
 
