@@ -85,6 +85,9 @@ In your GitHub repo → **Settings → Secrets and variables → Actions**:
 | Name | Value |
 |------|-------|
 | `CLOUDFLARE_API_TOKEN` | The API token from Step 1 |
+| `JWT_SECRET` | Any random 64-char string — e.g. `openssl rand -hex 32` |
+| `SETUP_SECRET` | Any random string — e.g. `openssl rand -hex 16` |
+| `CF_D1_API_TOKEN` | A Cloudflare API token with **D1 → Edit** permission (account-scoped), used at runtime to list and query the D1 databases you add in the admin panel |
 
 **Variables** (plain-text, for non-sensitive IDs):
 
@@ -99,18 +102,15 @@ In your GitHub repo → **Settings → Secrets and variables → Actions**:
 
 ### Step 3 — Configure Cloudflare Worker secrets & variables
 
-These values are sensitive or deployment-specific and are set **directly in the Cloudflare dashboard**, not in GitHub.
+The three runtime secrets `JWT_SECRET`, `SETUP_SECRET` and `CF_D1_API_TOKEN` are injected at deploy time from the **GitHub Secrets** you set in Step 2 (the deploy workflow passes them to `wrangler deploy --secrets-file`) — do **not** set them here. The remaining values are deployment-specific and set **directly in the Cloudflare dashboard**, not in GitHub. `APP_URL` is a Cloudflare **Worker Variable** (dashboard, type *Text*) — **not a GitHub Secret**.
 
 Go to **Workers & Pages → zeta → Settings → Variables and Secrets**:
 
-**Secrets** (type: Secret):
+**Secret** (type: Secret, dashboard-only):
 
 | Name | How to generate |
 |------|----------------|
-| `JWT_SECRET` | Any random 64-char string — e.g. `openssl rand -hex 32` |
-| `ENCRYPTION_KEY` | 64-char hex (32 bytes) — e.g. `openssl rand -hex 32`. Validated strictly: any other value (a passphrase, a shorter key) is rejected instead of silently yielding a weak key |
-| `SETUP_SECRET` | Any random string — e.g. `openssl rand -hex 16` |
-| `CF_D1_API_TOKEN` | A Cloudflare API token with **D1 → Edit** permission (account-scoped). Used at runtime to list and query the D1 databases you add in the admin panel. This is a *separate* token from the GitHub `CLOUDFLARE_API_TOKEN` used to deploy. |
+| `ENCRYPTION_KEY` | 64-char hex (32 bytes) — AES-GCM key for TOTP secrets and SMTP/Resend credentials. **Dashboard-only**: keep the existing Cloudflare secret as-is; do **not** add it to GitHub Secrets or CI (a new value makes stored TOTP credentials and encrypted config undecryptable). |
 
 **Variables** (type: Text):
 
@@ -119,9 +119,9 @@ Go to **Workers & Pages → zeta → Settings → Variables and Secrets**:
 | `APP_URL` | Your Worker URL, e.g. `https://zeta.yourname.workers.dev` or your custom domain. Use the exact `https://` URL users open: it is the only origin CORS allows, the passkey RP ID, the base of email links and the issuer/audience of every login token (changing it later signs everybody out) |
 | `TABLE_PREFIX` | *(Optional)* Prefix for all internal D1 tables. Three states: **unset** → default prefix `zeta` (`zeta_users`, `zeta_settings`, …); **set to a value** → the value used verbatim, case preserved, with `_` appended (`kp` → `kp_users`, `ZETA` → `ZETA_users`; invalid characters are rejected); **set to an empty string** → no prefix (you accept the risk of table-name collisions). Decide it **before** calling the setup endpoint — it cannot be changed after initialisation. |
 | `ALLOW_APP_DB_AS_TARGET` | *(Optional, default off)* Set to exactly `true` to allow Zeta's own app database to be added and queried as a target — for deployments that share one D1 database between Zeta and other projects. Any other value (or unset) keeps the app database excluded. While enabled the app database is guarded: its effective permission is capped at `write` (destructive statements like `DROP`/`TRUNCATE` are always rejected and `write_drop` cannot be granted on it), and its internal tables (`users`, `settings`, `notebooks`, … everything `TABLE_PREFIX` resolves to) are read-only — including for admins. Write statements whose target table cannot be determined are rejected. |
-> `CF_ACCOUNT_ID` and `ZETA_APP_DB_ID` are injected automatically at deploy time from the GitHub Variables `CLOUDFLARE_ACCOUNT_ID` and `D1_DATABASE_ID` — do **not** set them here. You only configure `CF_D1_API_TOKEN` above.
+> `CF_ACCOUNT_ID` and `ZETA_APP_DB_ID` are injected automatically at deploy time from the GitHub Variables `CLOUDFLARE_ACCOUNT_ID` and `D1_DATABASE_ID` — do **not** set them here.
 
-> These are kept out of GitHub entirely. The `keep_vars = true` setting in `wrangler.toml` ensures each deployment never overwrites values you set here.
+> `ENCRYPTION_KEY` and the variables above stay out of GitHub entirely (the three CI secrets live in GitHub Secrets — see Step 2). The `keep_vars = true` setting in `wrangler.toml` ensures each deployment never overwrites values you set here.
 
 > **Upgrade warning:** an existing deployment that never set `TABLE_PREFIX` used **no prefix** before the three-state change. After upgrading, an unset prefix resolves to the default `zeta` and points at different tables. Before upgrading, set `TABLE_PREFIX` explicitly to preserve your existing tables — an empty string keeps the old unprefixed tables — or rely on the startup/setup guard, which aborts instead of silently switching prefixes. In a shared D1 database, Zeta's migrations and the guard only match Zeta's own table family and never touch other projects' tables (`SL_*`, `eNotify_*`, `TP_*`, `YL_*`, `TEMP_*`, …).
 
@@ -239,7 +239,7 @@ cd worker && pnpm dev
 cd web && pnpm dev
 ```
 
-Create `worker/.dev.vars` for local secrets:
+Create `worker/.dev.vars` for local secrets (you can copy `worker/.dev.vars.example` as a template with empty placeholders):
 
 ```ini
 JWT_SECRET=dev-jwt-secret
@@ -285,6 +285,9 @@ git config blame.ignoreRevsFile .git-blame-ignore-revs
 | Name | Where | Description |
 |------|-------|-------------|
 | `CLOUDFLARE_API_TOKEN` | Secret | Wrangler deploy authentication |
+| `JWT_SECRET` | Secret | Signs access + refresh JWTs (HS256) |
+| `SETUP_SECRET` | Secret | Protects `POST /api/setup` |
+| `CF_D1_API_TOKEN` | Secret | API token with `D1 → Edit` permission — lists and queries the D1 databases added in the admin panel |
 | `CLOUDFLARE_ACCOUNT_ID` | Variable | Cloudflare account ID |
 | `D1_DATABASE_NAME` | Variable | D1 database name (e.g. `zeta-db`) |
 | `D1_DATABASE_ID` | Variable | D1 database ID |
@@ -294,10 +297,7 @@ git config blame.ignoreRevsFile .git-blame-ignore-revs
 
 | Name | Type | Description |
 |------|------|-------------|
-| `JWT_SECRET` | Secret | Signs access + refresh JWTs (HS256) |
-| `ENCRYPTION_KEY` | Secret | 64-char hex (strictly validated) — AES-GCM key for TOTP secrets and SMTP/Resend credentials |
-| `SETUP_SECRET` | Secret | Protects `POST /api/setup` |
-| `CF_D1_API_TOKEN` | Secret | API token with `D1 → Edit` permission — lists and queries the D1 databases added in the admin panel |
+| `ENCRYPTION_KEY` | Secret | 64-char hex — AES-GCM key for TOTP secrets and SMTP/Resend credentials. Dashboard-only: kept as the existing Cloudflare secret, **not** in GitHub Secrets or CI. |
 | `APP_URL` | Variable | Full URL of your deployment; also the JWT `iss`/`aud`, so tokens from another deployment sharing `JWT_SECRET` are rejected |
 | `TABLE_PREFIX` | Variable | *(Optional)* Prefix for internal tables. Three states: **unset** → default prefix `zeta`; **set to a value** → that value verbatim, case preserved, with `_` appended (`kp` → `kp_users`, `ZETA` → `ZETA_users`); **set to an empty string** → no prefix. Set before first setup run. Immutable after initialisation. |
 

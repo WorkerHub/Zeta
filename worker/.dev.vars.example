@@ -1,0 +1,17 @@
+# Template for local development secrets — copy to worker/.dev.vars (git-ignored)
+# and fill in real values. Never commit the filled file.
+#
+# These three secrets are injected by the deploy workflow via CI
+# (wrangler deploy --secrets-file). Leave the values empty here.
+
+JWT_SECRET=
+SETUP_SECRET=
+CF_D1_API_TOKEN=
+
+# ENCRYPTION_KEY stays in the Cloudflare Dashboard (not CI, not this file):
+# keep the existing CF Secret as-is — do not regenerate it.
+
+# TABLE_PREFIX (optional): prefix for all internal D1 tables. Set it BEFORE the
+# first setup run — it cannot be changed after initialisation. Unset → default
+# prefix `zeta`; set to a value → used verbatim with `_` appended; set to an
+# empty string → no prefix. Only a note here, no value.
