@@ -1,6 +1,6 @@
-import { describe, it, expect } from 'vitest'
 import type { DatabaseSync } from 'node:sqlite'
-import init from '../../../migrations/0001_init.sql?raw'
+import { describe, expect, it } from 'vitest'
+import { getMigrations } from '../../lib/migrations'
 import { runSetup } from '../../lib/setup'
 import { fakeEnv } from './fakes'
 import { sqliteD1 } from './sqlite-d1'
@@ -11,6 +11,10 @@ import { sqliteD1 } from './sqlite-d1'
 // keeps the existing tables. Everything runs against a real SQLite database so the schema really
 // lands in sqlite_master, exactly like the production baseline (TABLE_PREFIX=ZETA, 11 ZETA_*
 // tables) captured in ONE-213.
+
+// The unprefixed schema_v1 as plain SQL: seeds an unprefixed Zeta schema directly, i.e. a database
+// initialised before the migration ledger existed (no `_schema_migrations` row).
+const unprefixedSchema = getMigrations({ TABLE_PREFIX: '' }).find((m) => m.name === 'schema_v1')!.sql
 
 const tableNames = (sqlite: DatabaseSync) =>
   (
@@ -62,7 +66,7 @@ describe('runSetup anti-silent-switch guard', () => {
 
   it('refuses when an unprefixed migration-created database meets an unset TABLE_PREFIX', async () => {
     const { db, sqlite } = sqliteD1()
-    sqlite.exec(init) // the migrations path: an unprefixed 9-table family
+    sqlite.exec(unprefixedSchema) // a pre-ledger, unprefixed 11-table family
     const before = tableNames(sqlite)
 
     const { result, names } = await run(sqlite, fakeEnv({ DB: db, TABLE_PREFIX: undefined }))
@@ -110,7 +114,7 @@ describe('runSetup anti-silent-switch guard', () => {
 
   it('reports the effective prefix for an unprefixed re-run (TABLE_PREFIX="")', async () => {
     const { db, sqlite } = sqliteD1()
-    sqlite.exec(init)
+    sqlite.exec(unprefixedSchema)
     const { result } = await run(sqlite, fakeEnv({ DB: db, TABLE_PREFIX: '' }))
     expect(result).toMatchObject({ ok: true, tablePrefix: '' })
     expect((await run(sqlite, fakeEnv({ DB: db, TABLE_PREFIX: '' }))).result).toMatchObject({ ok: true })
@@ -158,11 +162,12 @@ describe('runSetup anti-silent-switch guard', () => {
 
     const { result, names } = await run(sqlite, fakeEnv({ DB: db, TABLE_PREFIX: undefined }))
 
-    // Even this adversarial leftover never causes a silent switch: the DDL fails (loudly, all in
-    // one rolled-back batch) instead of initialising anything
+    // Even this adversarial leftover never causes a silent switch: the DDL fails loudly instead of
+    // initialising anything. Only the (empty) ledger table it was reading from exists afterwards;
+    // the next run applies the migrations again.
     expect(result).toMatchObject({ ok: false })
     expect(names.filter((n) => n.startsWith('zeta_'))).toEqual([])
-    expect(names).toEqual(['ZETA_users'])
+    expect(names).toEqual(['ZETA_users', '_zeta_schema_migrations'])
   })
 
   it('initialises a fresh database under a custom prefix', async () => {
@@ -170,5 +175,52 @@ describe('runSetup anti-silent-switch guard', () => {
     const { result, names } = await run(sqlite, fakeEnv({ DB: db, TABLE_PREFIX: 'kp' }))
     expect(result).toMatchObject({ ok: true, tablePrefix: 'kp_' })
     expect(names).toContain('kp_users')
+  })
+
+  it('mentions the migration ledger of the prefix that already owns the schema', async () => {
+    const { db, sqlite } = sqliteD1()
+    expect((await run(sqlite, fakeEnv({ DB: db, TABLE_PREFIX: 'ZETA' }))).result).toMatchObject({ ok: true })
+
+    const { result } = await run(sqlite, fakeEnv({ DB: db, TABLE_PREFIX: undefined }))
+    expect(result).toMatchObject({
+      ok: false,
+      errors: [expect.stringContaining('recorded in _ZETA_schema_migrations')],
+    })
+  })
+
+  it('does not treat another project’s migration ledger as this project’s schema', async () => {
+    const { db, sqlite } = sqliteD1()
+    // A sibling project in the same shared D1 uses the same ledger convention under its own prefix
+    sqlite.exec(`
+      CREATE TABLE _SL_schema_migrations (name TEXT PRIMARY KEY, applied_at INTEGER NOT NULL DEFAULT (unixepoch()));
+      INSERT INTO _SL_schema_migrations (name) VALUES ('schema_v1');
+      CREATE TABLE SL_links (id TEXT PRIMARY KEY);
+    `)
+
+    const { result, names } = await run(sqlite, fakeEnv({ DB: db, TABLE_PREFIX: 'ZETA' }))
+
+    expect(result).toMatchObject({ ok: true, tablePrefix: 'ZETA_', migrations: [{ status: 'applied' }] })
+    expect(names).toContain('ZETA_users')
+    expect(names).toContain('_ZETA_schema_migrations')
+    // The foreign ledger and its tables are left alone
+    expect(names).toContain('_SL_schema_migrations')
+    expect(names).toContain('SL_links')
+  })
+
+  it('refuses when the resolved prefix has a ledger but the tables it recorded are gone', async () => {
+    const { db, sqlite } = sqliteD1()
+    sqlite.exec(`
+      CREATE TABLE _ZETA_schema_migrations (name TEXT PRIMARY KEY, applied_at INTEGER NOT NULL DEFAULT (unixepoch()));
+      INSERT INTO _ZETA_schema_migrations (name) VALUES ('schema_v1');
+    `)
+
+    const { result, names } = await run(sqlite, fakeEnv({ DB: db, TABLE_PREFIX: 'ZETA' }))
+
+    expect(result).toMatchObject({
+      ok: false,
+      errors: [expect.stringMatching(/_ZETA_schema_migrations records .*drop _ZETA_schema_migrations as well/s)],
+    })
+    // Nothing was created: replaying the migrations would silently leave an incomplete schema
+    expect(names).toEqual(['_ZETA_schema_migrations'])
   })
 })

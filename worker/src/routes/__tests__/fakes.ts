@@ -1,6 +1,6 @@
 import type { D1Database, KVNamespace } from '@cloudflare/workers-types'
-import type { Env } from '../../types'
 import { createAccessToken } from '../../lib/auth'
+import type { Env } from '../../types'
 
 export interface DbCall {
   sql: string
@@ -69,6 +69,12 @@ export function fakeD1(handler: DbHandler = () => null, opts: { rateLimits?: boo
         exec(s.sql, s.args)
         return { results: [], meta: {} }
       }),
+    // D1's multi-statement exec(): recorded as one call (the setup runner applies a whole
+    // migration with it). No SQL is emulated here — tests that need real DDL use sqliteD1().
+    exec: async (sql: string) => {
+      calls.push({ sql, args: [] })
+      return { count: 0, duration: 0 }
+    },
   }
   return { db: db as unknown as D1Database, calls, rateLimits: rateLimits.rows }
 }

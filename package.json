@@ -11,8 +11,6 @@
     "build": "pnpm build:web",
     "build:web": "cd web && pnpm build",
     "deploy": "pnpm build:web && cd worker && pnpm run deploy",
-    "migrate:local": "cd worker && pnpm migrate:local",
-    "migrate:remote": "cd worker && pnpm migrate:remote",
     "lint": "biome lint .",
     "lint:fix": "biome lint --write .",
     "format": "biome format --write .",

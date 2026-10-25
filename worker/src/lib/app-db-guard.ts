@@ -1,5 +1,5 @@
 import type { Env } from '../types'
-import { tables } from './db'
+import { migrationsTable, tables } from './db'
 import { type Permission, type Token, tokenize } from './sql-guard'
 
 // ── Guardrails for the application database as a query target ──────────────────
@@ -9,11 +9,14 @@ import { type Permission, type Token, tokenize } from './sql-guard'
 // and batch query paths share exactly one implementation.
 
 // The application's internal table set: every table name tables(env) resolves to
-// (i.e. it follows the effective TABLE_PREFIX — no hardcoded names or prefixes).
+// (i.e. it follows the effective TABLE_PREFIX — no hardcoded names or prefixes), plus
+// the schema-migration ledger `_<prefix>_schema_migrations`. The ledger is not a
+// business table, but it is just as internal: a write to it could make setup skip a
+// migration (or replay one), so it gets the same read-only protection.
 // SQLite table names are case-insensitive, so the set is lowercase and compared
 // against lowercased tokens.
 export function appInternalTables(env: Pick<Env, 'TABLE_PREFIX'>): Set<string> {
-  return new Set(Object.values(tables(env)).map((t) => t.toLowerCase()))
+  return new Set([...Object.values(tables(env)), migrationsTable(env)].map((t) => t.toLowerCase()))
 }
 
 // On the application database the effective permission is capped at `write`: the

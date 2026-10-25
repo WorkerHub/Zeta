@@ -97,7 +97,7 @@ In your GitHub repo → **Settings → Secrets and variables → Actions**:
 | `D1_DATABASE_NAME` | e.g. `zeta-db` |
 | `D1_DATABASE_ID` | The D1 Database ID from Step 1 |
 | `KV_NAMESPACE_ID` | The KV Namespace ID from Step 1 |
-| `ALLOW_APP_DB_AS_TARGET` | *(Optional, default off — leave unset or empty for off.)* Injected into `wrangler.toml` at deploy time. Set to exactly `true` to allow Zeta's own app database to be added and queried as a target — for deployments that share one D1 database between Zeta and other projects. Any other value keeps the app database excluded. While enabled the app database is guarded: its effective permission is capped at `write` (destructive statements like `DROP`/`TRUNCATE` are always rejected and `write_drop` cannot be granted on it), and its internal tables (`users`, `settings`, `notebooks`, … everything `TABLE_PREFIX` resolves to) are read-only — including for admins. Write statements whose target table cannot be determined are rejected. |
+| `ALLOW_APP_DB_AS_TARGET` | *(Optional, default off — leave unset or empty for off.)* Injected into `wrangler.toml` at deploy time. Set to exactly `true` to allow Zeta's own app database to be added and queried as a target — for deployments that share one D1 database between Zeta and other projects. Any other value keeps the app database excluded. While enabled the app database is guarded: its effective permission is capped at `write` (destructive statements like `DROP`/`TRUNCATE` are always rejected and `write_drop` cannot be granted on it), and its internal tables (`users`, `settings`, `notebooks`, … everything `TABLE_PREFIX` resolves to, plus the `_<prefix>_schema_migrations` migration ledger) are read-only — including for admins. Write statements whose target table cannot be determined are rejected. |
 
 ---
 
@@ -163,7 +163,7 @@ Expected response:
 
 > There is also a setup page at `/setup` that most users will find easier than a terminal: it submits the same `POST /api/setup` request with the secret, so it is guarded by the same rate limit. An admin can hide the page in **Admin → Settings** (`setup_page_enabled`, on by default) — the switch only hides the page; `POST /api/setup` keeps working with the secret, as the recovery channel. `POST /api/setup` is rate-limited to **3 attempts per 10 minutes per IP** (beyond that it answers `429` with a `Retry-After` header); the attempt is counted before the secret is checked.
 
-> The endpoint is idempotent — safe to call multiple times. **Re-run it after every upgrade**: it also applies schema upgrades to databases created by earlier versions (e.g. making `query_history` keep rows when a user or database is deleted — until then, deleting users or databases fails — and creating the `rate_limits` table that makes login / 2FA / email rate limits exact; until it exists they fall back to approximate KV counters; and rebuilding a `user_database_permissions` table whose foreign keys still point at unprefixed `users` / `d1_databases` tables — until then, granting or revoking database access and deleting users or databases fail with `no such table`. Permission rows whose user or database no longer exists are dropped; the response reports how many under `permissionsRepair`; and creating the `notebook_runs` table plus the `users.notebook_run_limit` column for [saved query results](#saved-query-results) — until then, runs are not saved and the list of saved runs fails to load; and numbering saved runs: adding `notebook_runs.seq` and `notebooks.last_run_seq`, numbering the existing runs of each notebook from 1 (oldest first) and adding a unique `(notebook_id, seq)` index — **after deploying the version with numbered run tabs, call it once more**: until then, queries still run but are not saved, and the run tabs fail to load; and adding `d1_databases.cf_database_id` for [adding D1 databases over the HTTP API](#adding-a-queryable-d1-database) — until then, the admin panel's add/link database flows fail with `no such column: cf_database_id`). Databases created from the migrations get the same through `pnpm migrate:remote` (`0004_notebook_runs.sql`, `0005_notebook_run_seq.sql`, `0006_d1_cf_database_id.sql`).
+> The endpoint is idempotent — safe to call multiple times. It applies the versioned schema migrations of `worker/src/lib/migrations.ts` and records each one in a ledger table, `_<prefix>_schema_migrations` (see [Schema migrations](#schema-migrations)). Re-running it applies only what the ledger does not already record and reports every migration as `applied` or `skipped` under `migrations`; it is still the call to make after deploying a version that adds one.
 >
 > Earlier versions used `GET /api/setup/<SETUP_SECRET>`. That form is gone: it now returns `405` and does nothing. If you ever opened the old URL, consider rotating `SETUP_SECRET`.
 
@@ -181,6 +181,39 @@ On new installs, registration closes as soon as that first account exists. After
 - Grant users access in **Admin → Databases → Permissions**
 
 ---
+
+## Schema migrations
+
+The schema is defined exactly once, in `worker/src/lib/migrations.ts`: an ordered list of
+`{ name, sql }` entries, parameterised by the effective `TABLE_PREFIX`. `POST /api/setup` — and the
+admin **Check & upgrade database** button, which runs the same runner — applies the entries the
+ledger has not recorded yet and records each of them only after its SQL succeeded.
+
+- **Ledger table**: `_` + the prefix core + `_schema_migrations`. `TABLE_PREFIX=ZETA` →
+  `_ZETA_schema_migrations`, the default prefix → `_zeta_schema_migrations`, no prefix →
+  `_schema_migrations`. Like the business tables it is built in exactly one place
+  (`migrationsTable()` in `worker/src/lib/db.ts`).
+- **Collapsed history**: Zeta has no production data, so the former `worker/migrations/0001–0006`
+  chain and the PRAGMA-driven upgrade probes were collapsed into a single `schema_v1` holding the
+  current whole schema. There is no baseline to seed and no chain to replay; future changes start at
+  `schema_v2`. The `pnpm migrate:*` (wrangler `d1 migrations apply`) path is gone — the setup ledger
+  is the only schema path, including for prefixed and shared deployments.
+- **Writing a new migration**: append one entry at the end (`schema_v2`, `schema_v3`, …). Never
+  edit, reorder or rename an entry that has been merged — databases that already recorded it will
+  not run it again. Migrations must be additive (`CREATE TABLE/INDEX IF NOT EXISTS`,
+  `ALTER TABLE … ADD COLUMN`, `INSERT OR IGNORE`): no drops, no renames, no rewriting of existing
+  data; a destructive change needs its own specification.
+- **Guardrails**: setup refuses to initialise when the database already holds a Zeta schema under a
+  different prefix (the error names the `TABLE_PREFIX` that keeps it), and when its own ledger
+  recorded migrations but the tables next to it are missing — in that case dropping the ledger table
+  as well is what re-initialises from scratch.
+
+> **Breaking change for existing self-hosted deployments.** This version replaces the probing
+> upgrade path with the ledger, so an older deployment's tables are not extended in place any more
+> (the old probes added missing columns and rebuilt tables). Upgrade an existing deployment by
+> deleting its own prefixed tables **and** its ledger table and running `POST /api/setup` again, or
+> stay on the previous version. Zeta's own deployment has no production data — this concerns
+> external, self-hosted copies only.
 
 ## Adding a Queryable D1 Database
 
@@ -325,7 +358,7 @@ All endpoints live under `/api/`. Authentication uses short-lived JWT access tok
 | `GET/PUT /api/profile/run-settings` | The user's own run limit (`run_limit`, `null` follows the admin limit) and storage usage |
 | `GET/POST/PATCH/DELETE /api/admin/*` | Admin-only: users, databases, permissions, settings |
 | `POST /api/admin/setup` | Admin-only: runs the same schema initialisation/upgrade as POST /api/setup without SETUP_SECRET — the admin session is the credential |
-| `POST /api/setup` | Idempotent schema initialisation (JSON body `{"secret": "<SETUP_SECRET>"}`). Rate-limited to 3 attempts / 10 min per IP |
+| `POST /api/setup` | Idempotent schema migration: applies the pending ledger entries and returns `tablePrefix` plus each migration's `applied`/`skipped` result (JSON body `{"secret": "<SETUP_SECRET>"}`). Rate-limited to 3 attempts / 10 min per IP |
 | `GET /api/setup/state` | Public: `{"enabled": boolean}` — whether the `/setup` page is enabled |
 | `GET /api/health` | Health check |
 
