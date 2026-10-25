@@ -6,7 +6,7 @@ const APP_DB = '11111111-1111-4111-8111-111111111111'
 const DB_1 = '22222222-2222-4222-8222-222222222222'
 
 const env = (overrides: Partial<Env> = {}) =>
-  ({ CF_ACCOUNT_ID: 'acct123', CF_D1_API_TOKEN: 'tok', ZETA_APP_DB_ID: APP_DB, ...overrides }) as unknown as Env
+  ({ CF_ACCOUNT_ID: 'acct123', CLOUDFLARE_API_TOKEN: 'tok', ZETA_APP_DB_ID: APP_DB, ...overrides }) as unknown as Env
 
 const jsonResponse = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } })
@@ -262,7 +262,7 @@ describe('queryD1Http', () => {
 
   it('fails closed when credentials are missing', async () => {
     vi.stubGlobal('fetch', vi.fn())
-    await expect(queryD1Http(env({ CF_D1_API_TOKEN: '' }), DB_1, 'SELECT 1')).rejects.toMatchObject({
+    await expect(queryD1Http(env({ CLOUDFLARE_API_TOKEN: '' }), DB_1, 'SELECT 1')).rejects.toMatchObject({
       kind: 'config',
       status: 500,
     })

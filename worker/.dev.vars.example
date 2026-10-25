@@ -3,10 +3,12 @@
 #
 # These three secrets are injected by the deploy workflow via CI
 # (wrangler deploy --secrets-file). Leave the values empty here.
+# CLOUDFLARE_API_TOKEN needs the D1 -> Edit permission: besides deploy auth it is
+# the runtime credential that lists and queries D1 databases.
 
 JWT_SECRET=
 SETUP_SECRET=
-CF_D1_API_TOKEN=
+CLOUDFLARE_API_TOKEN=
 
 # ENCRYPTION_KEY stays in the Cloudflare Dashboard (not CI, not this file):
 # keep the existing CF Secret as-is — do not regenerate it.

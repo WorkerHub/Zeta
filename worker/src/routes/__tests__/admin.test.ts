@@ -182,7 +182,7 @@ describe('database registry over the D1 HTTP API', () => {
     fakeEnv({
       DB: fakeD1(handler).db,
       CF_ACCOUNT_ID: 'acct',
-      CF_D1_API_TOKEN: 'tok',
+      CLOUDFLARE_API_TOKEN: 'tok',
       ZETA_APP_DB_ID: APP_DB,
     })
 
@@ -200,7 +200,7 @@ describe('database registry over the D1 HTTP API', () => {
     const { db } = fakeD1((sql) =>
       sql.includes('WHERE cf_database_id IS NOT NULL') ? [{ id: 'r1', cf_database_id: DB_1 }] : null
     )
-    const env = fakeEnv({ DB: db, CF_ACCOUNT_ID: 'acct', CF_D1_API_TOKEN: 'tok', ZETA_APP_DB_ID: APP_DB })
+    const env = fakeEnv({ DB: db, CF_ACCOUNT_ID: 'acct', CLOUDFLARE_API_TOKEN: 'tok', ZETA_APP_DB_ID: APP_DB })
     const res = await callWorker(env, '/api/admin/d1/databases', { headers: await bearer(env, 'a1', 'admin') })
     expect(res.status).toBe(200)
     const body = (await res.json()) as { results: Array<Record<string, unknown>> }
@@ -221,7 +221,7 @@ describe('database registry over the D1 HTTP API', () => {
       )
     )
     const { db, calls } = fakeD1()
-    const env = fakeEnv({ DB: db, CF_ACCOUNT_ID: 'acct', CF_D1_API_TOKEN: 'tok', ZETA_APP_DB_ID: APP_DB })
+    const env = fakeEnv({ DB: db, CF_ACCOUNT_ID: 'acct', CLOUDFLARE_API_TOKEN: 'tok', ZETA_APP_DB_ID: APP_DB })
     const res = await callWorker(
       env,
       '/api/admin/databases',
@@ -246,7 +246,7 @@ describe('database registry over the D1 HTTP API', () => {
       )
     )
     const { db, calls } = fakeD1()
-    const env = fakeEnv({ DB: db, CF_ACCOUNT_ID: 'acct', CF_D1_API_TOKEN: 'tok', ZETA_APP_DB_ID: APP_DB })
+    const env = fakeEnv({ DB: db, CF_ACCOUNT_ID: 'acct', CLOUDFLARE_API_TOKEN: 'tok', ZETA_APP_DB_ID: APP_DB })
     const res = await callWorker(
       env,
       '/api/admin/databases',
@@ -286,7 +286,7 @@ describe('database registry over the D1 HTTP API', () => {
       )
     )
     const { db, calls } = fakeD1()
-    const env = fakeEnv({ DB: db, CF_ACCOUNT_ID: 'acct', CF_D1_API_TOKEN: 'tok', ZETA_APP_DB_ID: APP_DB })
+    const env = fakeEnv({ DB: db, CF_ACCOUNT_ID: 'acct', CLOUDFLARE_API_TOKEN: 'tok', ZETA_APP_DB_ID: APP_DB })
     const res = await callWorker(
       env,
       '/api/admin/databases/r1',
@@ -299,10 +299,10 @@ describe('database registry over the D1 HTTP API', () => {
   })
 
   it('returns a clear error when the API token is not configured', async () => {
-    const env = fakeEnv({ DB: fakeD1().db, CF_ACCOUNT_ID: 'acct', CF_D1_API_TOKEN: '', ZETA_APP_DB_ID: APP_DB })
+    const env = fakeEnv({ DB: fakeD1().db, CF_ACCOUNT_ID: 'acct', CLOUDFLARE_API_TOKEN: '', ZETA_APP_DB_ID: APP_DB })
     const res = await callWorker(env, '/api/admin/d1/databases', { headers: await bearer(env, 'a1', 'admin') })
     expect(res.status).toBe(500)
-    expect(((await res.json()) as { error: string }).error).toContain('CF_D1_API_TOKEN')
+    expect(((await res.json()) as { error: string }).error).toContain('CLOUDFLARE_API_TOKEN')
   })
 
   it('rejects registering a database that is already registered', async () => {
@@ -316,7 +316,7 @@ describe('database registry over the D1 HTTP API', () => {
       )
     )
     const { db } = fakeD1((sql) => (sql.includes('WHERE cf_database_id = ?1') ? { id: 'existing' } : null))
-    const env = fakeEnv({ DB: db, CF_ACCOUNT_ID: 'acct', CF_D1_API_TOKEN: 'tok', ZETA_APP_DB_ID: APP_DB })
+    const env = fakeEnv({ DB: db, CF_ACCOUNT_ID: 'acct', CLOUDFLARE_API_TOKEN: 'tok', ZETA_APP_DB_ID: APP_DB })
     const res = await callWorker(
       env,
       '/api/admin/databases',
@@ -336,7 +336,7 @@ describe('database registry over the D1 HTTP API', () => {
       )
     )
     const { db } = fakeD1((sql) => (sql.includes('WHERE cf_database_id = ?1 AND id != ?2') ? { id: 'other' } : null))
-    const env = fakeEnv({ DB: db, CF_ACCOUNT_ID: 'acct', CF_D1_API_TOKEN: 'tok', ZETA_APP_DB_ID: APP_DB })
+    const env = fakeEnv({ DB: db, CF_ACCOUNT_ID: 'acct', CLOUDFLARE_API_TOKEN: 'tok', ZETA_APP_DB_ID: APP_DB })
     const res = await callWorker(
       env,
       '/api/admin/databases/r1',
@@ -346,7 +346,7 @@ describe('database registry over the D1 HTTP API', () => {
   })
 
   it('fails closed when ZETA_APP_DB_ID is not configured', async () => {
-    const env = fakeEnv({ DB: fakeD1().db, CF_ACCOUNT_ID: 'acct', CF_D1_API_TOKEN: 'tok', ZETA_APP_DB_ID: '' })
+    const env = fakeEnv({ DB: fakeD1().db, CF_ACCOUNT_ID: 'acct', CLOUDFLARE_API_TOKEN: 'tok', ZETA_APP_DB_ID: '' })
     const res = await callWorker(
       env,
       '/api/admin/databases',
@@ -375,7 +375,7 @@ describe('application database as a query target (ALLOW_APP_DB_AS_TARGET)', () =
     fakeEnv({
       DB: fakeD1(handler).db,
       CF_ACCOUNT_ID: 'acct',
-      CF_D1_API_TOKEN: 'tok',
+      CLOUDFLARE_API_TOKEN: 'tok',
       ZETA_APP_DB_ID: APP_DB,
       ALLOW_APP_DB_AS_TARGET: 'true',
     })
@@ -396,7 +396,7 @@ describe('application database as a query target (ALLOW_APP_DB_AS_TARGET)', () =
     const env = fakeEnv({
       DB: db,
       CF_ACCOUNT_ID: 'acct',
-      CF_D1_API_TOKEN: 'tok',
+      CLOUDFLARE_API_TOKEN: 'tok',
       ZETA_APP_DB_ID: APP_DB,
       ALLOW_APP_DB_AS_TARGET: 'true',
     })
@@ -423,7 +423,7 @@ describe('application database as a query target (ALLOW_APP_DB_AS_TARGET)', () =
     const env = fakeEnv({
       DB: db,
       CF_ACCOUNT_ID: 'acct',
-      CF_D1_API_TOKEN: 'tok',
+      CLOUDFLARE_API_TOKEN: 'tok',
       ZETA_APP_DB_ID: APP_DB,
       ALLOW_APP_DB_AS_TARGET: 'true',
     })
@@ -453,7 +453,7 @@ describe('application database as a query target (ALLOW_APP_DB_AS_TARGET)', () =
     const env = fakeEnv({
       DB: db,
       CF_ACCOUNT_ID: 'acct',
-      CF_D1_API_TOKEN: 'tok',
+      CLOUDFLARE_API_TOKEN: 'tok',
       ZETA_APP_DB_ID: APP_DB,
       ALLOW_APP_DB_AS_TARGET: 'true',
     })
@@ -483,7 +483,7 @@ describe('application database as a query target (ALLOW_APP_DB_AS_TARGET)', () =
       const env = fakeEnv({
         DB: db,
         CF_ACCOUNT_ID: 'acct',
-        CF_D1_API_TOKEN: 'tok',
+        CLOUDFLARE_API_TOKEN: 'tok',
         ZETA_APP_DB_ID: APP_DB,
         ALLOW_APP_DB_AS_TARGET: value,
       })

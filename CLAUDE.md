@@ -49,7 +49,7 @@ GitHub's blame view reads the file automatically.
 3. Set the three CI secrets as GitHub repo secrets (the deploy workflow injects them via `wrangler deploy --secrets-file`):
    - `JWT_SECRET` — random 64-char string
    - `SETUP_SECRET` — random string that protects the setup endpoint
-   - `CF_D1_API_TOKEN` — a Cloudflare API token with `D1 → Edit` permission (account-scoped); the runtime credential that lists and queries the D1 databases added in the admin panel
+   - `CLOUDFLARE_API_TOKEN` — the same Cloudflare API token used for `wrangler deploy` authentication, so give it `D1 → Edit` permission (account-scoped); at runtime it is the credential that lists and queries the D1 databases added in the admin panel
    `ENCRYPTION_KEY` stays **Dashboard-only** (not in GitHub Secrets / CI): keep the existing Cloudflare secret as-is — a new value makes stored TOTP credentials and encrypted config undecryptable.
 4. Set Worker vars:
    - `APP_URL` — your custom domain (e.g. `https://zeta.example.com`); must be the `https://` URL users open (sole CORS origin, passkey RP ID, JWT `iss`/`aud` — changing it signs everybody out). This is a Dashboard **Worker Variable** — **not a GitHub Secret**.
@@ -66,4 +66,4 @@ GitHub's blame view reads the file automatically.
 2. Optionally set a display name and description
 3. Grant users access in Admin → Databases → Permissions
 
-No binding or redeploy is required: query targets run over the Cloudflare D1 HTTP API using the `CF_D1_API_TOKEN` secret and `CF_ACCOUNT_ID` variable. A database registered by the old binding method has no `cf_database_id` and can't be queried until re-linked — use **Link** on the row in Admin → Databases to switch it to the HTTP API (permissions, history and saved runs are kept).
+No binding or redeploy is required: query targets run over the Cloudflare D1 HTTP API using the `CLOUDFLARE_API_TOKEN` secret and `CF_ACCOUNT_ID` variable. A database registered by the old binding method has no `cf_database_id` and can't be queried until re-linked — use **Link** on the row in Admin → Databases to switch it to the HTTP API (permissions, history and saved runs are kept).

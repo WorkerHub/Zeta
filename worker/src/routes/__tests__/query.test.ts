@@ -25,7 +25,7 @@ function httpQueryEnv() {
     if (sql.startsWith('SELECT permission FROM')) return { permission: 'read' }
     return null
   })
-  return fakeEnv({ DB: db, CF_ACCOUNT_ID: 'acct', CF_D1_API_TOKEN: 'tok', ZETA_APP_DB_ID: APP_DB })
+  return fakeEnv({ DB: db, CF_ACCOUNT_ID: 'acct', CLOUDFLARE_API_TOKEN: 'tok', ZETA_APP_DB_ID: APP_DB })
 }
 
 const fetchOk = (result: unknown) =>
@@ -126,7 +126,7 @@ describe('query over the D1 HTTP API', () => {
 
   it('returns a config error to members when credentials are missing', async () => {
     const env = httpQueryEnv()
-    env.CF_D1_API_TOKEN = ''
+    env.CLOUDFLARE_API_TOKEN = ''
     const res = await callWorker(
       env,
       '/api/query',
@@ -138,14 +138,14 @@ describe('query over the D1 HTTP API', () => {
 
   it('tells admins which credential is missing', async () => {
     const env = httpQueryEnv()
-    env.CF_D1_API_TOKEN = ''
+    env.CLOUDFLARE_API_TOKEN = ''
     const res = await callWorker(
       env,
       '/api/query',
       postJson({ databaseId: 'db1', sql: 'SELECT 1' }, { headers: await bearer(env, 'a1', 'admin') })
     )
     expect(res.status).toBe(500)
-    expect(((await res.json()) as { error: string }).error).toContain('CF_D1_API_TOKEN')
+    expect(((await res.json()) as { error: string }).error).toContain('CLOUDFLARE_API_TOKEN')
   })
 
   it('refuses to query the application database over HTTP', async () => {
@@ -196,7 +196,7 @@ describe('application database as a query target (ALLOW_APP_DB_AS_TARGET)', () =
     return fakeEnv({
       DB: db,
       CF_ACCOUNT_ID: 'acct',
-      CF_D1_API_TOKEN: 'tok',
+      CLOUDFLARE_API_TOKEN: 'tok',
       ZETA_APP_DB_ID: APP_DB,
       ALLOW_APP_DB_AS_TARGET: 'true',
       ...overrides,

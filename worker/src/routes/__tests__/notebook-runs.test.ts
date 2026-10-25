@@ -76,7 +76,7 @@ function setup(migrations = MIGRATIONS) {
   `)
   const executed: string[] = []
 
-  const env = fakeEnv({ DB: app.db, CF_ACCOUNT_ID: 'acct', CF_D1_API_TOKEN: 'tok', ZETA_APP_DB_ID: APP_DB })
+  const env = fakeEnv({ DB: app.db, CF_ACCOUNT_ID: 'acct', CLOUDFLARE_API_TOKEN: 'tok', ZETA_APP_DB_ID: APP_DB })
   vi.stubGlobal(
     'fetch',
     vi.fn(async (_url: unknown, init: RequestInit) => {

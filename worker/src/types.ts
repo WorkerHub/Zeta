@@ -18,7 +18,7 @@ export interface Env {
   ALLOW_APP_DB_AS_TARGET?: string
   // Cloudflare D1 HTTP API — query targets are reached over the REST API instead of bindings
   CF_ACCOUNT_ID: string // Cloudflare account ID (32-char hex) used to build the D1 API URL
-  CF_D1_API_TOKEN: string // API token with "D1 → Edit" permission, used to list + query target D1s
+  CLOUDFLARE_API_TOKEN: string // API token with "D1 → Edit" permission, used to list + query target D1s
   ZETA_APP_DB_ID: string // this app's own D1 database UUID; excluded from every query-target list
 }
 
