@@ -28,6 +28,8 @@ describe('appInternalTables', () => {
         'zeta_notebooks',
         'zeta_notebook_runs',
         'zeta_rate_limits',
+        // The schema-migration ledger is internal too (ONE-352)
+        '_zeta_schema_migrations',
       ].sort()
     )
   })
@@ -36,6 +38,17 @@ describe('appInternalTables', () => {
     expect(TP.has('kp_users')).toBe(true)
     expect(TP.has('users')).toBe(false)
     expect(TP.size).toBe(T.size)
+  })
+
+  it('protects the schema-migration ledger under the effective prefix, case-folded', () => {
+    expect(T.has('_zeta_schema_migrations')).toBe(true)
+    expect(TP.has('_kp_schema_migrations')).toBe(true)
+    expect(U.has('_schema_migrations')).toBe(true)
+    // `_ZETA_schema_migrations` resolves to those same tables in SQLite
+    expect(appInternalTables(env({ TABLE_PREFIX: 'ZETA' })).has('_zeta_schema_migrations')).toBe(true)
+    // ... and nothing else sneaks in with it
+    expect(TP.size).toBe(T.size)
+    expect(U.size).toBe(TP.size)
   })
 })
 
@@ -154,10 +167,10 @@ describe('appDbWriteTargetError', () => {
   })
 })
 
-// ── ONE-352 checkpoint: the schema-migration ledger on the application database ───────────────
-// `appInternalTables()` is derived from tables(env), so the ledger is NOT in the read-only set.
-// This measures what that means end to end through the query route's actual decision path:
-// classifySql → capped permission (app DB) → checkSqlAccess → appDbWriteTargetError.
+// ── ONE-352: the schema-migration ledger on the application database ──────────────────────────
+// The ledger is part of appInternalTables(), so it is readable but read-only on the app database,
+// exactly like the business tables. Measured end to end through the query route's actual decision
+// path: classifySql → capped permission (app DB) → checkSqlAccess → appDbWriteTargetError.
 describe('migration ledger as a query target on the application database', () => {
   const APP = env({ TABLE_PREFIX: 'ZETA' })
   const LEDGER = migrationsTable(APP) // _ZETA_schema_migrations
@@ -169,29 +182,34 @@ describe('migration ledger as a query target on the application database', () =>
     return isWriteClass(kind) ? appDbWriteTargetError(sql, appInternalTables(APP)) : null
   }
 
-  it('is not part of the internal-table set', () => {
+  it('is part of the internal-table set, lowercase like every entry', () => {
     expect(LEDGER).toBe('_ZETA_schema_migrations')
-    expect(appInternalTables(APP).has(LEDGER.toLowerCase())).toBe(false)
+    expect(appInternalTables(APP).has(LEDGER.toLowerCase())).toBe(true)
   })
 
-  it('is visible to read queries', () => {
+  it('stays readable', () => {
     expect(outcome(`SELECT * FROM ${LEDGER}`)).toBeNull()
+    expect(outcome(`SELECT * FROM ${LEDGER}`, 'read')).toBeNull()
   })
 
-  it('is writable: INSERT / UPDATE / DELETE are only subject to the ordinary permission check', () => {
-    expect(outcome(`INSERT INTO ${LEDGER} (name) VALUES ('schema_v1')`)).toBeNull()
-    expect(outcome(`UPDATE ${LEDGER} SET name = 'x' WHERE name = 'schema_v1'`)).toBeNull()
-    expect(outcome(`DELETE FROM ${LEDGER}`)).toBeNull()
-    // ... and a read-only grant still blocks them
-    expect(outcome(`DELETE FROM ${LEDGER}`, 'read')).toMatch(/only have read access/i)
+  it('is read-only for every write class, admin included', () => {
+    for (const sql of [
+      `INSERT INTO ${LEDGER} (name) VALUES ('schema_v1')`,
+      `UPDATE ${LEDGER} SET name = 'x' WHERE name = 'schema_v1'`,
+      `DELETE FROM ${LEDGER}`,
+      `ALTER TABLE ${LEDGER} ADD COLUMN forged TEXT`,
+    ]) {
+      expect(outcome(sql)).toMatch(/application internal table/i)
+      expect(outcome(sql, 'write')).toMatch(/application internal table/i)
+    }
   })
 
-  it('can be reshaped but not destroyed: ALTER … ADD COLUMN passes, DROP is capped', () => {
-    // ALTER … ADD COLUMN classifies as `write`, and the internal-table rule does not cover the
-    // ledger, so it runs; the destructive forms are stopped by the app-DB permission cap.
-    expect(outcome(`ALTER TABLE ${LEDGER} ADD COLUMN forged TEXT`)).toBeNull()
+  it('does not leak protection to another prefix’s ledger or to the business tables’ rules', () => {
+    // A sibling project's ledger in the same shared D1 stays a normal target table
+    expect(outcome('DELETE FROM _SL_schema_migrations')).toBeNull()
+    // The business tables keep their own protection, and destructive statements stay capped
+    expect(outcome('DELETE FROM ZETA_users')).toMatch(/application internal table/i)
     expect(outcome(`DROP TABLE ${LEDGER}`)).toMatch(/elevated permissions/i)
-    expect(outcome(`ALTER TABLE ${LEDGER} DROP COLUMN name`)).toMatch(/elevated permissions/i)
     // A trigger body is unresolvable and therefore rejected fail-closed
     expect(outcome(`CREATE TRIGGER t AFTER INSERT ON t1 BEGIN DELETE FROM ${LEDGER}; END`)).not.toBeNull()
   })

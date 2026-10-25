@@ -97,7 +97,7 @@
 | `D1_DATABASE_NAME` | 例如 `zeta-db` |
 | `D1_DATABASE_ID` | 第一步中的 D1 Database ID |
 | `KV_NAMESPACE_ID` | 第一步中的 KV Namespace ID |
-| `ALLOW_APP_DB_AS_TARGET` | *（可选，默认关闭——不设置或留空即为关）* 部署时注入 `wrangler.toml`。设为 `true` 后，允许把 Zeta 自身的应用库添加为查询目标——适用于多个项目共用一个 D1 的部署。其他任何取值都保持排除。开启后应用库带有护栏：有效权限封顶为 `write`（`DROP`/`TRUNCATE` 等删除类语句一律被拒，且无法对它授予 `write_drop`），应用内部表（`users`、`settings`、`notebooks`……即 `TABLE_PREFIX` 生效后的全部内部表）只读——管理员也不例外；无法确定目标表的写语句一律拒绝。 |
+| `ALLOW_APP_DB_AS_TARGET` | *（可选，默认关闭——不设置或留空即为关）* 部署时注入 `wrangler.toml`。设为 `true` 后，允许把 Zeta 自身的应用库添加为查询目标——适用于多个项目共用一个 D1 的部署。其他任何取值都保持排除。开启后应用库带有护栏：有效权限封顶为 `write`（`DROP`/`TRUNCATE` 等删除类语句一律被拒，且无法对它授予 `write_drop`），应用内部表（`users`、`settings`、`notebooks`……即 `TABLE_PREFIX` 生效后的全部内部表，外加迁移账本表 `_<前缀>_schema_migrations`）只读——管理员也不例外；无法确定目标表的写语句一律拒绝。 |
 
 ---
 
@@ -119,7 +119,7 @@
 |------|----|
 | `APP_URL` | 你的 Worker 地址，例如 `https://zeta.yourname.workers.dev` 或自定义域名。请填写用户实际访问的 `https://` 地址：它是 CORS 唯一允许的来源、Passkey 的 RP ID、邮件链接的前缀，也是所有登录令牌的签发方/受众（之后修改会让所有用户重新登录） |
 | `TABLE_PREFIX` | *（可选）* 所有内部 D1 表的前缀。三态：**未设置** → 默认前缀 `zeta`（`zeta_users`、`zeta_settings` 等）；**设为某个值** → 原样使用该值（大小写保留）并自动补尾 `_`（`kp` → `kp_users`，`ZETA` → `ZETA_users`；非法字符会报错）；**设为空字符串** → 不带前缀（由你自行承担表名冲突风险）。必须在**调用 setup 接口之前**定好，初始化后不可更改。 |
-| `ALLOW_APP_DB_AS_TARGET` | *（可选，默认关闭——不设置或留空即为关）* 部署时注入 `wrangler.toml`。设为 `true` 后，允许把 Zeta 自身的应用库添加为查询目标——适用于多个项目共用一个 D1 的部署。其他任何取值都保持排除。开启后应用库带有护栏：有效权限封顶为 `write`（`DROP`/`TRUNCATE` 等删除类语句一律被拒，且无法对它授予 `write_drop`），应用内部表（`users`、`settings`、`notebooks`……即 `TABLE_PREFIX` 生效后的全部内部表）只读——管理员也不例外；无法确定目标表的写语句一律拒绝。 |
+| `ALLOW_APP_DB_AS_TARGET` | *（可选，默认关闭——不设置或留空即为关）* 部署时注入 `wrangler.toml`。设为 `true` 后，允许把 Zeta 自身的应用库添加为查询目标——适用于多个项目共用一个 D1 的部署。其他任何取值都保持排除。开启后应用库带有护栏：有效权限封顶为 `write`（`DROP`/`TRUNCATE` 等删除类语句一律被拒，且无法对它授予 `write_drop`），应用内部表（`users`、`settings`、`notebooks`……即 `TABLE_PREFIX` 生效后的全部内部表，外加迁移账本表 `_<前缀>_schema_migrations`）只读——管理员也不例外；无法确定目标表的写语句一律拒绝。 |
 > `CF_ACCOUNT_ID`、`ZETA_APP_DB_ID` 与 `ALLOW_APP_DB_AS_TARGET` 会在部署时由 GitHub Variables `CLOUDFLARE_ACCOUNT_ID`、`D1_DATABASE_ID`、`ALLOW_APP_DB_AS_TARGET`（第二步）注入，**不要在这里手动设置**。`ALLOW_APP_DB_AS_TARGET` 是可选项且失败关闭：GitHub Variable 未设置或为空时部署注入 `false`，开关保持关闭；其余两个为必填项，缺值会导致部署失败。
 
 > 修改 `ALLOW_APP_DB_AS_TARGET` 需要重新部署（推送到 `main` 或重跑部署工作流）：该值通过 `wrangler.toml` 的 `[vars]` 到达 Worker，不走 Dashboard。
