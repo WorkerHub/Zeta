@@ -70,6 +70,7 @@
 
 **API Token**（我的个人资料 → API 令牌 → 创建令牌）
 - 使用 **Edit Cloudflare Workers** 模板
+- 额外授予 **D1 → Edit** 权限（账号级）——同一个 Token 既用于部署认证，也用于运行时列出/查询 D1 数据库
 - 令牌值只显示一次，请立即保存
 
 同时记录你的 **Account ID**（控制台首页右侧边栏）。
@@ -84,10 +85,9 @@
 
 | 名称 | 值 |
 |------|----|
-| `CLOUDFLARE_API_TOKEN` | 第一步中获取的 API Token |
+| `CLOUDFLARE_API_TOKEN` | 第一步中获取的 API Token —— 既用于 Wrangler 部署认证，也用于运行时列出并查询你在后台添加的 D1 数据库，因此需要 **D1 → Edit** 权限（账号级） |
 | `JWT_SECRET` | 任意 64 位随机字符串，例如 `openssl rand -hex 32` |
 | `SETUP_SECRET` | 任意随机字符串，例如 `openssl rand -hex 16` |
-| `CF_D1_API_TOKEN` | 拥有 **D1 → Edit** 权限的 Cloudflare API Token（账号级），运行时用于列出并查询你在后台添加的 D1 数据库 |
 
 **Variables**（明文存储，用于非敏感 ID）：
 
@@ -102,7 +102,7 @@
 
 ### 第三步 — 在 Cloudflare 控制台配置 Worker 密钥和变量
 
-三个运行时密钥 `JWT_SECRET`、`SETUP_SECRET`、`CF_D1_API_TOKEN` 会在部署时从你在第二步设置的 **GitHub Secrets** 注入（deploy 工作流通过 `wrangler deploy --secrets-file` 传入）——**不要在这里设置它们**。其余值属于敏感信息或与具体部署环境相关，**直接在 Cloudflare 控制台配置**，不经过 GitHub。其中 `APP_URL` 是 Cloudflare 控制台的 **Worker 变量（Text 类型）**，**不是 GitHub Secret**。
+三个 Worker 密钥 `JWT_SECRET`、`SETUP_SECRET`、`CLOUDFLARE_API_TOKEN`（与部署认证用的是同一个 Token，因此需要 **D1 → Edit** 权限）会在部署时从你在第二步设置的 **GitHub Secrets** 注入（deploy 工作流通过 `wrangler deploy --secrets-file` 传入）——**不要在这里设置它们**。其余值属于敏感信息或与具体部署环境相关，**直接在 Cloudflare 控制台配置**，不经过 GitHub。其中 `APP_URL` 是 Cloudflare 控制台的 **Worker 变量（Text 类型）**，**不是 GitHub Secret**。
 
 进入 **Workers & Pages → zeta → 设置 → 变量和密钥**：
 
@@ -182,7 +182,7 @@ curl -X POST https://<你的域名>/api/setup \
 
 ## 接入更多 D1 数据库
 
-D1 数据库现在从管理后台直接添加——**无需绑定、无需改 GitHub Variables、也无需重新部署**。Worker 通过 Cloudflare D1 HTTP API 访问它们，凭据是第三步配置的 `CF_D1_API_TOKEN`（密钥）与 `CF_ACCOUNT_ID`（变量）。
+D1 数据库现在从管理后台直接添加——**无需绑定、无需改 GitHub Variables、也无需重新部署**。Worker 通过 Cloudflare D1 HTTP API 访问它们，凭据是第二步配置的 `CLOUDFLARE_API_TOKEN`（密钥）与 `CF_ACCOUNT_ID`（变量）。
 
 1. 在**管理后台 → 数据库**中点击**添加数据库**。
 2. 从账号的 D1 数据库列表中选择一个。Zeta 自身的应用库默认被排除；按第三步设置 `ALLOW_APP_DB_AS_TARGET` 变量后即可添加——添加后其内部表保持只读，且禁用删除类操作（`DROP`、`TRUNCATE` 等）。
@@ -246,7 +246,7 @@ JWT_SECRET=dev-jwt-secret
 ENCRYPTION_KEY=0000000000000000000000000000000000000000000000000000000000000001
 SETUP_SECRET=dev-setup-secret
 APP_URL=http://localhost:8787
-CF_D1_API_TOKEN=<一个拥有 D1 → Edit 权限的 API Token>
+CLOUDFLARE_API_TOKEN=<一个拥有 D1 → Edit 权限的 API Token>
 CF_ACCOUNT_ID=<你的 Cloudflare Account ID>
 ZETA_APP_DB_ID=<本应用自身数据库的 D1 Database ID>
 ```
@@ -284,10 +284,9 @@ git config blame.ignoreRevsFile .git-blame-ignore-revs
 
 | 名称 | 类型 | 说明 |
 |------|------|------|
-| `CLOUDFLARE_API_TOKEN` | Secret | Wrangler 部署认证 Token |
+| `CLOUDFLARE_API_TOKEN` | Secret | Wrangler 部署认证 Token，同时用于运行时 D1 API 访问 — 列出并查询后台添加的 D1 数据库（需 `D1 → Edit` 权限） |
 | `JWT_SECRET` | Secret | 签发访问令牌和刷新令牌（HS256） |
 | `SETUP_SECRET` | Secret | 保护 `POST /api/setup` 初始化端点 |
-| `CF_D1_API_TOKEN` | Secret | 拥有 `D1 → Edit` 权限的 API Token — 列出并查询后台添加的 D1 数据库 |
 | `CLOUDFLARE_ACCOUNT_ID` | Variable | Cloudflare 账号 ID |
 | `D1_DATABASE_NAME` | Variable | D1 数据库名称（例如 `zeta-db`） |
 | `D1_DATABASE_ID` | Variable | D1 数据库 ID |

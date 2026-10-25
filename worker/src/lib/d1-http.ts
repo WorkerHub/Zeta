@@ -45,9 +45,9 @@ interface CfResponse<T> {
 
 function accountAndToken(env: Env): { accountId: string; token: string } {
   const accountId = env.CF_ACCOUNT_ID?.trim()
-  const token = env.CF_D1_API_TOKEN?.trim()
+  const token = env.CLOUDFLARE_API_TOKEN?.trim()
   if (!accountId) throw new D1HttpError(500, 'CF_ACCOUNT_ID is not configured on this Worker.', 'config')
-  if (!token) throw new D1HttpError(500, 'CF_D1_API_TOKEN is not configured on this Worker.', 'config')
+  if (!token) throw new D1HttpError(500, 'CLOUDFLARE_API_TOKEN is not configured on this Worker.', 'config')
   return { accountId, token }
 }
 

@@ -70,6 +70,7 @@ Go to the [Cloudflare dashboard](https://dash.cloudflare.com) and create:
 
 **API token** (My Profile → API Tokens → Create Token)
 - Use the **Edit Cloudflare Workers** template
+- Also grant **D1 → Edit** (account-scoped) — the same token authenticates deployments *and* is used at runtime to list and query D1 databases
 - Note the token value — it is shown only once
 
 Also note your **Account ID** (right sidebar on the dashboard home).
@@ -84,10 +85,9 @@ In your GitHub repo → **Settings → Secrets and variables → Actions**:
 
 | Name | Value |
 |------|-------|
-| `CLOUDFLARE_API_TOKEN` | The API token from Step 1 |
+| `CLOUDFLARE_API_TOKEN` | The API token from Step 1 — used for Wrangler deploy authentication **and** at runtime to list and query the D1 databases you add in the admin panel, so it needs **D1 → Edit** permission (account-scoped) |
 | `JWT_SECRET` | Any random 64-char string — e.g. `openssl rand -hex 32` |
 | `SETUP_SECRET` | Any random string — e.g. `openssl rand -hex 16` |
-| `CF_D1_API_TOKEN` | A Cloudflare API token with **D1 → Edit** permission (account-scoped), used at runtime to list and query the D1 databases you add in the admin panel |
 
 **Variables** (plain-text, for non-sensitive IDs):
 
@@ -102,7 +102,7 @@ In your GitHub repo → **Settings → Secrets and variables → Actions**:
 
 ### Step 3 — Configure Cloudflare Worker secrets & variables
 
-The three runtime secrets `JWT_SECRET`, `SETUP_SECRET` and `CF_D1_API_TOKEN` are injected at deploy time from the **GitHub Secrets** you set in Step 2 (the deploy workflow passes them to `wrangler deploy --secrets-file`) — do **not** set them here. The remaining values are deployment-specific and set **directly in the Cloudflare dashboard**, not in GitHub. `APP_URL` is a Cloudflare **Worker Variable** (dashboard, type *Text*) — **not a GitHub Secret**.
+The three Worker secrets `JWT_SECRET`, `SETUP_SECRET` and `CLOUDFLARE_API_TOKEN` (the same token the workflow uses for deploy authentication, so it needs **D1 → Edit**) are injected at deploy time from the **GitHub Secrets** you set in Step 2 (the deploy workflow passes them to `wrangler deploy --secrets-file`) — do **not** set them here. The remaining values are deployment-specific and set **directly in the Cloudflare dashboard**, not in GitHub. `APP_URL` is a Cloudflare **Worker Variable** (dashboard, type *Text*) — **not a GitHub Secret**.
 
 Go to **Workers & Pages → zeta → Settings → Variables and Secrets**:
 
@@ -182,7 +182,7 @@ On new installs, registration closes as soon as that first account exists. After
 
 ## Adding a Queryable D1 Database
 
-D1 databases are added from the admin panel — no binding, no GitHub Variables, no redeploy. The Worker reaches them over the Cloudflare D1 HTTP API using the `CF_D1_API_TOKEN` secret and `CF_ACCOUNT_ID` variable configured in Step 3.
+D1 databases are added from the admin panel — no binding, no GitHub Variables, no redeploy. The Worker reaches them over the Cloudflare D1 HTTP API using the `CLOUDFLARE_API_TOKEN` secret and `CF_ACCOUNT_ID` variable configured in Step 2.
 
 1. In **Admin → Databases**, click **Add database**.
 2. Pick a D1 database from your account's list. Zeta's own app database is excluded by default; after setting the `ALLOW_APP_DB_AS_TARGET` variable (Step 3) it can be added too — its internal tables then stay read-only and destructive operations (`DROP`, `TRUNCATE`, …) are disabled on it.
@@ -246,7 +246,7 @@ JWT_SECRET=dev-jwt-secret
 ENCRYPTION_KEY=0000000000000000000000000000000000000000000000000000000000000001
 SETUP_SECRET=dev-setup-secret
 APP_URL=http://localhost:8787
-CF_D1_API_TOKEN=<a D1 → Edit API token>
+CLOUDFLARE_API_TOKEN=<a D1 → Edit API token>
 CF_ACCOUNT_ID=<your Cloudflare Account ID>
 ZETA_APP_DB_ID=<the D1 Database ID of this app's own database>
 ```
@@ -284,10 +284,9 @@ git config blame.ignoreRevsFile .git-blame-ignore-revs
 
 | Name | Where | Description |
 |------|-------|-------------|
-| `CLOUDFLARE_API_TOKEN` | Secret | Wrangler deploy authentication |
+| `CLOUDFLARE_API_TOKEN` | Secret | Wrangler deploy authentication **and** runtime D1 API access — lists and queries the D1 databases added in the admin panel (needs `D1 → Edit` permission) |
 | `JWT_SECRET` | Secret | Signs access + refresh JWTs (HS256) |
 | `SETUP_SECRET` | Secret | Protects `POST /api/setup` |
-| `CF_D1_API_TOKEN` | Secret | API token with `D1 → Edit` permission — lists and queries the D1 databases added in the admin panel |
 | `CLOUDFLARE_ACCOUNT_ID` | Variable | Cloudflare account ID |
 | `D1_DATABASE_NAME` | Variable | D1 database name (e.g. `zeta-db`) |
 | `D1_DATABASE_ID` | Variable | D1 database ID |
