@@ -15,8 +15,24 @@ const PLACEHOLDERS = [
   ['ZETA_APP_DB_ID_PLACEHOLDER', 'D1_DATABASE_ID'],
 ]
 
+// Optional placeholders never fail the build: an unset or blank GitHub repo Variable is
+// injected as the fail-closed default instead. `ALLOW_APP_DB_AS_TARGET` is read-only and off
+// by default, so a deployment that never configures it must still deploy — with the switch
+// clearly off rather than an error. Only trim happens here; the case-insensitive `true` parse
+// belongs to the runtime helper (`appDbTargetAllowed` in src/lib/d1-http.ts), so any other
+// value is injected verbatim and stays off at runtime.
+const OPTIONAL_PLACEHOLDERS = [['ALLOW_APP_DB_AS_TARGET_PLACEHOLDER', 'ALLOW_APP_DB_AS_TARGET', 'false']]
+
 // JSON string escapes (\" \\ \n \uXXXX ...) are all valid in TOML basic strings.
 export const tomlString = (value) => JSON.stringify(value)
+
+function fillPlaceholder(toml, placeholder, value) {
+  const quoted = `"${placeholder}"`
+  const parts = toml.split(quoted)
+  if (parts.length !== 2) throw new Error(`Expected exactly one ${quoted} in wrangler.toml`)
+  // split/join instead of String#replace, which would interpret `$&`, `$'` etc. in the value
+  return parts.join(tomlString(value))
+}
 
 /**
  * @param {string} template wrangler.toml contents
@@ -28,11 +44,10 @@ export function patchWrangler(template, env) {
   for (const [placeholder, name] of PLACEHOLDERS) {
     const value = env[name]?.trim()
     if (!value) throw new Error(`${name} is not set`)
-    const quoted = `"${placeholder}"`
-    const parts = toml.split(quoted)
-    if (parts.length !== 2) throw new Error(`Expected exactly one ${quoted} in wrangler.toml`)
-    // split/join instead of String#replace, which would interpret `$&`, `$'` etc. in the value
-    toml = parts.join(tomlString(value))
+    toml = fillPlaceholder(toml, placeholder, value)
+  }
+  for (const [placeholder, name, fallback] of OPTIONAL_PLACEHOLDERS) {
+    toml = fillPlaceholder(toml, placeholder, env[name]?.trim() || fallback)
   }
   return { toml }
 }
