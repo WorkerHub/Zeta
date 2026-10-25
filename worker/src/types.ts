@@ -13,8 +13,9 @@ export interface Env {
   APP_URL: string
   TABLE_PREFIX?: string
   // Optional, default off: allow registering/querying the application's own D1 database as a
-  // query target (shared-database deployments). Read-only env var — never written to
-  // wrangler.toml, GitHub Variables/Secrets or code constants (keep_vars = true protects it).
+  // query target (shared-database deployments). Managed as a GitHub repo Variable and injected
+  // into wrangler.toml's [vars] at deploy time by scripts/patch-wrangler.mjs (missing →
+  // "false", i.e. off). Parsed only by appDbTargetAllowed().
   ALLOW_APP_DB_AS_TARGET?: string
   // Cloudflare D1 HTTP API — query targets are reached over the REST API instead of bindings
   CF_ACCOUNT_ID: string // Cloudflare account ID (32-char hex) used to build the D1 API URL

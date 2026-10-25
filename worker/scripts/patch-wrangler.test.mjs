@@ -1,5 +1,8 @@
-import { describe, it, expect } from 'vitest'
 import { readFileSync } from 'node:fs'
+import { describe, expect, it } from 'vitest'
+// The runtime parser, so the injection layer is checked against the code that actually decides
+// whether the switch is on instead of a re-implementation of it.
+import { appDbTargetAllowed } from '../src/lib/d1-http.ts'
 import { patchWrangler } from './patch-wrangler.mjs'
 
 // Line-level view of the output: escaped values never contain a raw newline, so every
@@ -36,6 +39,8 @@ describe('patchWrangler', () => {
     expect(values('id')).toEqual([base.KV_NAMESPACE_ID])
     expect(values('CF_ACCOUNT_ID')).toEqual([base.CLOUDFLARE_ACCOUNT_ID])
     expect(values('ZETA_APP_DB_ID')).toEqual([base.D1_DATABASE_ID])
+    // Optional placeholder falls back to its fail-closed default when unset
+    expect(values('ALLOW_APP_DB_AS_TARGET')).toEqual(['false'])
   })
 
   it('keeps hostile values inside their TOML strings', () => {
@@ -56,5 +61,55 @@ describe('patchWrangler', () => {
   it('fails when the template has already been patched', () => {
     const { toml } = patchWrangler(template, base)
     expect(() => patchWrangler(toml, base)).toThrow(/Expected exactly one/)
+  })
+})
+
+// ALLOW_APP_DB_AS_TARGET is optional: unlike the other placeholders, a missing value must not
+// fail the deploy. It is injected as "false" (fail closed) and the runtime helper keeps the
+// final say — so the four runtime scenarios are asserted end-to-end, injected value included.
+describe('ALLOW_APP_DB_AS_TARGET injection', () => {
+  const injected = (allow) => {
+    const { toml } = patchWrangler(template, { ...base, ALLOW_APP_DB_AS_TARGET: allow })
+    return lines(toml).values('ALLOW_APP_DB_AS_TARGET')
+  }
+  const allowed = (allow) => appDbTargetAllowed({ ALLOW_APP_DB_AS_TARGET: injected(allow)[0] })
+
+  it('injects "false" when the variable is unset', () => {
+    expect(injected(undefined)).toEqual(['false'])
+    expect(allowed(undefined)).toBe(false)
+    // The rest of the placeholders are still filled, i.e. the deploy does not fail
+    expect(patchWrangler(template, base).toml).not.toContain('PLACEHOLDER')
+  })
+
+  it('injects "false" when the variable is blank', () => {
+    expect(injected('')).toEqual(['false'])
+    expect(injected('   ')).toEqual(['false'])
+    expect(allowed('   ')).toBe(false)
+  })
+
+  it('injects "true" as-is and the runtime turns the switch on', () => {
+    expect(injected('true')).toEqual(['true'])
+    expect(allowed('true')).toBe(true)
+  })
+
+  it('trims but does not lowercase, so " TRUE " is still on at runtime', () => {
+    expect(injected(' TRUE ')).toEqual(['TRUE'])
+    expect(allowed(' TRUE ')).toBe(true)
+  })
+
+  it('injects any other value verbatim, which the runtime reads as off', () => {
+    expect(injected('1')).toEqual(['1'])
+    expect(allowed('1')).toBe(false)
+    expect(injected('yes')).toEqual(['yes'])
+    expect(allowed('yes')).toBe(false)
+    expect(injected('false')).toEqual(['false'])
+    expect(allowed('false')).toBe(false)
+    expect(injected('true-ish')).toEqual(['true-ish'])
+    expect(allowed('true-ish')).toBe(false)
+  })
+
+  it('still fails when a required variable is missing', () => {
+    const { D1_DATABASE_ID: _omitted, ...withoutDbId } = base
+    expect(() => patchWrangler(template, withoutDbId)).toThrow(/D1_DATABASE_ID/)
   })
 })

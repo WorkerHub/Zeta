@@ -8,6 +8,7 @@ keep_vars = true
 [vars]
 CF_ACCOUNT_ID = "CF_ACCOUNT_ID_PLACEHOLDER"
 ZETA_APP_DB_ID = "ZETA_APP_DB_ID_PLACEHOLDER"
+ALLOW_APP_DB_AS_TARGET = "ALLOW_APP_DB_AS_TARGET_PLACEHOLDER"
 
 [assets]
 directory = "../web/dist"

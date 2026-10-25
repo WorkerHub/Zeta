@@ -97,6 +97,7 @@ In your GitHub repo → **Settings → Secrets and variables → Actions**:
 | `D1_DATABASE_NAME` | e.g. `zeta-db` |
 | `D1_DATABASE_ID` | The D1 Database ID from Step 1 |
 | `KV_NAMESPACE_ID` | The KV Namespace ID from Step 1 |
+| `ALLOW_APP_DB_AS_TARGET` | *(Optional, default off — leave unset or empty for off.)* Injected into `wrangler.toml` at deploy time. Set to exactly `true` to allow Zeta's own app database to be added and queried as a target — for deployments that share one D1 database between Zeta and other projects. Any other value keeps the app database excluded. While enabled the app database is guarded: its effective permission is capped at `write` (destructive statements like `DROP`/`TRUNCATE` are always rejected and `write_drop` cannot be granted on it), and its internal tables (`users`, `settings`, `notebooks`, … everything `TABLE_PREFIX` resolves to) are read-only — including for admins. Write statements whose target table cannot be determined are rejected. |
 
 ---
 
@@ -118,10 +119,11 @@ Go to **Workers & Pages → zeta → Settings → Variables and Secrets**:
 |------|-------|
 | `APP_URL` | Your Worker URL, e.g. `https://zeta.yourname.workers.dev` or your custom domain. Use the exact `https://` URL users open: it is the only origin CORS allows, the passkey RP ID, the base of email links and the issuer/audience of every login token (changing it later signs everybody out) |
 | `TABLE_PREFIX` | *(Optional)* Prefix for all internal D1 tables. Three states: **unset** → default prefix `zeta` (`zeta_users`, `zeta_settings`, …); **set to a value** → the value used verbatim, case preserved, with `_` appended (`kp` → `kp_users`, `ZETA` → `ZETA_users`; invalid characters are rejected); **set to an empty string** → no prefix (you accept the risk of table-name collisions). Decide it **before** calling the setup endpoint — it cannot be changed after initialisation. |
-| `ALLOW_APP_DB_AS_TARGET` | *(Optional, default off)* Set to exactly `true` to allow Zeta's own app database to be added and queried as a target — for deployments that share one D1 database between Zeta and other projects. Any other value (or unset) keeps the app database excluded. While enabled the app database is guarded: its effective permission is capped at `write` (destructive statements like `DROP`/`TRUNCATE` are always rejected and `write_drop` cannot be granted on it), and its internal tables (`users`, `settings`, `notebooks`, … everything `TABLE_PREFIX` resolves to) are read-only — including for admins. Write statements whose target table cannot be determined are rejected. |
-> `CF_ACCOUNT_ID` and `ZETA_APP_DB_ID` are injected automatically at deploy time from the GitHub Variables `CLOUDFLARE_ACCOUNT_ID` and `D1_DATABASE_ID` — do **not** set them here.
+> `CF_ACCOUNT_ID`, `ZETA_APP_DB_ID` and `ALLOW_APP_DB_AS_TARGET` are injected at deploy time from the GitHub Variables `CLOUDFLARE_ACCOUNT_ID`, `D1_DATABASE_ID` and `ALLOW_APP_DB_AS_TARGET` (Step 2) — do **not** set them here. `ALLOW_APP_DB_AS_TARGET` is optional and fails closed: when the GitHub Variable is missing or empty the deploy injects `false`, so the switch stays off. The other injected values are required — a missing one fails the deploy.
 
-> `ENCRYPTION_KEY` and the variables above stay out of GitHub entirely (the three CI secrets live in GitHub Secrets — see Step 2). The `keep_vars = true` setting in `wrangler.toml` ensures each deployment never overwrites values you set here.
+> Changing `ALLOW_APP_DB_AS_TARGET` needs a redeploy (push to `main`, or re-run the deploy workflow): the value reaches the Worker through `wrangler.toml`'s `[vars]`, not through the dashboard.
+
+> `ENCRYPTION_KEY` and the dashboard variables above stay out of GitHub entirely (the three CI secrets live in GitHub Secrets — see Step 2). The `keep_vars = true` setting in `wrangler.toml` ensures each deployment never overwrites those dashboard values.
 
 > **Upgrade warning:** an existing deployment that never set `TABLE_PREFIX` used **no prefix** before the three-state change. After upgrading, an unset prefix resolves to the default `zeta` and points at different tables. Before upgrading, set `TABLE_PREFIX` explicitly to preserve your existing tables — an empty string keeps the old unprefixed tables — or rely on the startup/setup guard, which aborts instead of silently switching prefixes. In a shared D1 database, Zeta's migrations and the guard only match Zeta's own table family and never touch other projects' tables (`SL_*`, `eNotify_*`, `TP_*`, `YL_*`, `TEMP_*`, …).
 
@@ -185,7 +187,7 @@ On new installs, registration closes as soon as that first account exists. After
 D1 databases are added from the admin panel — no binding, no GitHub Variables, no redeploy. The Worker reaches them over the Cloudflare D1 HTTP API using the `CLOUDFLARE_API_TOKEN` secret and `CF_ACCOUNT_ID` variable configured in Step 2.
 
 1. In **Admin → Databases**, click **Add database**.
-2. Pick a D1 database from your account's list. Zeta's own app database is excluded by default; after setting the `ALLOW_APP_DB_AS_TARGET` variable (Step 3) it can be added too — its internal tables then stay read-only and destructive operations (`DROP`, `TRUNCATE`, …) are disabled on it.
+2. Pick a D1 database from your account's list. Zeta's own app database is excluded by default; after setting the `ALLOW_APP_DB_AS_TARGET` GitHub repo Variable (Step 2) and redeploying, it can be added too — its internal tables then stay read-only and destructive operations (`DROP`, `TRUNCATE`, …) are disabled on it.
 3. Optionally set a display name and description, then register it.
 4. Grant users `read` or `write` access in **Admin → Databases → Permissions**.
 
@@ -291,6 +293,7 @@ git config blame.ignoreRevsFile .git-blame-ignore-revs
 | `D1_DATABASE_NAME` | Variable | D1 database name (e.g. `zeta-db`) |
 | `D1_DATABASE_ID` | Variable | D1 database ID |
 | `KV_NAMESPACE_ID` | Variable | KV namespace ID |
+| `ALLOW_APP_DB_AS_TARGET` | Variable | *(Optional, default off)* Injected into the Worker at deploy time; set to exactly `true` to allow the app's own database as a query target. Missing or empty → `false` injected, switch stays off |
 
 ### Cloudflare Dashboard (set manually)
 
@@ -300,7 +303,7 @@ git config blame.ignoreRevsFile .git-blame-ignore-revs
 | `APP_URL` | Variable | Full URL of your deployment; also the JWT `iss`/`aud`, so tokens from another deployment sharing `JWT_SECRET` are rejected |
 | `TABLE_PREFIX` | Variable | *(Optional)* Prefix for internal tables. Three states: **unset** → default prefix `zeta`; **set to a value** → that value verbatim, case preserved, with `_` appended (`kp` → `kp_users`, `ZETA` → `ZETA_users`); **set to an empty string** → no prefix. Set before first setup run. Immutable after initialisation. |
 
-`CF_ACCOUNT_ID` and `ZETA_APP_DB_ID` are not set here: `wrangler.toml`'s `[vars]` injects them at deploy time from the GitHub Variables `CLOUDFLARE_ACCOUNT_ID` and `D1_DATABASE_ID`.
+`CF_ACCOUNT_ID`, `ZETA_APP_DB_ID` and `ALLOW_APP_DB_AS_TARGET` are not set here: `wrangler.toml`'s `[vars]` injects them at deploy time from the GitHub Variables `CLOUDFLARE_ACCOUNT_ID`, `D1_DATABASE_ID` and `ALLOW_APP_DB_AS_TARGET`.
 
 **Upgrade warning:** an existing deployment that never set `TABLE_PREFIX` used **no prefix** before the three-state change. After upgrading, an unset prefix resolves to the default `zeta` and points at different tables. Before upgrading, set `TABLE_PREFIX` explicitly to preserve your existing tables (an empty string keeps the old unprefixed tables) or rely on the startup/setup guard, which aborts instead of silently switching prefixes. In a shared D1 database, Zeta's migrations and the guard only match Zeta's own table family and never touch other projects' tables (`SL_*`, `eNotify_*`, `TP_*`, `YL_*`, `TEMP_*`, …).
 

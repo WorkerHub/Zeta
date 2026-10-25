@@ -48,6 +48,7 @@ jobs:
           D1_DATABASE_NAME: ${{ vars.D1_DATABASE_NAME }}
           D1_DATABASE_ID: ${{ vars.D1_DATABASE_ID }}
           KV_NAMESPACE_ID: ${{ vars.KV_NAMESPACE_ID }}
+          ALLOW_APP_DB_AS_TARGET: ${{ vars.ALLOW_APP_DB_AS_TARGET }}
         run: node scripts/patch-wrangler.mjs wrangler.toml
 
       - name: Write secrets file
