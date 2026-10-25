@@ -85,6 +85,9 @@
 | 名称 | 值 |
 |------|----|
 | `CLOUDFLARE_API_TOKEN` | 第一步中获取的 API Token |
+| `JWT_SECRET` | 任意 64 位随机字符串，例如 `openssl rand -hex 32` |
+| `SETUP_SECRET` | 任意随机字符串，例如 `openssl rand -hex 16` |
+| `CF_D1_API_TOKEN` | 拥有 **D1 → Edit** 权限的 Cloudflare API Token（账号级），运行时用于列出并查询你在后台添加的 D1 数据库 |
 
 **Variables**（明文存储，用于非敏感 ID）：
 
@@ -99,18 +102,15 @@
 
 ### 第三步 — 在 Cloudflare 控制台配置 Worker 密钥和变量
 
-这些值属于敏感信息或与具体部署环境相关，**直接在 Cloudflare 控制台配置**，不经过 GitHub。
+三个运行时密钥 `JWT_SECRET`、`SETUP_SECRET`、`CF_D1_API_TOKEN` 会在部署时从你在第二步设置的 **GitHub Secrets** 注入（deploy 工作流通过 `wrangler deploy --secrets-file` 传入）——**不要在这里设置它们**。其余值属于敏感信息或与具体部署环境相关，**直接在 Cloudflare 控制台配置**，不经过 GitHub。其中 `APP_URL` 是 Cloudflare 控制台的 **Worker 变量（Text 类型）**，**不是 GitHub Secret**。
 
 进入 **Workers & Pages → zeta → 设置 → 变量和密钥**：
 
-**密钥（Secret 类型）**：
+**密钥（Secret 类型，仅 Dashboard）**：
 
 | 名称 | 如何生成 |
 |------|---------|
-| `JWT_SECRET` | 任意 64 位随机字符串，例如 `openssl rand -hex 32` |
-| `ENCRYPTION_KEY` | 64 位十六进制（32 字节），例如 `openssl rand -hex 32`。会严格校验：其他取值（口令、较短的密钥等）会被直接拒绝，而不是悄悄生成一个弱密钥 |
-| `SETUP_SECRET` | 任意随机字符串，例如 `openssl rand -hex 16` |
-| `CF_D1_API_TOKEN` | 拥有 **D1 → Edit** 权限的 Cloudflare API Token（账号级）。运行时用它列出并查询你在后台添加的 D1 数据库。注意：这是与部署用的 GitHub `CLOUDFLARE_API_TOKEN` 不同的另一个 Token。 |
+| `ENCRYPTION_KEY` | 64 位十六进制（32 字节）— TOTP 密钥及 SMTP/Resend 凭据的 AES-GCM 加密密钥。**仅 Dashboard**：保持 Cloudflare 现有 Secret 原样，**不要**加入 GitHub Secrets 或 CI（换新值会使库里全部 TOTP 凭据与加密配置解不开）。 |
 
 **变量（Text 类型）**：
 
@@ -119,9 +119,9 @@
 | `APP_URL` | 你的 Worker 地址，例如 `https://zeta.yourname.workers.dev` 或自定义域名。请填写用户实际访问的 `https://` 地址：它是 CORS 唯一允许的来源、Passkey 的 RP ID、邮件链接的前缀，也是所有登录令牌的签发方/受众（之后修改会让所有用户重新登录） |
 | `TABLE_PREFIX` | *（可选）* 所有内部 D1 表的前缀。三态：**未设置** → 默认前缀 `zeta`（`zeta_users`、`zeta_settings` 等）；**设为某个值** → 原样使用该值（大小写保留）并自动补尾 `_`（`kp` → `kp_users`，`ZETA` → `ZETA_users`；非法字符会报错）；**设为空字符串** → 不带前缀（由你自行承担表名冲突风险）。必须在**调用 setup 接口之前**定好，初始化后不可更改。 |
 | `ALLOW_APP_DB_AS_TARGET` | *（可选，默认关闭）* 设为 `true` 后，允许把 Zeta 自身的应用库添加为查询目标——适用于多个项目共用一个 D1 的部署。其他任何取值（或不设置）都保持排除。开启后应用库带有护栏：有效权限封顶为 `write`（`DROP`/`TRUNCATE` 等删除类语句一律被拒，且无法对它授予 `write_drop`），应用内部表（`users`、`settings`、`notebooks`……即 `TABLE_PREFIX` 生效后的全部内部表）只读——管理员也不例外；无法确定目标表的写语句一律拒绝。 |
-> `CF_ACCOUNT_ID` 与 `ZETA_APP_DB_ID` 会在部署时由 GitHub Variables `CLOUDFLARE_ACCOUNT_ID`、`D1_DATABASE_ID` 自动注入，**不要在这里手动设置**。你只需要配置上面的 `CF_D1_API_TOKEN`。
+> `CF_ACCOUNT_ID` 与 `ZETA_APP_DB_ID` 会在部署时由 GitHub Variables `CLOUDFLARE_ACCOUNT_ID`、`D1_DATABASE_ID` 自动注入，**不要在这里手动设置**。
 
-> 以上配置完全隔离于 GitHub。`wrangler.toml` 中的 `keep_vars = true` 确保每次部署不会覆盖你在此处设置的值。
+> `ENCRYPTION_KEY` 与上面的变量完全隔离于 GitHub（三个 CI 密钥放在 GitHub Secrets，见第二步）。`wrangler.toml` 中的 `keep_vars = true` 确保每次部署不会覆盖你在此处设置的值。
 
 > **升级警告：** 从未设置过 `TABLE_PREFIX` 的老部署，在三态改造前使用的是**无前缀**表名（如 `users`、`settings`）。升级后，未设置的前缀会解析为默认值 `zeta`，指向另一套表。升级前请显式设置 `TABLE_PREFIX` 以保留现有表——设为空字符串可保留旧的无前缀表——或依赖启动/setup 的防静默切换守卫（它会中止并报错，而不是静默切换前缀）。如果你共享 D1 数据库，请注意：Zeta 的迁移与守卫只对照 Zeta 自己的表族，绝不会触碰其他项目的表（`SL_*`、`eNotify_*`、`TP_*`、`YL_*`、`TEMP_*` 等）。
 
@@ -239,7 +239,7 @@ cd worker && pnpm dev
 cd web && pnpm dev
 ```
 
-创建 `worker/.dev.vars` 文件配置本地环境变量：
+创建 `worker/.dev.vars` 文件配置本地环境变量（可把 `worker/.dev.vars.example` 复制为模板，其中为空占位符）：
 
 ```ini
 JWT_SECRET=dev-jwt-secret
@@ -285,6 +285,9 @@ git config blame.ignoreRevsFile .git-blame-ignore-revs
 | 名称 | 类型 | 说明 |
 |------|------|------|
 | `CLOUDFLARE_API_TOKEN` | Secret | Wrangler 部署认证 Token |
+| `JWT_SECRET` | Secret | 签发访问令牌和刷新令牌（HS256） |
+| `SETUP_SECRET` | Secret | 保护 `POST /api/setup` 初始化端点 |
+| `CF_D1_API_TOKEN` | Secret | 拥有 `D1 → Edit` 权限的 API Token — 列出并查询后台添加的 D1 数据库 |
 | `CLOUDFLARE_ACCOUNT_ID` | Variable | Cloudflare 账号 ID |
 | `D1_DATABASE_NAME` | Variable | D1 数据库名称（例如 `zeta-db`） |
 | `D1_DATABASE_ID` | Variable | D1 数据库 ID |
@@ -294,10 +297,7 @@ git config blame.ignoreRevsFile .git-blame-ignore-revs
 
 | 名称 | 类型 | 说明 |
 |------|------|------|
-| `JWT_SECRET` | 密钥 | 签发访问令牌和刷新令牌（HS256） |
-| `ENCRYPTION_KEY` | 密钥 | 64 位十六进制（严格校验）— TOTP 密钥及 SMTP/Resend 凭据的 AES-GCM 加密密钥 |
-| `SETUP_SECRET` | 密钥 | 保护 `POST /api/setup` 初始化端点 |
-| `CF_D1_API_TOKEN` | 密钥 | 拥有 `D1 → Edit` 权限的 API Token — 列出并查询后台添加的 D1 数据库 |
+| `ENCRYPTION_KEY` | 密钥 | 64 位十六进制 — TOTP 密钥及 SMTP/Resend 凭据的 AES-GCM 加密密钥。仅 Dashboard：保持 Cloudflare 现有 Secret，**不进** GitHub Secrets 或 CI。 |
 | `APP_URL` | 变量 | 部署的完整 URL，例如 `https://zeta.example.com`；同时作为 JWT 的 `iss`/`aud`，其他共用 `JWT_SECRET` 的部署签发的令牌会被拒绝 |
 | `TABLE_PREFIX` | 变量 | *（可选）* 内部表名前缀。三态：**未设置** → 默认前缀 `zeta`；**设为某个值** → 原样使用该值（大小写保留）并补尾 `_`（`kp` → `kp_users`，`ZETA` → `ZETA_users`）；**设为空字符串** → 不带前缀。首次 setup 前设置，初始化后不可更改。 |
 

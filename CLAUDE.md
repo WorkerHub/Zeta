@@ -46,13 +46,13 @@ GitHub's blame view reads the file automatically.
 
 1. Create D1 + KV namespaces in Cloudflare dashboard
 2. Fill real IDs into `wrangler.toml` (replace `*_PLACEHOLDER`)
-3. Set Worker secrets via dashboard or `wrangler secret put`:
+3. Set the three CI secrets as GitHub repo secrets (the deploy workflow injects them via `wrangler deploy --secrets-file`):
    - `JWT_SECRET` — random 64-char string
-   - `ENCRYPTION_KEY` — 64-char hex string (32 bytes) for AES-GCM TOTP / email-secret encryption; anything else is rejected at runtime
    - `SETUP_SECRET` — random string that protects the setup endpoint
    - `CF_D1_API_TOKEN` — a Cloudflare API token with `D1 → Edit` permission (account-scoped); the runtime credential that lists and queries the D1 databases added in the admin panel
+   `ENCRYPTION_KEY` stays **Dashboard-only** (not in GitHub Secrets / CI): keep the existing Cloudflare secret as-is — a new value makes stored TOTP credentials and encrypted config undecryptable.
 4. Set Worker vars:
-   - `APP_URL` — your custom domain (e.g. `https://zeta.example.com`); must be the `https://` URL users open (sole CORS origin, passkey RP ID, JWT `iss`/`aud` — changing it signs everybody out)
+   - `APP_URL` — your custom domain (e.g. `https://zeta.example.com`); must be the `https://` URL users open (sole CORS origin, passkey RP ID, JWT `iss`/`aud` — changing it signs everybody out). This is a Dashboard **Worker Variable** — **not a GitHub Secret**.
    - `TABLE_PREFIX` — (optional) prefix for all internal tables. Three states: **unset** → default prefix `zeta`; **set to a value** → that value verbatim, case preserved, with `_` appended (`kp` → `kp_users`, `ZETA` → `ZETA_users`); **set to an empty string** → no prefix. Must be set **before** running setup. Cannot be changed after initialisation. **Upgrade warning:** a deployment that never set `TABLE_PREFIX` used **no prefix** before the three-state change; after upgrading, an unset prefix resolves to `zeta` (different tables). Set it explicitly before upgrading to keep your existing tables (an empty string keeps the old unprefixed tables) or rely on the startup/setup guard, which aborts instead of silently switching — and the guard only matches Zeta's own table family, never other projects' tables in a shared D1 (`SL_*`, `eNotify_*`, `TP_*`, `YL_*`, `TEMP_*`, …).
    - `ALLOW_APP_DB_AS_TARGET` — (optional, default off) set to exactly `true` to allow the app's own database as a query target (shared-database deployments); any other value keeps it excluded. While on, the app DB is guarded: effective permission capped at `write` (destructive statements always rejected, `write_drop` cannot be granted on it) and internal tables (everything `TABLE_PREFIX` resolves to) are read-only, admin included; writes whose target table cannot be determined are rejected. Read-only env var — never written to `wrangler.toml`, GitHub Variables/Secrets or code constants.
    - `CF_ACCOUNT_ID` / `ZETA_APP_DB_ID` are injected automatically at deploy from the GitHub Variables `CLOUDFLARE_ACCOUNT_ID` / `D1_DATABASE_ID` via `wrangler.toml`'s `[vars]` — not set here
