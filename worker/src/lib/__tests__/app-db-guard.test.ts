@@ -5,26 +5,27 @@ import { appDbWriteTargetError, appInternalTables, capAppDbPermission } from '..
 const env = (overrides: Partial<Env> = {}) =>
   ({ TABLE_PREFIX: undefined, ...overrides }) as unknown as Pick<Env, 'TABLE_PREFIX'>
 
-// The default (unprefixed) internal table set
-const T = appInternalTables(env())
-// A prefixed set, as a TABLE_PREFIX deployment resolves it
-const TP = appInternalTables(env({ TABLE_PREFIX: 'kp' }))
+// The three TABLE_PREFIX resolution states, as internal-table sets:
+//   unset → DEFAULT_TABLE_PREFIX ('zeta_'),  non-empty → `${value}_`,  '' → unprefixed
+const T = appInternalTables(env()) // unset: the zeta_-prefixed default
+const U = appInternalTables(env({ TABLE_PREFIX: '' })) // '': unprefixed
+const TP = appInternalTables(env({ TABLE_PREFIX: 'kp' })) // 'kp': kp_-prefixed
 
 describe('appInternalTables', () => {
-  it('is every table tables(env) resolves to, unprefixed by default', () => {
+  it('is every table tables(env) resolves to, zeta_-prefixed by default', () => {
     expect([...T].sort()).toEqual(
       [
-        'users',
-        'totp_credentials',
-        'passkey_credentials',
-        'd1_databases',
-        'user_database_permissions',
-        'query_history',
-        'settings',
-        'audit_logs',
-        'notebooks',
-        'notebook_runs',
-        'rate_limits',
+        'zeta_users',
+        'zeta_totp_credentials',
+        'zeta_passkey_credentials',
+        'zeta_d1_databases',
+        'zeta_user_database_permissions',
+        'zeta_query_history',
+        'zeta_settings',
+        'zeta_audit_logs',
+        'zeta_notebooks',
+        'zeta_notebook_runs',
+        'zeta_rate_limits',
       ].sort()
     )
   })
@@ -46,17 +47,19 @@ describe('capAppDbPermission', () => {
 
 describe('appDbWriteTargetError', () => {
   // Internal-table writes are rejected, with a message naming the protection
-  const internal = (sql: string, set: ReadonlySet<string> = T) => {
+  const internal = (sql: string, set: ReadonlySet<string> = U) => {
     const err = appDbWriteTargetError(sql, set)
+    expect(err).toBeTypeOf('string')
     expect(err).toMatch(/application internal table/i)
   }
   // Writes to tables outside the set pass
-  const allowed = (sql: string, set: ReadonlySet<string> = T) => {
+  const allowed = (sql: string, set: ReadonlySet<string> = U) => {
     expect(appDbWriteTargetError(sql, set)).toBeNull()
   }
   // Statements whose target table cannot be pinned down are rejected fail-closed
-  const unresolvable = (sql: string, set: ReadonlySet<string> = T) => {
+  const unresolvable = (sql: string, set: ReadonlySet<string> = U) => {
     const err = appDbWriteTargetError(sql, set)
+    expect(err).toBeTypeOf('string')
     expect(err).toMatch(/cannot be determined/i)
   }
 
