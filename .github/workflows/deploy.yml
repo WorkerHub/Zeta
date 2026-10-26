@@ -19,15 +19,6 @@ jobs:
       WRANGLER_SEND_METRICS: "false"
 
     steps:
-      - name: Mask resource IDs
-        env:
-          D1_DATABASE_ID: ${{ vars.D1_DATABASE_ID }}
-          KV_NAMESPACE_ID: ${{ vars.KV_NAMESPACE_ID }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
-        run: |
-          for v in D1_DATABASE_ID KV_NAMESPACE_ID CLOUDFLARE_ACCOUNT_ID; do
-            if [ -n "${!v}" ]; then echo "::add-mask::${!v}"; fi
-          done
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -53,10 +44,10 @@ jobs:
       - name: Patch wrangler.toml
         working-directory: worker
         env:
-          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           D1_DATABASE_NAME: ${{ vars.D1_DATABASE_NAME }}
-          D1_DATABASE_ID: ${{ vars.D1_DATABASE_ID }}
-          KV_NAMESPACE_ID: ${{ vars.KV_NAMESPACE_ID }}
+          D1_DATABASE_ID: ${{ secrets.D1_DATABASE_ID }}
+          KV_NAMESPACE_ID: ${{ secrets.KV_NAMESPACE_ID }}
           ALLOW_APP_DB_AS_TARGET: ${{ vars.ALLOW_APP_DB_AS_TARGET }}
         run: node scripts/patch-wrangler.mjs wrangler.toml
 
