@@ -9,8 +9,9 @@ export interface Env {
   JWT_SECRET: string
   ENCRYPTION_KEY: string // 64-char hex string (32 bytes) for AES-GCM TOTP encryption
   SETUP_SECRET: string // random secret required by POST /api/setup
-  // Vars (set via CF dashboard)
-  APP_URL: string
+  // Vars (set via CF dashboard). Optional: when unset, the deployment's origin is derived from
+  // the request (see lib/app-url.ts), so the var can be dropped from the Worker.
+  APP_URL?: string
   TABLE_PREFIX?: string
   // Optional, default off: allow registering/querying the application's own D1 database as a
   // query target (shared-database deployments). Managed as a GitHub repo Variable and injected
