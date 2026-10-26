@@ -3,6 +3,7 @@ import { cors } from 'hono/cors'
 import { bodyLimit } from 'hono/body-limit'
 import type { Env, Variables } from './types'
 import { securityHeaders } from './middleware/security'
+import { resolveAppOrigin } from './lib/app-url'
 import auth from './routes/auth'
 import profile from './routes/profile'
 import databases from './routes/databases'
@@ -18,12 +19,12 @@ const app = new Hono<{ Bindings: Env; Variables: Variables }>()
 app.use(
   '/api/*',
   cors({
-    // Only the configured APP_URL is allowed. Requests without an Origin (same-origin GETs, curl)
-    // need no CORS headers, and opaque origins (data:, sandboxed frames) send "null", which never
-    // matches.
+    // Only the deployment's own origin is allowed — the configured APP_URL, or the request's own
+    // origin when APP_URL is unset. Requests without an Origin (same-origin GETs, curl) need no
+    // CORS headers, and opaque origins (data:, sandboxed frames) send "null", which never matches.
     origin: (origin, c) => {
-      const allowed = c.env.APP_URL?.trim().replace(/\/$/, '')
-      if (!origin || !allowed) return null
+      const allowed = resolveAppOrigin(c)
+      if (!origin) return null
       return origin.replace(/\/$/, '') === allowed ? origin : null
     },
     credentials: true,

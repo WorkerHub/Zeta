@@ -23,6 +23,30 @@ describe('CORS', () => {
   })
 })
 
+describe('CORS without APP_URL', () => {
+  const env = () => fakeEnv({ APP_URL: undefined })
+  const acao = async (origin: string, path = '/api/health', headers: Record<string, string> = {}) =>
+    (await callWorker(env(), path, { headers: { Origin: origin, ...headers } })).headers.get(
+      'Access-Control-Allow-Origin'
+    )
+
+  it('allows the request origin itself', async () => {
+    expect(await acao('https://zeta.example.com', 'https://zeta.example.com/api/health')).toBe(
+      'https://zeta.example.com'
+    )
+    expect(await acao('http://localhost:8787', '/api/health')).toBe('http://localhost:8787')
+  })
+
+  it('rejects a cross-origin caller', async () => {
+    expect(await acao('https://evil.example.com', 'https://zeta.example.com/api/health')).toBeNull()
+  })
+
+  it('ignores X-Forwarded-Host when deriving the allowed origin', async () => {
+    const forwarded = { 'X-Forwarded-Host': 'evil.example.com', 'X-Forwarded-Proto': 'https' }
+    expect(await acao('https://evil.example.com', '/api/health', forwarded)).toBeNull()
+  })
+})
+
 describe('requireAuth', () => {
   const profileEnv = () => {
     const { db } = fakeD1((sql) => (sql.includes('FROM users WHERE id') ? { id: 'u1', email: 'a@example.com' } : null))

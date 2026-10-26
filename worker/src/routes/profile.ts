@@ -10,6 +10,7 @@ import { generateRegistrationOptions, verifyRegistrationResponse } from '@simple
 import { isoBase64URL } from '@simplewebauthn/server/helpers'
 import { KV } from '../lib/kv'
 import { getRunPolicy, parseBoundedInt, pruneRuns } from '../lib/runs'
+import { resolveAppOrigin, resolveRpID } from '../lib/app-url'
 
 const profile = new Hono<{ Bindings: Env; Variables: Variables }>()
 profile.use('*', requireAuth)
@@ -226,10 +227,9 @@ profile.post('/passkey/register/options', async (c) => {
     .bind(user.id)
     .all<{ credential_id: string }>()
 
-  const appUrl = new URL(c.env.APP_URL.trim())
   const options = await generateRegistrationOptions({
     rpName: 'Zeta',
-    rpID: appUrl.hostname,
+    rpID: resolveRpID(c),
     userID: new TextEncoder().encode(user.id) as Uint8Array<ArrayBuffer>,
     userName: user.email,
     userDisplayName: user.name,
@@ -250,12 +250,11 @@ profile.post('/passkey/register/verify', async (c) => {
   const expectedChallenge = await c.env.KV.get(KV.passkeyRegChallenge(c.get('userId')))
   if (!expectedChallenge) return c.json({ error: 'Challenge expired' }, 400)
 
-  const appUrl = new URL(c.env.APP_URL.trim())
   const verification = await verifyRegistrationResponse({
     response: body,
     expectedChallenge,
-    expectedOrigin: c.env.APP_URL.trim().replace(/\/$/, ''),
-    expectedRPID: appUrl.hostname,
+    expectedOrigin: resolveAppOrigin(c),
+    expectedRPID: resolveRpID(c),
     requireUserVerification: true,
   })
 

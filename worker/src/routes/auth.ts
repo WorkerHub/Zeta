@@ -5,6 +5,7 @@ import { nanoid, otpCode, uuid } from '../lib/id'
 import { now, getSetting, audit, tables } from '../lib/db'
 import { KV } from '../lib/kv'
 import { isSecure } from '../middleware/security'
+import { resolveAppOrigin, resolveRpID } from '../lib/app-url'
 import {
   hashPassword,
   verifyPassword,
@@ -114,7 +115,7 @@ auth.post('/register', async (c) => {
         c.env,
         buildVerificationEmail({
           appName,
-          appUrl: c.env.APP_URL.trim(),
+          appUrl: resolveAppOrigin(c),
           toEmail: email,
           token,
         })
@@ -189,7 +190,7 @@ auth.post('/resend-verification', async (c) => {
       c.env,
       buildVerificationEmail({
         appName,
-        appUrl: c.env.APP_URL.trim(),
+        appUrl: resolveAppOrigin(c),
         toEmail: email,
         token,
       })
@@ -439,7 +440,7 @@ auth.post('/forgot-password', async (c) => {
         c.env,
         buildPasswordResetEmail({
           appName,
-          appUrl: c.env.APP_URL.trim(),
+          appUrl: resolveAppOrigin(c),
           toEmail: email,
           token,
         })
@@ -490,9 +491,8 @@ auth.post('/2fa/passkey/options', async (c) => {
 
   if (credentials.results.length === 0) return c.json({ error: 'No passkeys registered' }, 400)
 
-  const appUrl = new URL(c.env.APP_URL.trim())
   const options = await generateAuthenticationOptions({
-    rpID: appUrl.hostname,
+    rpID: resolveRpID(c),
     allowCredentials: credentials.results.map((r) => ({ id: r.credential_id })),
     userVerification: 'preferred',
   })
@@ -529,14 +529,13 @@ auth.post('/2fa/passkey/verify', async (c) => {
 
   if (!storedCred) return c.json({ error: 'Credential not found' }, 400)
 
-  const appUrl = new URL(c.env.APP_URL.trim())
-  const expectedOrigin = c.env.APP_URL.trim().replace(/\/$/, '')
+  const expectedOrigin = resolveAppOrigin(c)
 
   const verification = await verifyAuthenticationResponse({
     response: body.credential as Parameters<typeof verifyAuthenticationResponse>[0]['response'],
     expectedChallenge,
     expectedOrigin,
-    expectedRPID: appUrl.hostname,
+    expectedRPID: resolveRpID(c),
     credential: {
       id: storedCred.credential_id,
       publicKey: isoBase64URL.toBuffer(storedCred.public_key),
