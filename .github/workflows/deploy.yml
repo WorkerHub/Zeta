@@ -56,11 +56,12 @@ jobs:
           JWT_SECRET: ${{ secrets.JWT_SECRET }}
           SETUP_SECRET: ${{ secrets.SETUP_SECRET }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          ENCRYPTION_KEY: ${{ secrets.ENCRYPTION_KEY }}
         run: |
           set -euo pipefail
           umask 077
           # Required secrets: fail closed if any is missing or empty.
-          for name in JWT_SECRET SETUP_SECRET CLOUDFLARE_API_TOKEN; do
+          for name in JWT_SECRET SETUP_SECRET CLOUDFLARE_API_TOKEN ENCRYPTION_KEY; do
             value="$(printenv "$name" || true)"
             if [ -z "$value" ]; then
               echo "::error::missing secret: ${name}"
@@ -71,7 +72,8 @@ jobs:
             --arg JWT_SECRET "${JWT_SECRET}" \
             --arg SETUP_SECRET "${SETUP_SECRET}" \
             --arg CLOUDFLARE_API_TOKEN "${CLOUDFLARE_API_TOKEN}" \
-            '{JWT_SECRET: $JWT_SECRET, SETUP_SECRET: $SETUP_SECRET, CLOUDFLARE_API_TOKEN: $CLOUDFLARE_API_TOKEN}' \
+            --arg ENCRYPTION_KEY "${ENCRYPTION_KEY}" \
+            '{JWT_SECRET: $JWT_SECRET, SETUP_SECRET: $SETUP_SECRET, CLOUDFLARE_API_TOKEN: $CLOUDFLARE_API_TOKEN, ENCRYPTION_KEY: $ENCRYPTION_KEY}' \
             > "$RUNNER_TEMP/secrets.json"
           chmod 0600 "$RUNNER_TEMP/secrets.json"
 
