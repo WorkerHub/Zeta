@@ -4,13 +4,19 @@ import {
   RUN_PAGE_SIZE,
   addRun,
   cacheResults,
+  cancelPending,
   clearRunsState,
   emptyRunsState,
+  idlePending,
   receivePage,
   removeRun,
+  runningPending,
+  settleRun,
   type NotebookRunsState,
+  type PendingRun,
+  type RunOutcome,
 } from '../lib/runs'
-import type { NotebookRunSummary, StatementResult } from '../types'
+import type { StatementResult } from '../types'
 
 // Results of one saved run: being fetched, ready, hidden (the user lost access to its database)
 // or failed to load
@@ -20,25 +26,17 @@ export type RunResults =
   | { status: 'denied' }
   | { status: 'failed' }
 
-// A run in progress, or the outcome of one that was not saved (failed request, rejected statement)
-interface Pending {
-  running: boolean
-  error: string
-  transient: StatementResult[] | null
-}
-
-const idle: Pending = { running: false, error: '', transient: null }
-
-export type RunOutcome = { run: NotebookRunSummary | null; results: StatementResult[] } | { error: string }
-
 // Saved runs of the user's notebooks, kept per notebook so results never leak into another tab:
 // a run started in one notebook lands in that notebook even if the user switched away meanwhile.
 export function useNotebookRuns(activeId: string | null) {
   const [byNotebook, setByNotebook] = useState<Record<string, NotebookRunsState>>({})
   const [results, setResults] = useState<Map<string, RunResults>>(() => new Map())
-  const [pending, setPending] = useState<Record<string, Pending>>({})
+  const [pending, setPending] = useState<Record<string, PendingRun>>({})
   const byNotebookRef = useRef(byNotebook)
   const resultsRef = useRef(results)
+  // The pending state as of the latest write, so a cancel is visible to the response that is
+  // arriving right after it (state alone would trail a render behind)
+  const pendingRef = useRef<Record<string, PendingRun>>({})
   // Notebooks with a page request in flight, so scroll events cannot ask for the same page twice
   const fetching = useRef(new Set<string>())
   // Bumped when a notebook's runs are cleared: a page requested before the clear must not
@@ -54,6 +52,11 @@ export function useNotebookRuns(activeId: string | null) {
 
   const patchNotebook = useCallback((nbId: string, fn: (s: NotebookRunsState) => NotebookRunsState) => {
     setByNotebook((prev) => ({ ...prev, [nbId]: fn(prev[nbId] ?? emptyRunsState) }))
+  }, [])
+
+  const commitPending = useCallback((nbId: string, value: PendingRun) => {
+    pendingRef.current = { ...pendingRef.current, [nbId]: value }
+    setPending(pendingRef.current)
   }, [])
 
   const loadPage = useCallback(
@@ -113,9 +116,13 @@ export function useNotebookRuns(activeId: string | null) {
       )
   }, [activeId, selectedRunId, selectedAccessible])
 
-  const clearPending = useCallback((nbId: string) => {
-    setPending((prev) => (prev[nbId] && !prev[nbId].running ? { ...prev, [nbId]: idle } : prev))
-  }, [])
+  const clearPending = useCallback(
+    (nbId: string) => {
+      const current = pendingRef.current[nbId]
+      if (current && !current.running) commitPending(nbId, idlePending)
+    },
+    [commitPending]
+  )
 
   const selectRun = useCallback(
     (runId: string) => {
@@ -157,35 +164,46 @@ export function useNotebookRuns(activeId: string | null) {
     clearPending(nbId)
   }, [activeId, patchNotebook, clearPending])
 
-  const startRun = useCallback((nbId: string) => {
-    setPending((prev) => ({ ...prev, [nbId]: { running: true, error: '', transient: null } }))
-  }, [])
+  const startRun = useCallback(
+    (nbId: string, databaseName: string) => {
+      commitPending(nbId, runningPending(databaseName))
+    },
+    [commitPending]
+  )
 
   const finishRun = useCallback(
     (nbId: string, outcome: RunOutcome) => {
-      if ('error' in outcome) {
-        setPending((prev) => ({ ...prev, [nbId]: { ...idle, error: outcome.error } }))
-        return
+      // A run that is no longer in flight (cancelled meanwhile) drops its late response
+      const settled = settleRun(pendingRef.current[nbId] ?? idlePending, outcome)
+      if (!settled.accepted) return
+      const run = settled.run
+      if (run) {
+        setResults((prev) => cacheResults(prev, run.id, { status: 'ready', results: settled.results }))
+        patchNotebook(nbId, (s) => addRun(s, run))
       }
-      const { run } = outcome
-      if (!run) {
-        setPending((prev) => ({ ...prev, [nbId]: { ...idle, transient: outcome.results } }))
-        return
-      }
-      setResults((prev) => cacheResults(prev, run.id, { status: 'ready', results: outcome.results }))
-      patchNotebook(nbId, (s) => addRun(s, run))
-      setPending((prev) => ({ ...prev, [nbId]: idle }))
+      commitPending(nbId, settled.pending)
     },
-    [patchNotebook]
+    [commitPending, patchNotebook]
+  )
+
+  // Cancelling returns the panel to the run selected before the request started (it was never
+  // deselected); any response still on its way is dropped by finishRun
+  const cancelRun = useCallback(
+    (nbId: string) => {
+      commitPending(nbId, cancelPending(pendingRef.current[nbId] ?? idlePending))
+    },
+    [commitPending]
   )
 
   // Drops a deleted notebook's state (its runs are deleted with it on the server)
   const forgetNotebook = useCallback((nbId: string) => {
     setByNotebook(({ [nbId]: _gone, ...rest }) => rest)
-    setPending(({ [nbId]: _gone, ...rest }) => rest)
+    const { [nbId]: _pending, ...restPending } = pendingRef.current
+    pendingRef.current = restPending
+    setPending(restPending)
   }, [])
 
-  const activePending = (activeId && pending[activeId]) || idle
+  const activePending = (activeId && pending[activeId]) || idlePending
   let selectedResults: RunResults | null = null
   if (selectedRun) {
     selectedResults = selectedRun.accessible
@@ -202,6 +220,7 @@ export function useNotebookRuns(activeId: string | null) {
     selectedRun,
     selectedResults,
     running: activePending.running,
+    runningDatabaseName: activePending.databaseName,
     runError: activePending.error,
     transient: activePending.transient,
     selectRun,
@@ -210,6 +229,7 @@ export function useNotebookRuns(activeId: string | null) {
     clearRuns,
     startRun,
     finishRun,
+    cancelRun,
     forgetNotebook,
   }
 }
