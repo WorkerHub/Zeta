@@ -130,7 +130,7 @@ export default function ResultsPanel({
       {running && runningLabel && (
         <div
           role="status"
-          className="absolute inset-0 flex items-center justify-center gap-2 px-4 bg-ink-0/90 backdrop-blur-[2px] cursor-progress"
+          className="absolute inset-0 flex items-center justify-center gap-2 overflow-hidden px-4 bg-ink-0/90 backdrop-blur-[2px] cursor-progress"
         >
           <Loader2 size={18} className="animate-spin shrink-0 text-ink-500" aria-hidden="true" />
           <span className="min-w-0 text-body text-ink-600 truncate" title={runningLabel}>

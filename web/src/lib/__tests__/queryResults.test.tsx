@@ -119,7 +119,8 @@ describe('QueryResults while a run is in flight', () => {
     const html = render({ running: true, runningDatabaseName: 'one', runningSql: 'SELECT 1', runningStatementCount: 1 })
     const label = t('results.running_sql', { sql: 'SELECT 1' })
     expect(html).toContain(label)
-    // One mask only, drawn after the SQL header row it covers
+    // A single status region on screen (the first-run notice is the other branch), and the mask
+    // is drawn after the SQL header row it covers
     expect(html.match(/role="status"/g)?.length).toBe(1)
     expect(html.indexOf(label)).toBeGreaterThan(html.indexOf('>SQL<'))
     // The results underneath are untouched, so the mask disappears onto them

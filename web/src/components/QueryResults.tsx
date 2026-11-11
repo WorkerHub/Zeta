@@ -108,9 +108,12 @@ export default function QueryResults({
               runningLabel={runningLabel}
             />
           ) : running ? (
-            <div role="status" className="flex items-center justify-center h-full gap-2 px-4 min-w-0 text-ink-500">
+            <div
+              role="status"
+              className="flex items-center justify-center h-full gap-2 overflow-hidden px-4 min-w-0 text-ink-500"
+            >
               <Loader2 size={18} className="animate-spin shrink-0" aria-hidden="true" />
-              <span className="text-body truncate" title={runningLabel}>
+              <span className="min-w-0 text-body truncate" title={runningLabel}>
                 {runningLabel}
               </span>
             </div>
