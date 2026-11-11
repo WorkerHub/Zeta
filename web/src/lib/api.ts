@@ -235,9 +235,10 @@ export const databasesApi = {
 
 // Passing notebookId saves the run under that notebook; the response then names it
 // (run_id, its number seq, executed_at in milliseconds). A failed single statement carries them in
-// ApiError.body.
+// ApiError.body. The optional signal lets the caller cancel: it is a client-side fetch option and
+// does not change the request or response shape.
 export const queryApi = {
-  execute: (body: { databaseId: string; sql: string; notebookId?: string }) =>
+  execute: (body: { databaseId: string; sql: string; notebookId?: string }, signal?: AbortSignal) =>
     apiFetch<{
       results?: Record<string, unknown>[]
       meta?: { changes?: number }
@@ -247,11 +248,12 @@ export const queryApi = {
       run_id?: string
       seq?: number
       executed_at?: number
-    }>('/query', { method: 'POST', body: JSON.stringify(body) }),
-  executeBatch: (body: { databaseId: string; statements: string[]; notebookId?: string }) =>
+    }>('/query', { method: 'POST', body: JSON.stringify(body), signal }),
+  executeBatch: (body: { databaseId: string; statements: string[]; notebookId?: string }, signal?: AbortSignal) =>
     apiFetch<{ results: StatementResult[]; run_id?: string; seq?: number; executed_at?: number }>('/query/batch', {
       method: 'POST',
       body: JSON.stringify(body),
+      signal,
     }),
 }
 

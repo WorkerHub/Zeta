@@ -1,5 +1,16 @@
 import { describe, it, expect } from 'vitest'
-import { addRun, cacheResults, clearRunsState, emptyRunsState, receivePage, removeRun } from '../runs'
+import {
+  addRun,
+  cacheResults,
+  cancelPending,
+  clearRunsState,
+  emptyRunsState,
+  idlePending,
+  receivePage,
+  removeRun,
+  runningPending,
+  settleRun,
+} from '../runs'
 import type { NotebookRunSummary } from '../../types'
 
 // `at` doubles as the run number
@@ -98,5 +109,46 @@ describe('cacheResults', () => {
     cache = cacheResults(cache, 'd', 1, 3)
     expect([...cache.keys()]).toEqual(['c', 'a', 'd'])
     expect(cache.get('a')).toBe(2)
+  })
+})
+
+describe('the run in flight', () => {
+  it('turns a settled run into the selected saved one', () => {
+    const settled = settleRun(runningPending('one'), {
+      run: run('new', 4),
+      results: [{ sql: 'SELECT 1', results: [], duration_ms: 1 }],
+    })
+    expect(settled).toMatchObject({ accepted: true, pending: idlePending })
+    if (!settled.accepted) throw new Error('expected the outcome to be accepted')
+    const s = addRun(receivePage(emptyRunsState, [run('old', 3)], false, false), settled.run!)
+    expect(ids(s.list)).toEqual(['new', 'old'])
+    expect(s.selectedRunId).toBe('new')
+  })
+
+  it('keeps results the server did not name as transient', () => {
+    const results = [{ sql: 'SELECT 1', results: [{ a: 1 }], duration_ms: 2 }]
+    expect(settleRun(runningPending('one'), { run: null, results })).toMatchObject({
+      accepted: true,
+      pending: { running: false, error: '', transient: results },
+    })
+  })
+
+  it('keeps a reported error', () => {
+    expect(settleRun(runningPending('one'), { error: 'boom' })).toMatchObject({
+      accepted: true,
+      pending: { running: false, error: 'boom', transient: null },
+    })
+  })
+
+  it('drops the response of a cancelled run, so it can never become a saved one', () => {
+    const cancelled = cancelPending(runningPending('one'))
+    expect(cancelled).toEqual(idlePending)
+    const settled = settleRun(cancelled, { run: run('late', 9), results: [] })
+    expect(settled).toMatchObject({ accepted: false, pending: idlePending })
+  })
+
+  it('does not cancel a run that is not in flight', () => {
+    expect(cancelPending(idlePending)).toBe(idlePending)
+    expect(cancelPending({ ...idlePending, error: 'boom' })).toEqual({ ...idlePending, error: 'boom' })
   })
 })

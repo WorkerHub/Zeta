@@ -30,8 +30,7 @@ import { useTheme } from '../hooks/useTheme'
 import { useLocale } from '../hooks/useLocale'
 import { useNotebooks } from '../hooks/useNotebooks'
 import { useNotebookRuns } from '../hooks/useNotebookRuns'
-import ResultsPanel from '../components/ResultsPanel'
-import RunHistoryBar from '../components/RunHistoryBar'
+import QueryResults from '../components/QueryResults'
 import RunHistoryDrawer from '../components/RunHistoryDrawer'
 import ConfirmDialog from '../components/ConfirmDialog'
 import Logo from '../components/Logo'
@@ -65,7 +64,17 @@ export default function QueryPage() {
   const selectedDb = databases.find((d) => d.id === activeNotebook?.database_id) ?? null
   // Saved runs per notebook; what the results panel shows comes from here
   const runs = useNotebookRuns(activeId)
-  const { running, runError, transient, selectedRun, selectedResults, startRun, finishRun } = runs
+  const {
+    running,
+    runningDatabaseName,
+    runError,
+    transient,
+    selectedRun,
+    selectedResults,
+    startRun,
+    finishRun,
+    cancelRun: cancelNotebookRun,
+  } = runs
   const statementResults: StatementResult[] =
     transient ?? (selectedResults?.status === 'ready' ? selectedResults.results : [])
   const [activeResultIdx, setActiveResultIdx] = useState(0)
@@ -84,6 +93,8 @@ export default function QueryPage() {
   const dbMenuRef = useRef<HTMLDivElement>(null)
   const dbMenuDesktopRef = useRef<HTMLDivElement>(null)
   const userMenuRef = useRef<HTMLDivElement>(null)
+  // The run in flight of each notebook, so cancelling aborts the right request
+  const runControllers = useRef(new Map<string, AbortController>())
   // The drawer returns focus here when it closes
   const historyBtnRef = useRef<HTMLButtonElement>(null)
 
@@ -139,8 +150,12 @@ export default function QueryPage() {
     const statements = splitSqlStatements(sqlToRun)
     if (statements.length === 0) return
 
-    // The run belongs to the notebook it started in, even if the user switches tabs meanwhile
-    startRun(nbId)
+    // The run belongs to the notebook it started in, even if the user switches tabs meanwhile.
+    // Its controller lets the temporary tab's X abort this request.
+    runControllers.current.get(nbId)?.abort()
+    const controller = new AbortController()
+    runControllers.current.set(nbId, controller)
+    startRun(nbId, db.name)
     setActiveResultIdx(0)
 
     // A saved run (one the server names and numbers) goes into the notebook's run list
@@ -172,7 +187,7 @@ export default function QueryPage() {
         // Single statement — use existing endpoint
         const stmt = statements[0]!
         try {
-          const res = await queryApi.execute({ databaseId: db.id, sql: stmt, notebookId: nbId })
+          const res = await queryApi.execute({ databaseId: db.id, sql: stmt, notebookId: nbId }, controller.signal)
           const entry: StatementResult = {
             sql: stmt,
             results: res.results ?? [],
@@ -182,6 +197,8 @@ export default function QueryPage() {
           }
           finishRun(nbId, { run: summary(res, [entry]), results: [entry] })
         } catch (err) {
+          // Cancelled: the panel keeps what it showed, this response is not an error to report
+          if (controller.signal.aborted) return
           const message = err instanceof Error ? err.message : t('errors.query_failed')
           const entry: StatementResult = { sql: stmt, results: [], duration_ms: 0, error: message }
           // A statement that ran and failed is saved too; the error response names the run
@@ -189,13 +206,33 @@ export default function QueryPage() {
         }
       } else {
         // Multiple statements — use batch endpoint
-        const res = await queryApi.executeBatch({ databaseId: db.id, statements, notebookId: nbId })
+        const res = await queryApi.executeBatch({ databaseId: db.id, statements, notebookId: nbId }, controller.signal)
         finishRun(nbId, { run: summary(res, res.results), results: res.results })
       }
     } catch (err) {
+      if (controller.signal.aborted) return
       finishRun(nbId, { error: err instanceof Error ? err.message : t('errors.query_failed') })
+    } finally {
+      if (runControllers.current.get(nbId) === controller) runControllers.current.delete(nbId)
     }
   }, [activeId, selectedDb, sqlText, t, startRun, finishRun])
+
+  // The temporary run tab's X: abort the request, ahead of its response, and drop the run
+  const cancelRun = useCallback(() => {
+    const nbId = activeId
+    if (!nbId) return
+    runControllers.current.get(nbId)?.abort()
+    runControllers.current.delete(nbId)
+    cancelNotebookRun(nbId)
+  }, [activeId, cancelNotebookRun])
+
+  // Nothing is left to show once the page goes away
+  useEffect(() => {
+    const controllers = runControllers.current
+    return () => {
+      for (const controller of controllers.values()) controller.abort()
+    }
+  }, [])
 
   // Cmd/Ctrl+Enter: override CodeMirror's default Mod-Enter (insertBlankLine)
   // so we can read the selection directly from view state before it gets cleared.
@@ -615,57 +652,25 @@ export default function QueryPage() {
                 )}
               </div>
             )}
-            {running && (
-              <div className="flex items-center justify-center h-full gap-2 text-ink-500">
-                <Loader2 size={18} className="animate-spin" />
-                <span className="text-body">{t('query.running')}</span>
-              </div>
-            )}
-            {!running && runError && (
-              <div className="m-4 flex items-start gap-3 p-4 bg-danger-50 border border-danger-200 rounded-lg">
-                <AlertCircle size={18} className="text-danger-600 shrink-0 mt-0.5" />
-                <div>
-                  <p className="text-body-strong text-danger-600 mb-1">{t('query.error')}</p>
-                  <pre className="text-caption text-danger-700 whitespace-pre-wrap font-mono">{runError}</pre>
-                </div>
-              </div>
-            )}
-            {!running && !runError && !transient && selectedRun && (
-              <RunHistoryBar
-                runs={runs.list}
-                selected={selectedRun}
-                hasMore={runs.hasMore}
-                loading={runs.loading}
-                loadError={runs.loadError}
-                onSelect={runs.selectRun}
-                onLoadMore={runs.loadMore}
-                onDelete={(runId) => reportRunAction(runs.deleteRun(runId))}
-              />
-            )}
-            {!running && !runError && statementResults.length > 0 && (
-              <div className="flex-1 overflow-hidden">
-                <ResultsPanel
-                  results={statementResults}
-                  activeIndex={activeResultIdx}
-                  onSelectIndex={setActiveResultIdx}
-                />
-              </div>
-            )}
-            {!running && !runError && !transient && selectedResults && selectedResults.status !== 'ready' && (
-              <div className="flex items-center justify-center flex-1 gap-2 px-4 text-center text-body text-ink-400">
-                {selectedResults.status === 'loading' && <Loader2 size={16} className="animate-spin" />}
-                {selectedResults.status === 'loading'
-                  ? t('runs.loading')
-                  : selectedResults.status === 'denied'
-                    ? t('runs.access_denied')
-                    : t('runs.load_failed')}
-              </div>
-            )}
-            {!running && !runError && !transient && !selectedRun && (
-              <div className="flex items-center justify-center h-full text-ink-400 text-body">
-                {runs.loading ? t('common.loading') : runs.loadError ? t('runs.list_failed') : t('query.no_results')}
-              </div>
-            )}
+            <QueryResults
+              running={running}
+              runningDatabaseName={runningDatabaseName}
+              runError={runError}
+              transient={transient}
+              selectedRun={selectedRun}
+              selectedResults={selectedResults}
+              results={statementResults}
+              activeIndex={activeResultIdx}
+              onSelectIndex={setActiveResultIdx}
+              runList={runs.list}
+              hasMore={runs.hasMore}
+              listLoading={runs.loading}
+              listError={runs.loadError}
+              onSelectRun={runs.selectRun}
+              onLoadMore={runs.loadMore}
+              onDeleteRun={(runId) => reportRunAction(runs.deleteRun(runId))}
+              onCancelRun={cancelRun}
+            />
           </div>
         </div>
       </div>
@@ -729,6 +734,9 @@ export default function QueryPage() {
             const nbId = deletingNotebookId
             setDeletingNotebookId(null)
             setPageError('')
+            // Its runs go away with it: a request still in flight must not land in them
+            runControllers.current.get(nbId)?.abort()
+            runControllers.current.delete(nbId)
             deleteNotebook(nbId)
               .then(() => runs.forgetNotebook(nbId))
               .catch((err) => setPageError(err instanceof Error ? err.message : t('errors.delete_notebook_failed')))

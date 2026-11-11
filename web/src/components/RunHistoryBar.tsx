@@ -7,13 +7,16 @@ import type { NotebookRunSummary } from '../types'
 
 interface Props {
   runs: NotebookRunSummary[] // newest (highest number) first
-  selected: NotebookRunSummary
+  selected: NotebookRunSummary | null // the run whose results are shown; null before the notebook's first run
+  running: boolean // a run is in flight: the strip carries a temporary tab for it
+  runningDatabaseName: string
   hasMore: boolean
   loading: boolean
   loadError: boolean
   onSelect: (runId: string) => void
   onLoadMore: () => void
   onDelete: (runId: string) => void
+  onCancelRun: () => void // the temporary tab's X aborts the run in flight
 }
 
 // How close (px) to the oldest end of the strip the next page of older runs is loaded
@@ -22,16 +25,20 @@ const TOOLTIP_SQL_LENGTH = 200
 
 // The notebook's saved runs as a strip of tabs, numbered … #3 #2 #1 from right to left: the
 // newest run is on the left, the first one on the right. It scrolls sideways (trackpad, touch,
-// mouse wheel); older runs are loaded on reaching the right end.
+// mouse wheel); older runs are loaded on reaching the right end. While a run is in flight its
+// temporary tab leads the strip: it cannot be selected, and its X cancels the run.
 export default function RunHistoryBar({
   runs,
   selected,
+  running,
+  runningDatabaseName,
   hasMore,
   loading,
   loadError,
   onSelect,
   onLoadMore,
   onDelete,
+  onCancelRun,
 }: Props) {
   const { t, locale } = useLocale()
   const scrollerRef = useRef<HTMLDivElement>(null)
@@ -51,10 +58,12 @@ export default function RunHistoryBar({
     if (!loadError) loadMoreAtEnd()
   }, [loadError, loadMoreAtEnd])
 
-  // Keep the selected tab in view (the newest when a notebook opens or a run finishes)
+  // Keep the selected tab in view (the newest when a notebook opens or a run finishes). Running a
+  // query deliberately does not move the strip: its scroll position must survive a run.
+  const selectedId = selected?.id ?? null
   useEffect(() => {
     const sc = scrollerRef.current
-    const tab = tabRefs.current.get(selected.id)
+    const tab = selectedId ? tabRefs.current.get(selectedId) : undefined
     const box = tab?.parentElement
     if (!sc || !tab || !box) return
     const left = box.offsetLeft
@@ -65,7 +74,7 @@ export default function RunHistoryBar({
       focusSelected.current = false
       tab.focus()
     }
-  }, [selected.id])
+  }, [selectedId])
 
   // A plain mouse wheel scrolls the strip sideways. Trackpads, tilt wheels and Shift+wheel already
   // scroll it horizontally; at either end the page scrolls as usual.
@@ -127,10 +136,14 @@ export default function RunHistoryBar({
     }
     e.preventDefault()
     const run = runs[Math.min(Math.max(next, 0), runs.length - 1)]
-    if (!run || run.id === selected.id) return
+    if (!run || run.id === selected?.id) return
     focusSelected.current = true
     onSelect(run.id)
   }
+
+  // The number the run in flight will most likely get; the server's number replaces it when the
+  // run lands, so a strip whose first page has not arrived yet only shows a placeholder
+  const pendingSeq = (runs[0]?.seq ?? 0) + 1
 
   return (
     <div className="shrink-0 border-b border-ink-200">
@@ -138,10 +151,19 @@ export default function RunHistoryBar({
         <History size={12} className="text-ink-400 shrink-0" />
         <span
           className="hidden sm:block truncate min-w-0 max-w-[40%]"
-          title={new Date(selected.executed_at).toLocaleString()}
+          title={running ? t('query.running') : selected ? new Date(selected.executed_at).toLocaleString() : undefined}
         >
-          {t('runs.ran_at', { time: ago(selected) })}
-          {selected.database_name && ` · ${selected.database_name}`} · {outcome(selected)}
+          {running ? (
+            <>
+              {t('query.running')}
+              {runningDatabaseName && ` · ${runningDatabaseName}`}
+            </>
+          ) : selected ? (
+            <>
+              {t('runs.ran_at', { time: ago(selected) })}
+              {selected.database_name && ` · ${selected.database_name}`} · {outcome(selected)}
+            </>
+          ) : null}
         </span>
         <div
           ref={scrollerRef}
@@ -151,8 +173,27 @@ export default function RunHistoryBar({
           {/* ml-auto keeps a short strip at the right; a long one overflows to the right and scrolls */}
           <div className="ml-auto flex items-center gap-1 shrink-0">
             <div role="tablist" aria-label={t('runs.tablist')} className="flex items-center gap-1">
+              {/* The run in flight: a tab-shaped marker that cannot be selected (clicking it does
+                  nothing, arrow keys navigate the saved runs only) and whose X cancels the run */}
+              {running && (
+                <div className="flex items-center shrink-0 rounded-md border border-brand-200 bg-brand-50 text-brand-700">
+                  <div className="flex items-center gap-1 pl-1.5 pr-1 py-0.5 font-mono tnum">
+                    <Loader2 size={11} className="animate-spin shrink-0" aria-hidden="true" />
+                    <span className="sr-only">{t('query.running')}</span>#{pendingSeq}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={onCancelRun}
+                    className="mr-0.5 p-0.5 rounded text-ink-400 hover:text-danger-600 hover:bg-ink-200/70 transition-colors duration-(--duration-fast)"
+                    title={t('query.cancel_run')}
+                    aria-label={t('query.cancel_run')}
+                  >
+                    <X size={10} />
+                  </button>
+                </div>
+              )}
               {runs.map((run, index) => {
-                const active = run.id === selected.id
+                const active = run.id === selected?.id
                 const failed = run.error_count > 0
                 return (
                   <div
@@ -215,7 +256,7 @@ export default function RunHistoryBar({
           </div>
         </div>
       </div>
-      {selected.storage_truncated > 0 && (
+      {selected && selected.storage_truncated > 0 && (
         <p className="px-3 pb-1.5 text-caption text-warning-600">{t('runs.storage_truncated')}</p>
       )}
     </div>

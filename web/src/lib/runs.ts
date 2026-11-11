@@ -1,6 +1,7 @@
-import type { NotebookRunSummary } from '../types'
+import type { NotebookRunSummary, StatementResult } from '../types'
 
-// ── Per-notebook state of the saved runs (see hooks/useNotebookRuns.ts) ──────
+// ── Per-notebook state of the saved runs and of the run in flight ────────────
+// (see hooks/useNotebookRuns.ts)
 
 export const RUN_PAGE_SIZE = 50
 // Run results kept in memory; older ones are fetched again when selected
@@ -61,6 +62,56 @@ export function removeRun(s: NotebookRunsState, runId: string): NotebookRunsStat
   const list = s.list.filter((r) => r.id !== runId)
   if (s.selectedRunId !== runId) return { ...s, list }
   return { ...s, list, selectedRunId: (list[idx] ?? list[idx - 1])?.id ?? null }
+}
+
+// ── The run in flight ────────────────────────────────────────────────────────
+
+// A run in progress, or what one left behind when the server did not name it: an error message,
+// or results that were not stored as a run (transient). `databaseName` is the database the run
+// was started on, shown in the history strip while it runs.
+export interface PendingRun {
+  running: boolean
+  error: string
+  transient: StatementResult[] | null
+  databaseName: string
+}
+
+export const idlePending: PendingRun = { running: false, error: '', transient: null, databaseName: '' }
+
+export const runningPending = (databaseName: string): PendingRun => ({
+  running: true,
+  error: '',
+  transient: null,
+  databaseName,
+})
+
+export type RunOutcome = { run: NotebookRunSummary | null; results: StatementResult[] } | { error: string }
+
+// Applies a run's outcome only while that notebook's run is still in flight: a response arriving
+// after the user cancelled is rejected, so it can neither replace what the panel shows nor turn
+// the temporary tab into a saved one.
+export type SettledRun =
+  | { accepted: false; pending: PendingRun }
+  | { accepted: true; pending: PendingRun; run: NotebookRunSummary | null; results: StatementResult[] }
+
+export function settleRun(pending: PendingRun, outcome: RunOutcome): SettledRun {
+  if (!pending.running) return { accepted: false, pending }
+  if ('error' in outcome)
+    return { accepted: true, pending: { ...idlePending, error: outcome.error }, run: null, results: [] }
+  if (!outcome.run)
+    return {
+      accepted: true,
+      pending: { ...idlePending, transient: outcome.results },
+      run: null,
+      results: outcome.results,
+    }
+  return { accepted: true, pending: idlePending, run: outcome.run, results: outcome.results }
+}
+
+// Cancelling clears the run in flight. The selected saved run and its results were never touched,
+// so the results panel falls back to them by itself.
+export function cancelPending(pending: PendingRun): PendingRun {
+  return pending.running ? idlePending : pending
 }
 
 export function clearRunsState(s: NotebookRunsState): NotebookRunsState {
