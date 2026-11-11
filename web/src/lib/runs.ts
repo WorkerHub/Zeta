@@ -68,21 +68,34 @@ export function removeRun(s: NotebookRunsState, runId: string): NotebookRunsStat
 
 // A run in progress, or what one left behind when the server did not name it: an error message,
 // or results that were not stored as a run (transient). `databaseName` is the database the run
-// was started on, shown in the history strip while it runs.
+// was started on, shown in the history strip while it runs. `sql` is the statement the run is
+// executing (the first one when several were submitted) and `statementCount` how many there are,
+// which the results panel names while it runs.
 export interface PendingRun {
   running: boolean
   error: string
   transient: StatementResult[] | null
   databaseName: string
+  sql: string
+  statementCount: number
 }
 
-export const idlePending: PendingRun = { running: false, error: '', transient: null, databaseName: '' }
+export const idlePending: PendingRun = {
+  running: false,
+  error: '',
+  transient: null,
+  databaseName: '',
+  sql: '',
+  statementCount: 0,
+}
 
-export const runningPending = (databaseName: string): PendingRun => ({
+export const runningPending = (databaseName: string, sql: string, statementCount: number): PendingRun => ({
   running: true,
   error: '',
   transient: null,
   databaseName,
+  sql,
+  statementCount,
 })
 
 export type RunOutcome = { run: NotebookRunSummary | null; results: StatementResult[] } | { error: string }

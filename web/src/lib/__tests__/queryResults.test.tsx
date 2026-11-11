@@ -36,6 +36,8 @@ function render(props: Partial<Parameters<typeof QueryResults>[0]>) {
     <QueryResults
       running={false}
       runningDatabaseName=""
+      runningSql=""
+      runningStatementCount={0}
       runError=""
       transient={null}
       selectedRun={oldRun}
@@ -96,6 +98,8 @@ describe('QueryResults while a run is in flight', () => {
     const html = render({
       running: true,
       runningDatabaseName: 'one',
+      runningSql: 'SELECT 1',
+      runningStatementCount: 1,
       selectedRun: null,
       selectedResults: null,
       results: [],
@@ -104,8 +108,29 @@ describe('QueryResults while a run is in flight', () => {
     expect(html).toContain(`aria-label="${t('runs.tablist')}"`)
     expect(html).toContain('#1')
     expect(html).toContain(t('query.cancel_run'))
-    expect(html).toContain(t('query.running'))
+    expect(html).toContain(t('query.running')) // the strip's summary
+    // The centered notice names the SQL it is running, like the mask does
+    expect(html).toContain(t('results.running_sql', { sql: 'SELECT 1' }))
+    expect(html).toContain('role="status"')
     expect(html).not.toContain('<table')
+  })
+
+  it('masks the whole panel with the SQL it is running, keeping the previous results underneath', () => {
+    const html = render({ running: true, runningDatabaseName: 'one', runningSql: 'SELECT 1', runningStatementCount: 1 })
+    const label = t('results.running_sql', { sql: 'SELECT 1' })
+    expect(html).toContain(label)
+    // A single status region on screen (the first-run notice is the other branch), and the mask
+    // is drawn after the SQL header row it covers
+    expect(html.match(/role="status"/g)?.length).toBe(1)
+    expect(html.indexOf(label)).toBeGreaterThan(html.indexOf('>SQL<'))
+    // The results underneath are untouched, so the mask disappears onto them
+    expect(table(html)).toBe(table(render({})))
+  })
+
+  it('names every statement when the run submitted several', () => {
+    const html = render({ running: true, runningSql: 'SELECT 1', runningStatementCount: 3 })
+    expect(html).toContain(t('results.running_sql_statements', { sql: 'SELECT 1', n: 3 }))
+    expect(html).not.toContain(t('results.running_sql_statements', { sql: 'SELECT 1', n: 2 }))
   })
 
   it('replaces nothing when idle: no temporary tab, no running notice', () => {
@@ -119,6 +144,29 @@ describe('QueryResults while a run is in flight', () => {
 })
 
 describe('QueryResults after a run', () => {
+  it('drops the mask and shows the new results once the run finished', () => {
+    const fresh: StatementResult[] = [{ sql: 'SELECT 2', results: [{ n: 9 }], duration_ms: 5 }]
+    const next = run('run-2', 2)
+    const html = render({
+      runningSql: 'SELECT 2',
+      runningStatementCount: 1,
+      selectedRun: next,
+      selectedResults: { status: 'ready', results: fresh },
+      results: fresh,
+      runList: [next, oldRun],
+    })
+    expect(html).not.toContain(t('results.running_sql', { sql: 'SELECT 2' }))
+    expect(html).not.toContain('role="status"')
+    expect(html).toContain('>9<')
+  })
+
+  it('drops the mask and keeps the previous results when the run was cancelled', () => {
+    const html = render({ runningSql: 'SELECT 2', runningStatementCount: 1 })
+    expect(html).not.toContain(t('results.running_sql', { sql: 'SELECT 2' }))
+    expect(html).not.toContain('role="status"')
+    expect(table(html)).toBe(table(render({})))
+  })
+
   it('keeps the history strip when the run failed', () => {
     const html = render({ runError: 'SQL error: no such column', transient: null })
     expect(html).toContain(`aria-label="${t('runs.tablist')}"`)

@@ -8,6 +8,8 @@ import RunHistoryBar from './RunHistoryBar'
 interface Props {
   running: boolean
   runningDatabaseName: string
+  runningSql: string
+  runningStatementCount: number
   runError: string
   transient: StatementResult[] | null
   selectedRun: NotebookRunSummary | null
@@ -30,11 +32,14 @@ interface Props {
 // A run in flight must not take the panel away — the previously selected run's results and the
 // strip (scrolled where the user left it) stay on screen, and only the strip gains a temporary tab.
 // That is why neither branch is gated on !running here: both keep their place in the tree while a
-// query runs, so React never unmounts and re-mounts them. The centered running notice is only for
-// a notebook with nothing to show yet (its first run).
+// query runs, so React never unmounts and re-mounts them. The run in flight is named on a mask the
+// panel draws over itself; the centered notice is only for a notebook with nothing to show yet
+// (its first run).
 export default function QueryResults({
   running,
   runningDatabaseName,
+  runningSql,
+  runningStatementCount,
   runError,
   transient,
   selectedRun,
@@ -52,6 +57,14 @@ export default function QueryResults({
   onCancelRun,
 }: Props) {
   const { t } = useLocale()
+
+  // What the run in flight is executing: its first statement, with how many it submitted. The old
+  // results stay mounted underneath; this is the only text the mask (and the first-run notice)
+  // shows while they are hidden.
+  const runningLabel = t(runningStatementCount > 1 ? 'results.running_sql_statements' : 'results.running_sql', {
+    sql: runningSql,
+    n: runningStatementCount,
+  })
 
   // Results the server did not store (a run it did not name) take the saved run's place in the
   // panel, so the strip steps aside. A failure is different: it must be visible *and* leave the run
@@ -87,11 +100,22 @@ export default function QueryResults({
         // Always present, so entering and leaving a run never changes the panel's box
         <div className="flex-1 overflow-hidden">
           {results.length > 0 ? (
-            <ResultsPanel results={results} activeIndex={activeIndex} onSelectIndex={onSelectIndex} />
+            <ResultsPanel
+              results={results}
+              activeIndex={activeIndex}
+              onSelectIndex={onSelectIndex}
+              running={running}
+              runningLabel={runningLabel}
+            />
           ) : running ? (
-            <div className="flex items-center justify-center h-full gap-2 text-ink-500">
-              <Loader2 size={18} className="animate-spin" />
-              <span className="text-body">{t('query.running')}</span>
+            <div
+              role="status"
+              className="flex items-center justify-center h-full gap-2 overflow-hidden px-4 min-w-0 text-ink-500"
+            >
+              <Loader2 size={18} className="animate-spin shrink-0" aria-hidden="true" />
+              <span className="min-w-0 text-body truncate" title={runningLabel}>
+                {runningLabel}
+              </span>
             </div>
           ) : selectedResults && selectedResults.status !== 'ready' ? (
             <div className="flex items-center justify-center h-full gap-2 px-4 text-center text-body text-ink-400">

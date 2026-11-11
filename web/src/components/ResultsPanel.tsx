@@ -1,4 +1,4 @@
-import { AlertCircle, CheckCircle2 } from 'lucide-react'
+import { AlertCircle, CheckCircle2, Loader2 } from 'lucide-react'
 import type { StatementResult } from '../types'
 import ResultTable from './ResultTable'
 import { useLocale } from '../hooks/useLocale'
@@ -8,15 +8,23 @@ interface Props {
   results: StatementResult[]
   activeIndex: number
   onSelectIndex: (i: number) => void
+  running?: boolean // a run is in flight: the mask covers the panel
+  runningLabel?: string // what it is executing, shown on the mask
 }
 
-export default function ResultsPanel({ results, activeIndex, onSelectIndex }: Props) {
+export default function ResultsPanel({
+  results,
+  activeIndex,
+  onSelectIndex,
+  running = false,
+  runningLabel = '',
+}: Props) {
   const { t } = useLocale()
   const active = results[activeIndex]
   if (!active) return null
 
   return (
-    <div className="flex h-full overflow-hidden">
+    <div className="relative flex h-full overflow-hidden">
       {/* Left sidebar — only shown when there are multiple results */}
       {results.length > 1 && (
         <div className="w-[130px] shrink-0 border-r border-ink-200 flex flex-col overflow-y-auto">
@@ -115,6 +123,21 @@ export default function ResultsPanel({ results, activeIndex, onSelectIndex }: Pr
           )}
         </div>
       </div>
+
+      {/* A run in flight: the mask covers the whole panel — SQL header row, meta line and table —
+          while the previous results stay mounted and scrolled underneath it. The run history strip
+          and its cancel X sit outside this panel, so they stay usable. */}
+      {running && runningLabel && (
+        <div
+          role="status"
+          className="absolute inset-0 flex items-center justify-center gap-2 overflow-hidden px-4 bg-ink-0/90 backdrop-blur-[2px] cursor-progress"
+        >
+          <Loader2 size={18} className="animate-spin shrink-0 text-ink-500" aria-hidden="true" />
+          <span className="min-w-0 text-body text-ink-600 truncate" title={runningLabel}>
+            {runningLabel}
+          </span>
+        </div>
+      )}
     </div>
   )
 }

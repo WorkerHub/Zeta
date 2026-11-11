@@ -165,8 +165,8 @@ export function useNotebookRuns(activeId: string | null) {
   }, [activeId, patchNotebook, clearPending])
 
   const startRun = useCallback(
-    (nbId: string, databaseName: string) => {
-      commitPending(nbId, runningPending(databaseName))
+    (nbId: string, databaseName: string, sql: string, statementCount: number) => {
+      commitPending(nbId, runningPending(databaseName, sql, statementCount))
     },
     [commitPending]
   )
@@ -221,6 +221,8 @@ export function useNotebookRuns(activeId: string | null) {
     selectedResults,
     running: activePending.running,
     runningDatabaseName: activePending.databaseName,
+    runningSql: activePending.sql,
+    runningStatementCount: activePending.statementCount,
     runError: activePending.error,
     transient: activePending.transient,
     selectRun,

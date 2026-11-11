@@ -324,6 +324,8 @@ export const translations: Record<Locale, Record<string, string>> = {
     'results.changes': '{n} changes',
     'results.truncated': '(showing the first {n} rows — add a LIMIT or narrow the query)',
     'results.no_rows': 'No rows returned',
+    'results.running_sql': 'Running SQL: {sql}',
+    'results.running_sql_statements': 'Running SQL: {sql} ({n} statements)',
     'results.stored_rows': '(only the first {n} rows were saved — run again to see all)',
 
     // Saved runs
@@ -687,6 +689,8 @@ export const translations: Record<Locale, Record<string, string>> = {
     'results.changes': '{n} 处变更',
     'results.truncated': '（仅显示前 {n} 行 — 请添加 LIMIT 或缩小查询范围）',
     'results.no_rows': '没有返回任何行',
+    'results.running_sql': '正在执行 SQL：{sql}',
+    'results.running_sql_statements': '正在执行 SQL：{sql}（共 {n} 条）',
     'results.stored_rows': '（仅保存了前 {n} 行 — 重新运行可查看全部）',
 
     // Saved runs
