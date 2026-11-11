@@ -114,7 +114,7 @@ describe('cacheResults', () => {
 
 describe('the run in flight', () => {
   it('turns a settled run into the selected saved one', () => {
-    const settled = settleRun(runningPending('one'), {
+    const settled = settleRun(runningPending('one', 'SELECT 1', 1), {
       run: run('new', 4),
       results: [{ sql: 'SELECT 1', results: [], duration_ms: 1 }],
     })
@@ -127,21 +127,30 @@ describe('the run in flight', () => {
 
   it('keeps results the server did not name as transient', () => {
     const results = [{ sql: 'SELECT 1', results: [{ a: 1 }], duration_ms: 2 }]
-    expect(settleRun(runningPending('one'), { run: null, results })).toMatchObject({
+    expect(settleRun(runningPending('one', 'SELECT 1', 1), { run: null, results })).toMatchObject({
       accepted: true,
       pending: { running: false, error: '', transient: results },
     })
   })
 
   it('keeps a reported error', () => {
-    expect(settleRun(runningPending('one'), { error: 'boom' })).toMatchObject({
+    expect(settleRun(runningPending('one', 'SELECT 1', 1), { error: 'boom' })).toMatchObject({
       accepted: true,
       pending: { running: false, error: 'boom', transient: null },
     })
   })
 
+  it('carries the submitted SQL and its statement count, and clears both when the run ends', () => {
+    const pending = runningPending('one', 'SELECT 1', 3)
+    expect(pending).toMatchObject({ running: true, sql: 'SELECT 1', statementCount: 3 })
+    expect(settleRun(pending, { error: 'boom' })).toMatchObject({
+      pending: { sql: '', statementCount: 0 },
+    })
+    expect(cancelPending(pending)).toMatchObject({ sql: '', statementCount: 0 })
+  })
+
   it('drops the response of a cancelled run, so it can never become a saved one', () => {
-    const cancelled = cancelPending(runningPending('one'))
+    const cancelled = cancelPending(runningPending('one', 'SELECT 1', 1))
     expect(cancelled).toEqual(idlePending)
     const settled = settleRun(cancelled, { run: run('late', 9), results: [] })
     expect(settled).toMatchObject({ accepted: false, pending: idlePending })

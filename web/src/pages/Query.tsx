@@ -67,6 +67,8 @@ export default function QueryPage() {
   const {
     running,
     runningDatabaseName,
+    runningSql,
+    runningStatementCount,
     runError,
     transient,
     selectedRun,
@@ -151,11 +153,12 @@ export default function QueryPage() {
     if (statements.length === 0) return
 
     // The run belongs to the notebook it started in, even if the user switches tabs meanwhile.
-    // Its controller lets the temporary tab's X abort this request.
+    // Its controller lets the temporary tab's X abort this request. The SQL it submitted is kept
+    // with the run, so the results panel can name the statement that is executing.
     runControllers.current.get(nbId)?.abort()
     const controller = new AbortController()
     runControllers.current.set(nbId, controller)
-    startRun(nbId, db.name)
+    startRun(nbId, db.name, statements[0]!, statements.length)
     setActiveResultIdx(0)
 
     // A saved run (one the server names and numbers) goes into the notebook's run list
@@ -655,6 +658,8 @@ export default function QueryPage() {
             <QueryResults
               running={running}
               runningDatabaseName={runningDatabaseName}
+              runningSql={runningSql}
+              runningStatementCount={runningStatementCount}
               runError={runError}
               transient={transient}
               selectedRun={selectedRun}
