@@ -7,7 +7,7 @@ export interface Env {
   ASSETS: Fetcher
   // Secrets (set via CF dashboard)
   JWT_SECRET: string
-  ENCRYPTION_KEY: string // 64-char hex string (32 bytes) for AES-GCM TOTP encryption
+  ENCRYPTION_KEY: string // 64-char hex string (32 bytes) for AES-GCM TOTP encryption and sealed DB connection strings
   SETUP_SECRET: string // random secret required by POST /api/setup
   // Vars (set via CF dashboard). Optional: when unset, the deployment's origin is derived from
   // the request (see lib/app-url.ts), so the var can be dropped from the Worker.
@@ -69,10 +69,18 @@ export interface DatabaseRow {
   description: string | null
   binding_name: string
   cf_database_id: string | null
+  // Engine of the registered target (see lib/bindings.ts). Rows created before schema_v2 read back
+  // without the column's value on an un-migrated database; callers treat that as 'sqlite'.
+  kind: DatabaseKind
+  // Sealed JSON payload for non-D1 targets (`enc:v1:…`, see lib/secrets.ts). Always null for D1
+  // targets; never returned by an API response.
+  connection_secret: string | null
   is_active: number
   created_at: number
   created_by: string | null
 }
+
+export type DatabaseKind = 'sqlite' | 'postgres'
 
 export interface PermissionRow {
   id: string

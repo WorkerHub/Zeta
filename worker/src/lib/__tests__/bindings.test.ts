@@ -19,6 +19,8 @@ describe('resolveQueryTarget', () => {
     description: null,
     binding_name: 'QUERY_DB_1',
     cf_database_id: null,
+    kind: 'sqlite',
+    connection_secret: null,
     is_active: 1,
     created_at: 0,
     created_by: null,
@@ -69,5 +71,23 @@ describe('resolveQueryTarget', () => {
     const r = resolveQueryTarget(envWithAppDb, dbRow({ cf_database_id: null, binding_name: 'QUERY_DB_1' }))
     expect(r.ok).toBe(false)
     expect(!r.ok && r.error).toContain('not linked')
+  })
+
+  it('resolves a postgres row to a postgres target regardless of ZETA_APP_DB_ID', () => {
+    const r = resolveQueryTarget(env, dbRow({ kind: 'postgres', connection_secret: 'enc:v1:x' }))
+    expect(r.ok && r.target).toEqual({ kind: 'postgres', databaseId: 'x' })
+  })
+
+  it('refuses a postgres row with no stored connection', () => {
+    const r = resolveQueryTarget(envWithAppDb, dbRow({ kind: 'postgres', connection_secret: null }))
+    expect(r.ok).toBe(false)
+    expect(!r.ok && r.error).toContain('no stored connection')
+  })
+
+  it('treats a row from an un-migrated registry (no kind) as a sqlite target', () => {
+    const row = dbRow({ cf_database_id: 'db-uuid' })
+    delete (row as { kind?: string }).kind
+    const r = resolveQueryTarget(envWithAppDb, row)
+    expect(r.ok && r.target).toEqual({ kind: 'http', databaseId: 'db-uuid' })
   })
 })

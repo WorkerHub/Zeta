@@ -182,10 +182,22 @@ function schemaV1(T: ReturnType<typeof tables>): string[] {
 
 // The migration list, ordered and parameterised by the effective table prefix.
 export function getMigrations(env: Pick<Env, 'TABLE_PREFIX'>): Migration[] {
+  const T = tables(env)
   return [
     {
       name: 'schema_v1',
-      sql: schemaV1(tables(env)).join(';\n'),
+      sql: schemaV1(T).join(';\n'),
+    },
+    {
+      // Database registry: the engine of a registered target (`sqlite` keeps the existing D1 HTTP
+      // path; `postgres` is a pasted connection string) and the sealed connection payload used by
+      // the non-D1 executors. Both columns are optional for existing rows: every row registered
+      // before this migration is a SQLite target with no stored connection.
+      name: 'schema_v2',
+      sql: [
+        `ALTER TABLE ${T.d1_databases} ADD COLUMN kind TEXT NOT NULL DEFAULT 'sqlite'`,
+        `ALTER TABLE ${T.d1_databases} ADD COLUMN connection_secret TEXT`,
+      ].join(';\n'),
     },
   ]
 }

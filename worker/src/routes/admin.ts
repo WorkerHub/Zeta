@@ -5,6 +5,8 @@ import { audit, getSettings, now, setSetting, tables } from '../lib/db'
 import { isValidEmail, sendEmail } from '../lib/email'
 import { uuid } from '../lib/id'
 import { KV } from '../lib/kv'
+import { PostgresQueryError, testPostgresConnection } from '../lib/pg-executor'
+import { normalizePostgresUrl } from '../lib/pg-url'
 import { MAX_RUN_LIMIT, MAX_RUN_QUOTA_MB, parseBoundedInt, pruneRuns } from '../lib/runs'
 import { sealLegacySecret, sealSecret } from '../lib/secrets'
 import { runSetup } from '../lib/setup'
@@ -241,15 +243,43 @@ function d1Error(c: Context<{ Bindings: Env; Variables: Variables }>, err: unkno
   return c.json({ error: err instanceof Error ? err.message : String(err) }, 500)
 }
 
-// A database that predates the cf_database_id column (POST /api/setup not re-run after upgrading)
-// fails the registry statements with "no such column". Point the admin at the fix instead of
-// leaking the raw D1 error.
-const MISSING_CF_COLUMN = /no such column: cf_database_id/i
+// A database row read from a registry that predates a column (POST /api/setup not re-run after
+// upgrading) fails the registry statements with "no such column". Point the admin at the fix
+// instead of leaking the raw D1 error.
+const MISSING_REGISTRY_COLUMN = /no such column: (cf_database_id|kind|connection_secret)/i
 function missingColumnResponse(c: Context<{ Bindings: Env; Variables: Variables }>, err: unknown): Response | null {
-  if (err instanceof Error && MISSING_CF_COLUMN.test(err.message)) {
+  if (err instanceof Error && MISSING_REGISTRY_COLUMN.test(err.message)) {
     return c.json({ error: 'The database registry needs an upgrade. Re-run POST /api/setup.' }, 500)
   }
   return null
+}
+
+// Maps a PostgreSQL connection/execution error to an admin-facing response. These routes are
+// admin-only, so the readable detail is shown verbatim — the pasted connection string never is
+// (lib/pg-executor.ts redacts it). Nothing is written to the logs.
+function pgError(c: Context<{ Bindings: Env; Variables: Variables }>, err: unknown) {
+  if (err instanceof PostgresQueryError) return c.json({ error: err.message }, 400)
+  return c.json({ error: err instanceof Error ? err.message : String(err) }, 500)
+}
+
+// Proves a pasted PostgreSQL connection string against the real server before anything is saved.
+// Registration, re-saving and the explicit test endpoint all go through it, so a PostgreSQL row can
+// only exist after a connection succeeded.
+async function verifyPostgresConnection(
+  c: Context<{ Bindings: Env; Variables: Variables }>,
+  connectionUrl: unknown
+): Promise<Response | { url: string; database: string; serverVersion: string }> {
+  if (typeof connectionUrl !== 'string' || !connectionUrl.trim()) {
+    return c.json({ error: 'connection_url is required for a PostgreSQL database' }, 400)
+  }
+  const normalized = normalizePostgresUrl(connectionUrl)
+  if (!normalized.ok) return c.json({ error: normalized.error }, 400)
+  try {
+    const { server_version } = await testPostgresConnection(normalized.url)
+    return { url: normalized.url, database: normalized.database, serverVersion: server_version }
+  } catch (err) {
+    return pgError(c, err)
+  }
 }
 
 // Verifies a picked database uuid is a real account database. The application's own database is
@@ -275,9 +305,27 @@ async function verifyCfDatabase(
 admin.get('/databases', async (c) => {
   const T = tables(c.env)
   const rows = await c.env.DB.prepare(`SELECT * FROM ${T.d1_databases} ORDER BY name`).all<DatabaseRow>()
-  // Annotated, not stored: whether a row targets the application's own database is derived from
-  // ZETA_APP_DB_ID + the row's cf_database_id on every read
-  return c.json({ results: rows.results.map((r) => ({ ...r, is_app_db: isAppDb(c.env, r.cf_database_id) })) })
+  // The sealed connection payload never leaves the Worker (`has_connection` is what the UI needs);
+  // whether a row targets the application's own database is annotated on every read, not stored.
+  return c.json({
+    results: rows.results.map(({ connection_secret, ...row }) => ({
+      ...row,
+      kind: row.kind ?? 'sqlite',
+      has_connection: connection_secret !== null && connection_secret !== undefined,
+      is_app_db: isAppDb(c.env, row.cf_database_id),
+    })),
+  })
+})
+
+// Proves a pasted PostgreSQL connection string without saving anything: the admin form's "test
+// connection" button. Admin-only, so the provider's message is shown as-is (redacted of the URL).
+admin.post('/databases/test-connection', async (c) => {
+  const body = await c.req.json<{ connection_url?: unknown }>().catch(() => null)
+  if (!body) return c.json({ error: 'Invalid body' }, 400)
+  const started = Date.now()
+  const verified = await verifyPostgresConnection(c, body.connection_url)
+  if (verified instanceof Response) return verified
+  return c.json({ ok: true, server_version: verified.serverVersion, latency_ms: Date.now() - started })
 })
 
 // The Cloudflare account's D1 databases (minus the app DB unless ALLOW_APP_DB_AS_TARGET is
@@ -320,12 +368,59 @@ admin.get('/d1/databases', async (c) => {
 admin.post('/databases', async (c) => {
   const body = await c.req
     .json<{
+      kind?: unknown
       name?: string
       description?: string
       cf_database_id?: string
+      connection_url?: unknown
     }>()
     .catch(() => null)
-  if (typeof body?.cf_database_id !== 'string' || !body.cf_database_id) {
+  if (!body) return c.json({ error: 'Invalid body' }, 400)
+
+  const kind = body.kind ?? 'sqlite'
+  if (kind !== 'sqlite' && kind !== 'postgres') return c.json({ error: 'Invalid database kind' }, 400)
+
+  // PostgreSQL: the pasted connection string is proven against the real server first, and only a
+  // successful connection leads to a row (see verifyPostgresConnection).
+  if (kind === 'postgres') {
+    const verified = await verifyPostgresConnection(c, body.connection_url)
+    if (verified instanceof Response) return verified
+
+    const T = tables(c.env)
+    const id = uuid()
+    try {
+      await c.env.DB.prepare(
+        `INSERT INTO ${T.d1_databases} (id, name, description, binding_name, cf_database_id, kind, connection_secret, is_active, created_at, created_by)
+         VALUES (?1, ?2, ?3, ?4, NULL, 'postgres', ?5, 1, ?6, ?7)`
+      )
+        .bind(
+          id,
+          body.name?.trim() || verified.database,
+          body.description ?? null,
+          `pg:${id}`,
+          await sealSecret(c.env, JSON.stringify({ url: verified.url })),
+          now(),
+          c.get('userId')
+        )
+        .run()
+    } catch (err) {
+      const missing = missingColumnResponse(c, err)
+      if (missing) return missing
+      throw err
+    }
+
+    c.executionCtx.waitUntil(
+      audit(c.env, {
+        userId: c.get('userId'),
+        action: 'create_database',
+        resource: id,
+        ip: c.req.header('cf-connecting-ip'),
+      })
+    )
+    return c.json({ id }, 201)
+  }
+
+  if (typeof body.cf_database_id !== 'string' || !body.cf_database_id) {
     return c.json({ error: 'cf_database_id is required' }, 400)
   }
   if (!/^[0-9a-fA-F-]{36}$/.test(body.cf_database_id)) {
@@ -377,13 +472,47 @@ admin.post('/databases', async (c) => {
 
 admin.patch('/databases/:id', async (c) => {
   const body = await c.req
-    .json<{ name?: string; description?: string; is_active?: boolean; cf_database_id?: string }>()
+    .json<{
+      name?: string
+      description?: string
+      is_active?: boolean
+      cf_database_id?: string
+      connection_url?: unknown
+    }>()
     .catch(() => null)
   if (!body) return c.json({ error: 'Invalid body' }, 400)
+
+  const T = tables(c.env)
+  // The row's engine decides what may be edited: a PostgreSQL row takes a connection string, a
+  // SQLite row takes a Cloudflare database link.
+  let row: { id: string; kind: string | null; cf_database_id: string | null } | null
+  try {
+    row = await c.env.DB.prepare(`SELECT id, kind, cf_database_id FROM ${T.d1_databases} WHERE id = ?1`)
+      .bind(c.req.param('id'))
+      .first<{ id: string; kind: string | null; cf_database_id: string | null }>()
+  } catch (err) {
+    const missing = missingColumnResponse(c, err)
+    if (missing) return missing
+    throw err
+  }
+  if (!row) return c.json({ error: 'Database not found' }, 404)
+  const isPostgres = row.kind === 'postgres'
+
+  if (body.cf_database_id !== undefined && isPostgres) {
+    return c.json({ error: 'A PostgreSQL database is not linked to a Cloudflare database.' }, 400)
+  }
 
   const updates: string[] = []
   const bindings: unknown[] = []
   let i = 1
+
+  if (body.connection_url !== undefined) {
+    if (!isPostgres) return c.json({ error: 'Only PostgreSQL databases take a connection string.' }, 400)
+    const verified = await verifyPostgresConnection(c, body.connection_url)
+    if (verified instanceof Response) return verified
+    updates.push(`connection_secret = ?${i++}`)
+    bindings.push(await sealSecret(c.env, JSON.stringify({ url: verified.url })))
+  }
 
   if (body.cf_database_id !== undefined) {
     if (typeof body.cf_database_id !== 'string' || !/^[0-9a-fA-F-]{36}$/.test(body.cf_database_id)) {
@@ -424,7 +553,6 @@ admin.patch('/databases/:id', async (c) => {
   if (updates.length === 0) return c.json({ error: 'Nothing to update' }, 400)
   bindings.push(c.req.param('id'))
 
-  const T = tables(c.env)
   try {
     await c.env.DB.prepare(`UPDATE ${T.d1_databases} SET ${updates.join(', ')} WHERE id = ?${i}`)
       .bind(...bindings)

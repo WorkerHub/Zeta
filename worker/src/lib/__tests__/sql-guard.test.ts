@@ -10,6 +10,10 @@ describe('classifySql', () => {
     ['leading comments', '-- hi\n/* x */ SELECT 1', 'read'],
     ['values', 'VALUES (1), (2)', 'read'],
     ['explain', 'EXPLAIN QUERY PLAN SELECT 1', 'read'],
+    ['explain analyze read', 'EXPLAIN ANALYZE SELECT 1', 'read'],
+    ['explain analyze write', 'EXPLAIN ANALYZE DELETE FROM t', 'write'],
+    ['explain analyze options write', 'EXPLAIN (ANALYZE, BUFFERS) DELETE FROM t', 'write'],
+    ['explain options only', 'EXPLAIN (VERBOSE, COSTS OFF) SELECT 1', 'read'],
     ['keyword inside string', "SELECT 'DELETE FROM t; DROP TABLE t'", 'read'],
     ['keyword inside comment', 'SELECT 1 -- ; DELETE FROM t', 'read'],
     ['read-only pragma', 'PRAGMA table_info(users)', 'read'],
@@ -34,6 +38,9 @@ describe('classifySql', () => {
     ['begin', 'BEGIN', 'write'],
     ['alter add', 'ALTER TABLE t ADD COLUMN b', 'write'],
     ['cte + delete', 'WITH a AS (SELECT 1) DELETE FROM t', 'write'],
+    ['data-modifying cte', 'WITH d AS (DELETE FROM t RETURNING *) SELECT * FROM d', 'write'],
+    ['data-modifying cte + insert', 'WITH i AS (INSERT INTO t VALUES (1) RETURNING *) SELECT * FROM i', 'write'],
+    ['data-modifying cte + update', 'WITH u AS (UPDATE t SET a = 1 RETURNING *) SELECT * FROM u', 'write'],
     ['cte + insert', 'WITH a AS (SELECT 1) INSERT INTO t SELECT * FROM a', 'write'],
     ['cte + update', 'WITH a AS (SELECT 1) UPDATE t SET x = 1', 'write'],
     ['20 ctes + delete', `WITH ${ctes(20)} DELETE FROM t`, 'write'],
@@ -58,6 +65,9 @@ describe('classifySql', () => {
     ['attach database', "ATTACH DATABASE 'x' AS y", 'forbidden'],
     ['attach without database keyword', "ATTACH 'x' AS y", 'forbidden'],
     ['detach', 'DETACH y', 'forbidden'],
+    ['copy from file', "COPY t FROM '/tmp/x'", 'forbidden'],
+    ['copy to stdout', 'COPY t TO STDOUT', 'forbidden'],
+    ['load data', "LOAD DATA INFILE '/x' INTO TABLE t", 'forbidden'],
 
     ['two statements', 'SELECT 1; DELETE FROM t', 'multiple'],
     ['two writes', 'DELETE FROM a; DELETE FROM b', 'multiple'],
@@ -71,6 +81,46 @@ describe('classifySql', () => {
   for (const [name, sql, expected] of cases) {
     it(`${name} -> ${expected}`, () => {
       expect(classifySql(sql)).toBe(expected)
+    })
+  }
+})
+
+describe('classifySql (postgres dialect)', () => {
+  const cases: Array<[string, string, SqlClass]> = [
+    ['plain select', 'SELECT 1', 'read'],
+    ['cast', "SELECT '1'::int + 1", 'read'],
+    ['dollar-quoted string with a semicolon', 'SELECT $$a;b$$', 'read'],
+    ['tagged dollar quote', 'SELECT $fn$DELETE FROM t; SELECT 1$fn$', 'read'],
+    [
+      'function body is one statement',
+      'CREATE FUNCTION f() RETURNS int AS $$ BEGIN RETURN 1; END $$ LANGUAGE plpgsql',
+      'write',
+    ],
+    ['dollar quote cannot fake a second statement', 'SELECT $$x$$; DELETE FROM t', 'multiple'],
+    ['escape string with an embedded quote', "SELECT E'it\\'s' FROM t", 'read'],
+    ['data-modifying cte', 'WITH d AS (DELETE FROM t RETURNING *) SELECT * FROM d', 'write'],
+    ['read cte with replace()', "WITH a AS (SELECT replace('a','b','c') x) SELECT x FROM a", 'read'],
+    ['materialized cte', 'WITH a AS MATERIALIZED (SELECT 1) SELECT * FROM a', 'read'],
+    ['not materialized cte', 'WITH a AS NOT MATERIALIZED (SELECT 1) SELECT * FROM a', 'read'],
+    ['materialized data-modifying cte', 'WITH d AS MATERIALIZED (DELETE FROM t RETURNING *) SELECT * FROM d', 'write'],
+    ['explain select', 'EXPLAIN SELECT 1', 'read'],
+    ['explain analyze select', 'EXPLAIN ANALYZE SELECT 1', 'read'],
+    ['explain analyze delete', 'EXPLAIN ANALYZE DELETE FROM t', 'write'],
+    ['explain analyze options delete', 'EXPLAIN (ANALYZE, BUFFERS) DELETE FROM t', 'write'],
+    ['explain analyze without a statement', 'EXPLAIN ANALYZE', 'write'],
+    ['copy', "COPY t FROM '/tmp/x'", 'forbidden'],
+    ['copy query', 'COPY (SELECT 1) TO STDOUT', 'forbidden'],
+    ['load data', "LOAD DATA INFILE '/x' INTO TABLE t", 'forbidden'],
+    ['select into creates a table', 'SELECT * INTO t2 FROM t', 'write'],
+    ['select into inside a subquery is still a read', 'SELECT * FROM (SELECT 1) x', 'read'],
+    ['show', 'SHOW server_version', 'read'],
+    ['locking read', 'SELECT * FROM t FOR UPDATE', 'read'],
+    ['destructive', 'DROP TABLE t', 'destructive'],
+  ]
+
+  for (const [name, sql, expected] of cases) {
+    it(`${name} -> ${expected}`, () => {
+      expect(classifySql(sql, 'postgres')).toBe(expected)
     })
   }
 })
@@ -121,6 +171,31 @@ describe('limitReadSql', () => {
   it('leaves EXPLAIN and PRAGMA unwrapped', () => {
     expect(limitReadSql('EXPLAIN QUERY PLAN SELECT 1', 10)).toBeNull()
     expect(limitReadSql('PRAGMA table_info(users)', 10)).toBeNull()
+  })
+
+  it('wraps PostgreSQL reads with a subquery alias and never with the SQLite shape', () => {
+    expect(limitReadSql('SELECT * FROM t', 5000, 'postgres')).toBe(
+      'SELECT * FROM (\nSELECT * FROM t\n) AS zeta_limit LIMIT 5001'
+    )
+    expect(limitReadSql('WITH a AS (SELECT 1) SELECT * FROM a', 10, 'postgres')).toBe(
+      'SELECT * FROM (\nWITH a AS (SELECT 1) SELECT * FROM a\n) AS zeta_limit LIMIT 11'
+    )
+    // A dollar-quoted body may contain a parenthesis or a semicolon without breaking the wrap
+    expect(limitReadSql('SELECT $$a)b$$', 10, 'postgres')).toBe(
+      'SELECT * FROM (\nSELECT $$a)b$$\n) AS zeta_limit LIMIT 11'
+    )
+  })
+
+  it("leaves PostgreSQL reads that cannot be wrapped to the caller's row cap", () => {
+    for (const sql of [
+      'SELECT * FROM t FOR UPDATE',
+      'SELECT * FROM t FOR SHARE',
+      'SELECT * FROM t FOR NO KEY UPDATE',
+      'SHOW server_version',
+      'EXPLAIN ANALYZE SELECT 1',
+    ]) {
+      expect(limitReadSql(sql, 10, 'postgres'), sql).toBeNull()
+    }
   })
 
   it('cannot be used to smuggle in a second statement', () => {
