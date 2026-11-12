@@ -37,7 +37,6 @@ export interface AdminDatabase {
   kind?: DbKind
   binding_name: string
   cf_database_id: string | null
-  has_connection?: number // connection-string targets: whether a sealed string is stored
   is_active: number
   created_at: number
   is_app_db?: boolean

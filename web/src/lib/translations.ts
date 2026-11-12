@@ -211,6 +211,8 @@ export const translations: Record<Locale, Record<string, string>> = {
     'admin_db.kind': 'Engine',
     'admin_db.kind_sqlite': 'Cloudflare D1',
     'admin_db.kind_postgres': 'PostgreSQL',
+    'admin_db.kind_mysql': 'MySQL',
+    'admin_db.kind_spark': 'SparkSQL',
     'admin_db.connection_url': 'Connection string',
     'admin_db.connection_url_placeholder': 'postgresql://user:password@host/dbname?sslmode=require',
     'admin_db.connection_url_hint':
@@ -596,6 +598,8 @@ export const translations: Record<Locale, Record<string, string>> = {
     'admin_db.kind': '引擎类型',
     'admin_db.kind_sqlite': 'Cloudflare D1',
     'admin_db.kind_postgres': 'PostgreSQL',
+    'admin_db.kind_mysql': 'MySQL',
+    'admin_db.kind_spark': 'SparkSQL',
     'admin_db.connection_url': '连接串',
     'admin_db.connection_url_placeholder': 'postgresql://用户:password@主机/库名?sslmode=require',
     'admin_db.connection_url_hint':

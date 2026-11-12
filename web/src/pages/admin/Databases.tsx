@@ -224,8 +224,19 @@ export default function AdminDatabases() {
   const canSave = kind === 'postgres' ? canSavePostgres(connectionUrl, testedUrl) : Boolean(newDb.cf_database_id)
   // Rows written before the kind column exist are D1 registrations
   const isD1 = (db: AdminDatabase) => (db.kind ?? 'sqlite') === 'sqlite'
-  const kindLabel = (k: DbKind | undefined) =>
-    !k || k === 'sqlite' ? t('admin_db.kind_sqlite') : k === 'postgres' ? t('admin_db.kind_postgres') : k
+  // Every kind gets its own label: an unknown engine must never be shown as D1
+  const kindLabel = (k: DbKind | undefined) => {
+    switch (k) {
+      case 'postgres':
+        return t('admin_db.kind_postgres')
+      case 'mysql':
+        return t('admin_db.kind_mysql')
+      case 'spark':
+        return t('admin_db.kind_spark')
+      default:
+        return t('admin_db.kind_sqlite')
+    }
+  }
   // Whether the currently picked add/link target is Zeta's own application database.
   const newDbIsApp = newDb.cf_database_id
     ? available.some((d) => d.uuid === newDb.cf_database_id && d.is_app_db)
