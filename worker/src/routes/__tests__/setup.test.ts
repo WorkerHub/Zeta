@@ -8,8 +8,11 @@ describe('setup endpoint', () => {
     expect(res.status).toBe(200)
     expect(await res.json()).toMatchObject({
       ok: true,
-      migrations: [{ name: 'schema_v1', status: 'applied' }],
-      upgraded: ['schema_v1: applied'],
+      migrations: [
+        { name: 'schema_v1', status: 'applied' },
+        { name: 'schema_v2', status: 'applied' },
+      ],
+      upgraded: ['schema_v1: applied', 'schema_v2: applied'],
     })
     expect(calls.some((c) => c.sql.includes('CREATE TABLE IF NOT EXISTS users'))).toBe(true)
     expect(calls.some((c) => c.sql.includes('INSERT OR IGNORE INTO settings'))).toBe(true)
@@ -18,6 +21,9 @@ describe('setup endpoint', () => {
     expect(calls.some((c) => c.sql.includes('CREATE TABLE IF NOT EXISTS _schema_migrations'))).toBe(true)
     expect(
       calls.some((c) => c.sql === 'INSERT INTO _schema_migrations (name) VALUES (?1)' && c.args[0] === 'schema_v1')
+    ).toBe(true)
+    expect(
+      calls.some((c) => c.sql === 'INSERT INTO _schema_migrations (name) VALUES (?1)' && c.args[0] === 'schema_v2')
     ).toBe(true)
   })
 

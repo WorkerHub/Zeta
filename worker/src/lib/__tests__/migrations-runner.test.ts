@@ -4,7 +4,7 @@ import { fakeEnv } from '../../routes/__tests__/fakes'
 import { sqliteD1 } from '../../routes/__tests__/sqlite-d1'
 import type { Env } from '../../types'
 import { migrationsTable, tables } from '../db'
-import type { Migration } from '../migrations'
+import { getMigrations, type Migration } from '../migrations'
 import { runMigrations, TablePrefixConflictError } from '../migrations-runner'
 
 // Real SQLite: the runner's semantics (record after success, stop at the first failure) are only
@@ -23,6 +23,10 @@ const tableNames = (sqlite: DatabaseSync) =>
     (r) => r.name
   )
 
+// The production migration list, named once so this file keeps checking the real schema.
+const PROD_NAMES = getMigrations({ TABLE_PREFIX: '' }).map((m) => m.name)
+const prod = (status: 'applied' | 'skipped') => PROD_NAMES.map((name) => ({ name, status }))
+
 // Two tiny test migrations: the runner itself is independent of the production schema.
 const TEST_MIGRATIONS: Migration[] = [
   {
@@ -39,12 +43,9 @@ describe('runMigrations', () => {
 
     const result = await runMigrations(env)
 
-    expect(result).toEqual({
-      prefix: '',
-      migrations: [{ name: 'schema_v1', status: 'applied' }],
-    })
-    // The ledger contains exactly schema_v1, and the schema really landed
-    expect(ledgerRows(sqlite)).toEqual(['schema_v1'])
+    expect(result).toEqual({ prefix: '', migrations: prod('applied') })
+    // The ledger records every production migration, and the schema really landed
+    expect(ledgerRows(sqlite)).toEqual(PROD_NAMES)
     expect(tableNames(sqlite)).toEqual(expect.arrayContaining([...Object.values(tables(env)), '_schema_migrations']))
   })
 
@@ -56,9 +57,9 @@ describe('runMigrations', () => {
 
     const second = await runMigrations(env)
 
-    expect(second).toEqual({ prefix: '', migrations: [{ name: 'schema_v1', status: 'skipped' }] })
+    expect(second).toEqual({ prefix: '', migrations: prod('skipped') })
     expect(schemaSnapshot(sqlite)).toEqual(before)
-    expect(ledgerRows(sqlite)).toEqual(['schema_v1'])
+    expect(ledgerRows(sqlite)).toEqual(PROD_NAMES)
   })
 
   it('names the ledger after the effective prefix, case preserved', async () => {
@@ -69,7 +70,7 @@ describe('runMigrations', () => {
     await runMigrations(env)
 
     expect(tableNames(sqlite)).toContain('_ZETA_schema_migrations')
-    expect(ledgerRows(sqlite, '_ZETA_schema_migrations')).toEqual(['schema_v1'])
+    expect(ledgerRows(sqlite, '_ZETA_schema_migrations')).toEqual(PROD_NAMES)
   })
 
   it('stops at the first failing migration, records nothing for it and runs nothing after it', async () => {
@@ -144,7 +145,7 @@ describe('runMigrations anti-silent-switch guard', () => {
     await runMigrations(env)
     const before = schemaSnapshot(sqlite)
 
-    expect((await runMigrations(env)).migrations).toEqual([{ name: 'schema_v1', status: 'skipped' }])
+    expect((await runMigrations(env)).migrations).toEqual(prod('skipped'))
     expect(schemaSnapshot(sqlite)).toEqual(before)
   })
 
@@ -158,7 +159,7 @@ describe('runMigrations anti-silent-switch guard', () => {
     `)
     const env: Envish = fakeEnv({ DB: db, TABLE_PREFIX: 'ZETA' })
 
-    expect((await runMigrations(env)).migrations).toEqual([{ name: 'schema_v1', status: 'applied' }])
+    expect((await runMigrations(env)).migrations).toEqual(prod('applied'))
     expect(tableNames(sqlite)).toEqual(expect.arrayContaining(['SL_links', '_SL_schema_migrations']))
     expect(ledgerRows(sqlite, '_SL_schema_migrations')).toEqual(['schema_v1'])
   })
@@ -182,7 +183,7 @@ describe('runMigrations anti-silent-switch guard', () => {
     )
     const env: Envish = fakeEnv({ DB: db, TABLE_PREFIX: 'ZETA' })
 
-    expect((await runMigrations(env)).migrations).toEqual([{ name: 'schema_v1', status: 'applied' }])
-    expect(ledgerRows(sqlite, '_ZETA_schema_migrations')).toEqual(['schema_v1'])
+    expect((await runMigrations(env)).migrations).toEqual(prod('applied'))
+    expect(ledgerRows(sqlite, '_ZETA_schema_migrations')).toEqual(PROD_NAMES)
   })
 })

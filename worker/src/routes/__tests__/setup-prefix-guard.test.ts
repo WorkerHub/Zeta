@@ -199,7 +199,10 @@ describe('runSetup anti-silent-switch guard', () => {
 
     const { result, names } = await run(sqlite, fakeEnv({ DB: db, TABLE_PREFIX: 'ZETA' }))
 
-    expect(result).toMatchObject({ ok: true, tablePrefix: 'ZETA_', migrations: [{ status: 'applied' }] })
+    expect(result).toMatchObject({ ok: true, tablePrefix: 'ZETA_' })
+    expect(result).toMatchObject({
+      migrations: expect.arrayContaining([expect.objectContaining({ status: 'applied' })]),
+    })
     expect(names).toContain('ZETA_users')
     expect(names).toContain('_ZETA_schema_migrations')
     // The foreign ledger and its tables are left alone

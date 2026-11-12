@@ -5,7 +5,10 @@ import { D1HttpError, isAppDb, queryD1Http } from '../lib/d1-http'
 import { now, tables } from '../lib/db'
 import { uuid } from '../lib/id'
 import { translateMySql } from '../lib/mysql-compat'
+import { openPostgresSession, PostgresQueryError, type PostgresSession } from '../lib/pg-executor'
+import { normalizePostgresUrl } from '../lib/pg-url'
 import { type RunStatement, reserveRunSeq, saveRun } from '../lib/runs'
+import { openSecret } from '../lib/secrets'
 import {
   checkSqlAccess,
   classifySql,
@@ -13,6 +16,7 @@ import {
   limitReadSql,
   type Permission,
   type SqlClass,
+  type SqlDialect,
 } from '../lib/sql-guard'
 import { requireAuth } from '../middleware/auth'
 import type { DatabaseRow, Env, Variables } from '../types'
@@ -41,6 +45,12 @@ function resolveExecError(c: Ctx, err: unknown): { message: string; status: Erro
   if (err instanceof D1HttpError) {
     if (err.kind === 'sql') return { message: err.message, status: 400 }
     if (err.kind === 'rate_limit') return { message: err.message, status: 429 }
+    if (c.get('userRole') === 'admin') return { message: `${err.message} Contact the admin.`, status: 500 }
+    console.error(`Query execution error: ${err.message}`)
+    return { message: 'Database configuration error. Contact the admin.', status: 500 }
+  }
+  if (err instanceof PostgresQueryError) {
+    if (err.kind === 'sql') return { message: err.message, status: 400 }
     if (c.get('userRole') === 'admin') return { message: `${err.message} Contact the admin.`, status: 500 }
     console.error(`Query execution error: ${err.message}`)
     return { message: 'Database configuration error. Contact the admin.', status: 500 }
@@ -78,38 +88,103 @@ interface Executed {
   truncated: boolean
 }
 
+// The engine-specific half of a request: one thing to run statements against, and a close() that
+// releases it. For D1 the target is stateless over HTTP; for PostgreSQL one connection is opened
+// for the request, shared by every statement of a batch and closed when the request is done.
+interface Executor {
+  run(sql: string, kind: SqlClass): Promise<Executed>
+  close(): Promise<void>
+}
+
 // Runs one statement that already passed classification and the permission check over the D1 HTTP
 // API. Reads are capped by the database itself: wrapped in `LIMIT MAX_RESULT_ROWS + 1` (see
-// limitReadSql), the extra row only telling that the result was cut off. EXPLAIN and PRAGMA cannot
-// be wrapped and are cut off here instead.
-async function executeStatement(env: Env, target: QueryTarget, sql: string, kind: SqlClass): Promise<Executed> {
+// limitReadSql, SQLite dialect), the extra row only telling that the result was cut off. EXPLAIN and
+// PRAGMA cannot be wrapped and are cut off here instead.
+async function executeD1Statement(
+  env: Env,
+  target: Extract<QueryTarget, { kind: 'http' }>,
+  sql: string,
+  kind: SqlClass
+): Promise<Executed> {
   if (isWriteClass(kind)) {
     const res = await queryD1Http(env, target.databaseId, sql)
     return { results: [], meta: res.meta, changes: res.changes, truncated: false }
   }
-  const limited = limitReadSql(sql, MAX_RESULT_ROWS)
+  const limited = limitReadSql(sql, MAX_RESULT_ROWS, 'sqlite')
   const res = await queryD1Http(env, target.databaseId, limited ?? sql)
   const rows = res.results
   const truncated = rows.length > MAX_RESULT_ROWS
   return { results: truncated ? rows.slice(0, MAX_RESULT_ROWS) : rows, meta: res.meta, truncated }
 }
 
+// Opens the executor for one request. A PostgreSQL target decrypts the stored connection string
+// here (the only place it is unwrapped), normalises it again so an old row cannot smuggle in a
+// dropped parameter, and proves the connection before any statement runs. Failures throw a
+// PostgresQueryError, which the routes report as a target error.
+async function openExecutor(env: Env, db: DatabaseRow, target: QueryTarget): Promise<Executor> {
+  if (target.kind === 'http') {
+    return {
+      run: (sql, kind) => executeD1Statement(env, target, sql, kind),
+      close: async () => {},
+    }
+  }
+
+  if (!db.connection_secret) {
+    throw new PostgresQueryError('This database has no stored connection.', 'config')
+  }
+  let url: string
+  try {
+    const stored = await openSecret(env, db.connection_secret)
+    let payload: unknown
+    try {
+      payload = JSON.parse(stored)
+    } catch {
+      throw new PostgresQueryError('The stored connection for this database is unreadable.', 'config')
+    }
+    const raw = (payload as { url?: unknown } | null)?.url
+    if (typeof raw !== 'string' || !raw) {
+      throw new PostgresQueryError('The stored connection for this database is unreadable.', 'config')
+    }
+    const normalized = normalizePostgresUrl(raw)
+    if (!normalized.ok) throw new PostgresQueryError(normalized.error, 'config')
+    url = normalized.url
+  } catch (err) {
+    if (err instanceof PostgresQueryError) throw err
+    // A changed ENCRYPTION_KEY makes stored payloads undecryptable: a configuration problem, and
+    // one the admin has to fix by saving the connection again.
+    console.error(`Stored connection could not be read: ${err instanceof Error ? err.name : typeof err}`)
+    throw new PostgresQueryError('The stored connection for this database could not be read.', 'config')
+  }
+
+  const session: PostgresSession = await openPostgresSession(url)
+  return {
+    run: (sql, kind) => session.run(sql, kind, MAX_RESULT_ROWS),
+    close: () => session.close(),
+  }
+}
+
 // Rewrites a MySQL introspection statement (SHOW TABLES, DESCRIBE, …) into its read-only
-// SQLite equivalent. `error` is set for statements that are recognised but unsupported
-// (SHOW DATABASES); `sql` is the statement to classify and run — the rewrite, or the
-// caller's input unchanged.
-function translate(sql: string): { sql: string; error?: string } {
+// SQLite equivalent — only for SQLite targets: a real MySQL target would take the statement as
+// written, and PostgreSQL targets must never see SQLite-specific SQL. `error` is set for statements
+// that are recognised but unsupported (SHOW DATABASES); `sql` is the statement to classify and
+// run — the rewrite, or the caller's input unchanged.
+function translate(sql: string, dialect: SqlDialect): { sql: string; error?: string } {
+  if (dialect !== 'sqlite') return { sql }
   const result = translateMySql(sql)
   if (result?.type === 'error') return { sql, error: result.message }
   if (result?.type === 'sql') return { sql: result.sql }
   return { sql }
 }
 
+function dialectOf(db: DatabaseRow): SqlDialect {
+  return db.kind === 'postgres' ? 'postgres' : 'sqlite'
+}
+
 // The app-DB guardrails for one database row, applied right after permission resolution (see
 // lib/app-db-guard.ts): the effective permission is capped at write — which makes destructive
 // statements fail the ordinary checkSqlAccess — and write-class statements must resolve to a
-// target table outside the application's internal tables. Ordinary target databases are
-// untouched. Returns the capped permission.
+// target table outside the application's internal tables. Only D1 rows can name the application
+// database, so external engines are untouched.
 function applyAppDbGuards(env: Env, db: DatabaseRow, permission: Permission): Permission {
   return isAppDb(env, db.cf_database_id) ? capAppDbPermission(permission) : permission
 }
@@ -133,13 +208,9 @@ query.post('/', async (c) => {
   const userId = c.get('userId')
   const role = c.get('userRole')
   const sql = body.sql.trim()
-  const { sql: runSql, error: translateError } = translate(sql)
-  if (translateError) return c.json({ error: translateError }, 400)
 
-  const kind = classifySql(runSql)
-  if (kind === 'forbidden') return c.json({ error: 'This SQL statement is not allowed.' }, 403)
-
-  // Resolve database + permission
+  // Resolve database + permission first: the engine decides how the statement is translated and
+  // classified (MySQL compatibility rewrites and the SQL dialect are per-target).
   const T = tables(c.env)
   const db = await c.env.DB.prepare(`SELECT * FROM ${T.d1_databases} WHERE id = ?1 AND is_active = 1`)
     .bind(body.databaseId)
@@ -161,12 +232,18 @@ query.post('/', async (c) => {
 
   permission = applyAppDbGuards(c.env, db, permission)
 
+  const dialect = dialectOf(db)
+  const { sql: runSql, error: translateError } = translate(sql, dialect)
+  if (translateError) return c.json({ error: translateError }, 400)
+
+  const kind = classifySql(runSql, dialect)
+  if (kind === 'forbidden') return c.json({ error: 'This SQL statement is not allowed.' }, 403)
+
   const denied = checkSqlAccess(kind, permission)
   if (denied) return c.json({ error: denied }, kind === 'multiple' || kind === 'empty' ? 400 : 403)
   const appDbDenied = appDbStatementError(c.env, db, kind, runSql)
   if (appDbDenied) return c.json({ error: appDbDenied }, 403)
 
-  // Resolve the execution target (always the D1 HTTP API)
   const resolved = resolveQueryTarget(c.env, db)
   if (!resolved.ok) return queryError(c, resolved.error)
 
@@ -174,59 +251,70 @@ query.post('/', async (c) => {
   if (notebook instanceof Response) return notebook
 
   const executedAt = Date.now()
-  let result: Executed | null = null
-  let errorMsg: string | null = null
-  let errorStatus: ErrorStatus = 400
+  let executor: Executor
+  try {
+    executor = await openExecutor(c.env, db, resolved.target)
+  } catch (err) {
+    return queryError(c, err instanceof Error ? err.message : String(err))
+  }
 
   try {
-    result = await executeStatement(c.env, resolved.target, runSql, kind)
-  } catch (err) {
-    const mapped = resolveExecError(c, err)
-    errorMsg = mapped.message
-    errorStatus = mapped.status
-  }
+    let result: Executed | null = null
+    let errorMsg: string | null = null
+    let errorStatus: ErrorStatus = 400
 
-  const duration = Date.now() - executedAt
-  const rowCount = result ? (result.changes ?? result.results.length) : 0
+    try {
+      result = await executor.run(runSql, kind)
+    } catch (err) {
+      const mapped = resolveExecError(c, err)
+      errorMsg = mapped.message
+      errorStatus = mapped.status
+    }
 
-  // Save history (non-blocking)
-  c.executionCtx.waitUntil(
-    c.env.DB.prepare(
-      `INSERT INTO ${T.query_history} (id, user_id, database_id, sql, duration_ms, row_count, error, executed_at)
-       VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)`
-    )
-      .bind(uuid(), userId, db.id, sql, duration, rowCount, errorMsg, now())
-      .run()
-  )
+    const duration = Date.now() - executedAt
+    const rowCount = result ? (result.changes ?? result.results.length) : 0
 
-  // Save the run under its notebook (non-blocking)
-  let run: { run_id: string; executed_at: number; seq: number } | null = null
-  if (notebook?.seq != null) {
-    const statement: RunStatement = { sql, results: result?.results ?? [], duration_ms: duration }
-    if (result?.changes !== undefined) statement.changes = result.changes
-    if (result?.truncated) statement.truncated = true
-    if (errorMsg) statement.error = errorMsg
-    run = { run_id: uuid(), executed_at: executedAt, seq: notebook.seq }
+    // Save history (non-blocking)
     c.executionCtx.waitUntil(
-      saveRun(c.env, {
-        id: run.run_id,
-        seq: notebook.seq,
-        notebookId: notebook.id,
-        userId,
-        databaseId: db.id,
-        sql,
-        statements: [statement],
-        durationMs: duration,
-        executedAt,
-      })
+      c.env.DB.prepare(
+        `INSERT INTO ${T.query_history} (id, user_id, database_id, sql, duration_ms, row_count, error, executed_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)`
+      )
+        .bind(uuid(), userId, db.id, sql, duration, rowCount, errorMsg, now())
+        .run()
     )
-  }
 
-  if (errorMsg || !result) return c.json({ error: errorMsg, ...run }, errorStatus)
-  const payload = isWriteClass(kind)
-    ? { meta: result.meta, results: [] }
-    : { results: result.results, meta: result.meta, truncated: result.truncated }
-  return c.json({ ...payload, duration_ms: duration, ...run })
+    // Save the run under its notebook (non-blocking)
+    let run: { run_id: string; executed_at: number; seq: number } | null = null
+    if (notebook?.seq != null) {
+      const statement: RunStatement = { sql, results: result?.results ?? [], duration_ms: duration }
+      if (result?.changes !== undefined) statement.changes = result.changes
+      if (result?.truncated) statement.truncated = true
+      if (errorMsg) statement.error = errorMsg
+      run = { run_id: uuid(), executed_at: executedAt, seq: notebook.seq }
+      c.executionCtx.waitUntil(
+        saveRun(c.env, {
+          id: run.run_id,
+          seq: notebook.seq,
+          notebookId: notebook.id,
+          userId,
+          databaseId: db.id,
+          sql,
+          statements: [statement],
+          durationMs: duration,
+          executedAt,
+        })
+      )
+    }
+
+    if (errorMsg || !result) return c.json({ error: errorMsg, ...run }, errorStatus)
+    const payload = isWriteClass(kind)
+      ? { meta: result.meta, results: [] }
+      : { results: result.results, meta: result.meta, truncated: result.truncated }
+    return c.json({ ...payload, duration_ms: duration, ...run })
+  } finally {
+    await executor.close()
+  }
 })
 
 // ── POST /api/query/batch ─────────────────────────────────────────────────────
@@ -274,17 +362,20 @@ query.post('/batch', async (c) => {
 
   permission = applyAppDbGuards(c.env, db, permission)
 
-  // Resolve the execution target (always the D1 HTTP API)
+  const dialect = dialectOf(db)
+
+  // Resolve the execution target (D1 HTTP API or one PostgreSQL connection for the whole batch)
   const resolved = resolveQueryTarget(c.env, db)
   if (!resolved.ok) return queryError(c, resolved.error)
 
   // A batch whose statements are all rejected before running is not saved, like a rejected single
-  // one, and uses up no run number. Rejections by the app-DB guardrail count as rejected-before-
-  // running too, so the same predicate is used here and in the loop below.
+  // one, and uses up no run number — and must not open a connection either. Rejections by the
+  // app-DB guardrail count as rejected-before-running too, so the same predicate is used here and
+  // in the loop below.
   const statementDenied = (sql: string): string | null => {
-    const translated = translate(sql)
+    const translated = translate(sql, dialect)
     if (translated.error) return translated.error
-    const kind = classifySql(translated.sql)
+    const kind = classifySql(translated.sql, dialect)
     const denied = checkSqlAccess(kind, permission)
     if (denied) return denied
     return appDbStatementError(c.env, db, kind, translated.sql)
@@ -298,86 +389,97 @@ query.post('/batch', async (c) => {
   if (notebook instanceof Response) return notebook
   const executedAt = Date.now()
 
-  // Run each statement sequentially, continue on error
-  const results: RunStatement[] = []
+  let executor: Executor
+  try {
+    executor = await openExecutor(c.env, db, resolved.target)
+  } catch (err) {
+    return queryError(c, err instanceof Error ? err.message : String(err))
+  }
 
-  for (const rawSql of body.statements) {
-    const sql = rawSql.trim()
-    if (!sql) continue
+  try {
+    // Run each statement sequentially, continue on error
+    const results: RunStatement[] = []
 
-    const { sql: runSql, error: translateError } = translate(sql)
-    if (translateError) {
-      results.push({ sql, results: [], duration_ms: 0, error: translateError })
-      continue
-    }
+    for (const rawSql of body.statements) {
+      const sql = rawSql.trim()
+      if (!sql) continue
 
-    const kind = classifySql(runSql)
-    const denied = checkSqlAccess(kind, permission)
-    if (denied) {
-      results.push({ sql, results: [], duration_ms: 0, error: denied })
-      continue
-    }
-    const appDbDenied = appDbStatementError(c.env, db, kind, runSql)
-    if (appDbDenied) {
-      results.push({ sql, results: [], duration_ms: 0, error: appDbDenied })
-      continue
-    }
+      const { sql: runSql, error: translateError } = translate(sql, dialect)
+      if (translateError) {
+        results.push({ sql, results: [], duration_ms: 0, error: translateError })
+        continue
+      }
 
-    const start = Date.now()
-    let stmtResult: Record<string, unknown>[] = []
-    let changes: number | undefined
-    let errorMsg: string | undefined
-    let truncated = false
+      const kind = classifySql(runSql, dialect)
+      const denied = checkSqlAccess(kind, permission)
+      if (denied) {
+        results.push({ sql, results: [], duration_ms: 0, error: denied })
+        continue
+      }
+      const appDbDenied = appDbStatementError(c.env, db, kind, runSql)
+      if (appDbDenied) {
+        results.push({ sql, results: [], duration_ms: 0, error: appDbDenied })
+        continue
+      }
 
-    try {
-      const executed = await executeStatement(c.env, resolved.target, runSql, kind)
-      stmtResult = executed.results
-      changes = executed.changes
-      truncated = executed.truncated
-    } catch (err) {
-      errorMsg = resolveExecError(c, err).message
-    }
+      const start = Date.now()
+      let stmtResult: Record<string, unknown>[] = []
+      let changes: number | undefined
+      let errorMsg: string | undefined
+      let truncated = false
 
-    const duration = Date.now() - start
-    const rowCount = errorMsg ? 0 : changes !== undefined ? changes : stmtResult.length
+      try {
+        const executed = await executor.run(runSql, kind)
+        stmtResult = executed.results
+        changes = executed.changes
+        truncated = executed.truncated
+      } catch (err) {
+        errorMsg = resolveExecError(c, err).message
+      }
 
-    // Save to history (non-blocking)
-    c.executionCtx.waitUntil(
-      c.env.DB.prepare(
-        `INSERT INTO ${T.query_history} (id, user_id, database_id, sql, duration_ms, row_count, error, executed_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)`
+      const duration = Date.now() - start
+      const rowCount = errorMsg ? 0 : changes !== undefined ? changes : stmtResult.length
+
+      // Save to history (non-blocking)
+      c.executionCtx.waitUntil(
+        c.env.DB.prepare(
+          `INSERT INTO ${T.query_history} (id, user_id, database_id, sql, duration_ms, row_count, error, executed_at)
+           VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)`
+        )
+          .bind(uuid(), userId, db.id, sql, duration, rowCount, errorMsg ?? null, now())
+          .run()
       )
-        .bind(uuid(), userId, db.id, sql, duration, rowCount, errorMsg ?? null, now())
-        .run()
-    )
 
-    const entry: (typeof results)[number] = { sql, results: stmtResult, duration_ms: duration }
-    if (changes !== undefined) entry.changes = changes
-    if (errorMsg) entry.error = errorMsg
-    if (truncated) entry.truncated = true
-    results.push(entry)
+      const entry: (typeof results)[number] = { sql, results: stmtResult, duration_ms: duration }
+      if (changes !== undefined) entry.changes = changes
+      if (errorMsg) entry.error = errorMsg
+      if (truncated) entry.truncated = true
+      results.push(entry)
+    }
+
+    // Save the run under its notebook (non-blocking)
+    if (notebook?.seq != null) {
+      const runId = uuid()
+      c.executionCtx.waitUntil(
+        saveRun(c.env, {
+          id: runId,
+          seq: notebook.seq,
+          notebookId: notebook.id,
+          userId,
+          databaseId: db.id,
+          sql: results.map((r) => r.sql).join(';\n'),
+          statements: results,
+          durationMs: Date.now() - executedAt,
+          executedAt,
+        })
+      )
+      return c.json({ results, run_id: runId, executed_at: executedAt, seq: notebook.seq })
+    }
+
+    return c.json({ results })
+  } finally {
+    await executor.close()
   }
-
-  // Save the run under its notebook (non-blocking)
-  if (notebook?.seq != null) {
-    const runId = uuid()
-    c.executionCtx.waitUntil(
-      saveRun(c.env, {
-        id: runId,
-        seq: notebook.seq,
-        notebookId: notebook.id,
-        userId,
-        databaseId: db.id,
-        sql: results.map((r) => r.sql).join(';\n'),
-        statements: results,
-        durationMs: Date.now() - executedAt,
-        executedAt,
-      })
-    )
-    return c.json({ results, run_id: runId, executed_at: executedAt, seq: notebook.seq })
-  }
-
-  return c.json({ results })
 })
 
 // ── GET /api/query/history ────────────────────────────────────────────────────
