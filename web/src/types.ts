@@ -14,10 +14,15 @@ export interface User {
 
 export type DbPermission = 'read' | 'write' | 'write_drop'
 
+// The engine a registration targets. 'sqlite' is the existing D1 path; the others are
+// registered from a connection string. Absent on responses from before the kind column.
+export type DbKind = 'sqlite' | 'postgres' | 'mysql' | 'spark'
+
 export interface Database {
   id: string
   name: string
   description: string | null
+  kind?: DbKind
   binding_name?: string
   cf_database_id?: string | null
   permission: DbPermission
@@ -29,8 +34,10 @@ export interface AdminDatabase {
   id: string
   name: string
   description: string | null
+  kind?: DbKind
   binding_name: string
   cf_database_id: string | null
+  has_connection?: number // connection-string targets: whether a sealed string is stored
   is_active: number
   created_at: number
   is_app_db?: boolean
