@@ -20,6 +20,29 @@ const LIVE_URL = process.env.NEON_DIRECT_URL ?? process.env.NEON_POOLER_URL ?? '
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 
+// Waits until the statement really is running on the server before the cancel is sent. A cancel only
+// addresses an *active* backend carrying the marker, so cancelling while the connection is still
+// being established (a cold endpoint can take seconds) misses by design — which is a property worth
+// having, but not something to measure a latency from.
+async function waitUntilActive(url: string, marker: string, timeoutMs = 20_000): Promise<void> {
+  const probe = await openPostgresSession(url, { applicationName: 'zeta-live-probe' })
+  try {
+    const deadline = Date.now() + timeoutMs
+    while (Date.now() < deadline) {
+      const check = await probe.run(
+        `select count(*) as n from pg_stat_activity where application_name = '${marker}' and state = 'active'`,
+        'read',
+        1
+      )
+      if (Number(check.results[0]?.n ?? 0) > 0) return
+      await sleep(250)
+    }
+    throw new Error(`no active statement carried marker ${marker} within ${timeoutMs} ms`)
+  } finally {
+    await probe.close()
+  }
+}
+
 // The app database is a real in-memory SQLite with the production schema, so the registry,
 // permission and history statements all run for real; only the query target is remote.
 async function liveEnv(): Promise<{ env: Env; sqlite: ReturnType<typeof sqliteD1>['sqlite'] }> {
@@ -37,8 +60,11 @@ async function liveEnv(): Promise<{ env: Env; sqlite: ReturnType<typeof sqliteD1
 }
 
 describe.skipIf(!LIVE_URL)('postgres cancellation against a live server', () => {
-  it('stops a running statement through POST /api/query/cancel', { timeout: 90_000 }, async () => {
+  it('stops a running statement through POST /api/query/cancel', { timeout: 120_000 }, async () => {
     const { env, sqlite } = await liveEnv()
+    const normalized = normalizePostgresUrl(LIVE_URL)
+    expect(normalized.ok).toBe(true)
+    if (!normalized.ok) return
     const headers = await bearer(env, 'a1', 'admin')
     const executionId = crypto.randomUUID()
 
@@ -49,7 +75,7 @@ describe.skipIf(!LIVE_URL)('postgres cancellation against a live server', () => 
       '/api/query',
       postJson({ databaseId: 'pg1', sql: 'select pg_sleep(20)', executionId }, { headers })
     )
-    await sleep(2000)
+    await waitUntilActive(normalized.url, executionId)
     const cancelled = await callWorker(env, '/api/query/cancel', postJson({ executionId }, { headers }))
     const cancelAnsweredAt = Date.now()
     expect(cancelled.status).toBe(200)
@@ -67,17 +93,21 @@ describe.skipIf(!LIVE_URL)('postgres cancellation against a live server', () => 
     // The 20 s sleep did not run to completion, and the kill took effect promptly
     expect(total).toBeLessThan(15_000)
     expect(stopLatency).toBeLessThan(3000)
-    expect(sqlite.prepare('SELECT outcome FROM executions WHERE id = ?').get(executionId)).toEqual({
+    expect(sqlite.prepare('SELECT outcome FROM executions WHERE id = ?').all(executionId)[0]).toEqual({
       outcome: 'cancelled',
     })
 
     // The target is fine afterwards: the cancel ended a statement, not the connection pool
-    const after = await callWorker(env, '/api/query', postJson({ databaseId: 'pg1', sql: 'select 1 as ok' }, { headers }))
+    const after = await callWorker(
+      env,
+      '/api/query',
+      postJson({ databaseId: 'pg1', sql: 'select 1 as ok' }, { headers })
+    )
     expect(after.status).toBe(200)
     expect(await after.json()).toMatchObject({ cancelled: false })
   })
 
-  it('cancels by application_name marker and leaves that session usable', { timeout: 90_000 }, async () => {
+  it('cancels by application_name marker and leaves that session usable', { timeout: 120_000 }, async () => {
     const normalized = normalizePostgresUrl(LIVE_URL)
     expect(normalized.ok).toBe(true)
     if (!normalized.ok) return
@@ -85,11 +115,12 @@ describe.skipIf(!LIVE_URL)('postgres cancellation against a live server', () => 
     const marker = `zeta-live-${crypto.randomUUID()}`
     const session = await openPostgresSession(normalized.url, { applicationName: marker })
     try {
-      const running = session.run('select pg_sleep(6)', 'read', 10).then(
+      // Long enough that opening the cancel's own connection cannot outlast it
+      const running = session.run('select pg_sleep(20)', 'read', 10).then(
         () => null,
         (err: Error) => err
       )
-      await sleep(1000)
+      await waitUntilActive(normalized.url, marker)
       const { killed } = await cancelPostgresExecution(normalized.url, marker)
       const outcome = await running
       console.log(`[pg-cancel-live] marker kill = ${String(killed)}`)

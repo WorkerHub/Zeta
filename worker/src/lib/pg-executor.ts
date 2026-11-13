@@ -46,10 +46,11 @@ const CONNECT_TIMEOUT_SECONDS = 15
 // connection here.
 export const CANCEL_APPLICATION_NAME = 'zeta-cancel'
 
-// How long one cancel may take, end to end. The cancel endpoint answers as soon as the flag is set
-// (the kill runs off its critical path), so a dead or unreachable target must not hold a
-// connection open for the executor's connect timeout.
-const CANCEL_TIMEOUT_MS = 5_000
+// How long one cancel may take, end to end: one connection's own budget, no more. The cancel
+// endpoint answers as soon as the flag is set (the kill runs off its critical path), so waiting is
+// free — while cutting the attempt short returns "not killed" for a kill that then still lands,
+// which would be misleading evidence. A dead target is bounded by the connect timeout anyway.
+const CANCEL_TIMEOUT_MS = CONNECT_TIMEOUT_SECONDS * 1000
 
 // Never echo the pasted connection string back to a caller or into a log: a connection error can
 // carry it verbatim, and it holds the credentials.
@@ -193,8 +194,10 @@ export async function cancelPostgresExecution(url: string, marker: string): Prom
   try {
     return { killed: await Promise.race([attempt(), deadline]) }
   } catch (err) {
-    // Never echo the marker or the connection string — both are deployment internals.
-    console.error(`Postgres cancel did not complete: ${err instanceof Error ? err.message : typeof err}`)
+    // Never echo the marker or the connection string — both are deployment internals, and a driver
+    // error can quote the URL verbatim.
+    const detail = err instanceof Error ? redact(err.message, url) : typeof err
+    console.error(`Postgres cancel did not complete: ${detail}`)
     return { killed: false }
   }
 }

@@ -399,7 +399,7 @@ describe('checkSqlAccess', () => {
     expect(checkSqlAccess('multiple', 'write_drop')).not.toBeNull()
     expect(checkSqlAccess('empty', 'write_drop')).not.toBeNull()
   })
-  it('rejects a read user\'s pg_cancel_backend / pg_terminate_backend attempt', () => {
+  it("rejects a read user's pg_cancel_backend / pg_terminate_backend attempt", () => {
     for (const sql of ['SELECT pg_cancel_backend(123)', 'SELECT pg_terminate_backend(123)']) {
       const kind = classifySql(sql, 'postgres')
       expect(kind).toBe('forbidden')

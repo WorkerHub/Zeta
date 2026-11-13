@@ -77,7 +77,9 @@ describe.skipIf(access === null)('spark cancellation against the live service', 
     })
   })
 
-  it('does not stop a statement whose execution id differs (the kill is execution-level)', { timeout: 300_000 }, async () => {
+  it('does not stop a statement whose execution id differs (the kill is execution-level)', {
+    timeout: 300_000,
+  }, async () => {
     const execution = crypto.randomUUID()
     const opened = await openSparkSession(requireAccess(), { session, execution })
     try {

@@ -114,7 +114,8 @@ async function cancelEnv(): Promise<{ env: Env; sqlite: ReturnType<typeof sqlite
   app.sqlite.exec(`
     INSERT INTO users (id, email, name, role, created_at, updated_at)
       VALUES ('u1', 'one@example.com', 'One', 'member', 0, 0),
-             ('u2', 'two@example.com', 'Two', 'member', 0, 0);
+             ('u2', 'two@example.com', 'Two', 'member', 0, 0),
+             ('a1', 'admin@example.com', 'Admin', 'admin', 0, 0);
     INSERT INTO d1_databases (id, name, binding_name, kind, connection_secret, is_active, created_at) VALUES
       ('pg1', 'neon', 'pg:pg1', 'postgres', '${pgSecret}', 1, 0),
       ('sp1', 'spark', 'spark:sp1', 'spark', '${sparkSecret}', 1, 0);
@@ -126,13 +127,11 @@ async function cancelEnv(): Promise<{ env: Env; sqlite: ReturnType<typeof sqlite
   return { env, sqlite: app.sqlite }
 }
 
-const cancel = async (env: Env, executionId: string, userId = 'u1') =>
-  callWorker(env, '/api/query/cancel', postJson({ executionId }, { headers: await bearer(env, userId) }))
+const cancel = async (env: Env, executionId: string, userId = 'u1', role: 'admin' | 'member' = 'member') =>
+  callWorker(env, '/api/query/cancel', postJson({ executionId }, { headers: await bearer(env, userId, role) }))
 
 const registry = (sqlite: ReturnType<typeof sqliteD1>['sqlite'], id = EXEC) =>
-  sqlite.prepare('SELECT * FROM executions WHERE id = ?').get(id) as
-    | Record<string, unknown>
-    | undefined
+  sqlite.prepare('SELECT * FROM executions WHERE id = ?').all(id)[0] as Record<string, unknown> | undefined
 
 describe('execution registration', () => {
   it('registers a PostgreSQL request under its execution id and marks the connection', async () => {
@@ -170,7 +169,7 @@ describe('execution registration', () => {
 
     expect(await res.json()).toMatchObject({ cancelled: false })
     expect((pg.opened[0]!.opts as { applicationName?: string }).applicationName).toBeUndefined()
-    expect(sqlite.prepare('SELECT COUNT(*) AS n FROM executions').get()).toEqual({ n: 0 })
+    expect(sqlite.prepare('SELECT COUNT(*) AS n FROM executions').all()[0]).toEqual({ n: 0 })
   })
 
   it('rejects a malformed executionId before anything opens', async () => {
@@ -224,7 +223,10 @@ describe('cancelling a PostgreSQL execution', () => {
     const res = await callWorker(
       env,
       '/api/query',
-      postJson({ databaseId: 'pg1', sql: 'SELECT pg_sleep(10)', executionId: EXEC }, { headers: await bearer(env, 'u1') })
+      postJson(
+        { databaseId: 'pg1', sql: 'SELECT pg_sleep(10)', executionId: EXEC },
+        { headers: await bearer(env, 'u1') }
+      )
     )
 
     expect(res.status).toBe(200)
@@ -363,7 +365,7 @@ describe('cancelling a Spark execution', () => {
 })
 
 describe('POST /api/query/cancel permissions and contract', () => {
-  it('answers 404 for another user\'s execution and for an unknown id, identically', async () => {
+  it("answers 404 for another user's execution and for an unknown id, identically", async () => {
     const { env } = await cancelEnv()
     pg.onRun = async () => {
       const foreign = await cancel(env, EXEC, 'u2')
@@ -432,7 +434,7 @@ async function d1Env(): Promise<{ env: Env; sqlite: ReturnType<typeof sqliteD1>[
 }
 
 describe('cancelling a D1 execution (no kill channel)', () => {
-  it('returns the running statement\'s result and stops the batch at the next boundary', async () => {
+  it("returns the running statement's result and stops the batch at the next boundary", async () => {
     const { env, sqlite } = await d1Env()
     let calls = 0
     // The cancel arrives while the first statement is already on its way to Cloudflare
@@ -475,7 +477,7 @@ describe('cancelling a D1 execution (no kill channel)', () => {
     expect(body.halted).toBe(false)
 
     // A cancellation is stored with the run, next to halted, and reads back the same way
-    expect(sqlite.prepare('SELECT halted, cancelled, statement_count FROM notebook_runs').get()).toEqual({
+    expect(sqlite.prepare('SELECT halted, cancelled, statement_count FROM notebook_runs').all()[0]).toEqual({
       halted: 0,
       cancelled: 1,
       statement_count: 2,
@@ -485,9 +487,9 @@ describe('cancelling a D1 execution (no kill channel)', () => {
     })
     expect(await detail.json()).toMatchObject({ cancelled: true, halted: false, statement_count: 2 })
     const list = await callWorker(env, '/api/notebooks/nb1/runs', { headers: await bearer(env, 'u1') })
-    expect(((await list.json()) as { results: Array<{ cancelled: boolean }> }).results.map((r) => r.cancelled)).toEqual([
-      true,
-    ])
+    expect(((await list.json()) as { results: Array<{ cancelled: boolean }> }).results.map((r) => r.cancelled)).toEqual(
+      [true]
+    )
   })
 
   it('reports a single completed statement as it was, even though a cancel was requested', async () => {
@@ -509,6 +511,6 @@ describe('cancelling a D1 execution (no kill channel)', () => {
     expect(res.status).toBe(200)
     expect(await res.json()).toMatchObject({ results: [{ n: 1 }], cancelled: false })
     // The execution still closed as a success: nothing was stopped
-    expect(sqlite.prepare('SELECT outcome FROM executions WHERE id = ?').get(EXEC)).toEqual({ outcome: 'ok' })
+    expect(sqlite.prepare('SELECT outcome FROM executions WHERE id = ?').all(EXEC)[0]).toEqual({ outcome: 'ok' })
   })
 })

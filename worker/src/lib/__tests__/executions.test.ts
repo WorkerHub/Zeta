@@ -40,7 +40,7 @@ describe('execution registry', () => {
 
     expect(await start(env)).toEqual({ created: true })
     expect(await cancelRequested(env, EXEC)).toBe(false)
-    const row = sqlite.prepare('SELECT * FROM executions WHERE id = ?').get(EXEC) as Record<string, unknown>
+    const row = sqlite.prepare('SELECT * FROM executions WHERE id = ?').all(EXEC)[0] as Record<string, unknown>
     expect(row).toMatchObject({
       user_id: 'u1',
       database_id: 'db1',
@@ -65,7 +65,7 @@ describe('execution registry', () => {
     await finishExecution(env, EXEC, 'ok')
 
     expect(await start(env)).toEqual({ created: true })
-    expect(sqlite.prepare('SELECT finished_at, outcome FROM executions WHERE id = ?').get(EXEC)).toEqual({
+    expect(sqlite.prepare('SELECT finished_at, outcome FROM executions WHERE id = ?').all(EXEC)[0]).toEqual({
       finished_at: null,
       outcome: null,
     })
@@ -76,9 +76,9 @@ describe('execution registry', () => {
     await start(env)
     await finishExecution(env, EXEC, 'ok')
 
-    expect(await beginExecution(env, { id: EXEC, userId: 'u2', databaseId: 'db1', kind: 'postgres', handle: null })).toEqual(
-      { created: false }
-    )
+    expect(
+      await beginExecution(env, { id: EXEC, userId: 'u2', databaseId: 'db1', kind: 'postgres', handle: null })
+    ).toEqual({ created: false })
   })
 
   it('records the flag once and keeps the same timestamp on a repeat cancel', async () => {
@@ -87,16 +87,22 @@ describe('execution registry', () => {
 
     const first = await requestExecutionCancel(env, EXEC, 'u1')
     expect(first).toMatchObject({ found: true, state: 'cancelled', dispatched: true, handle: 'marker-1' })
-    const flag = (sqlite.prepare('SELECT cancel_requested_at FROM executions WHERE id = ?').get(EXEC) as {
-      cancel_requested_at: number
-    }).cancel_requested_at
+    const flag = (
+      sqlite.prepare('SELECT cancel_requested_at FROM executions WHERE id = ?').all(EXEC)[0] as {
+        cancel_requested_at: number
+      }
+    ).cancel_requested_at
     expect(flag).not.toBeNull()
 
     const second = await requestExecutionCancel(env, EXEC, 'u1')
     expect(second).toMatchObject({ found: true, state: 'cancelled', dispatched: false })
-    expect((sqlite.prepare('SELECT cancel_requested_at FROM executions WHERE id = ?').get(EXEC) as {
-      cancel_requested_at: number
-    }).cancel_requested_at).toBe(flag)
+    expect(
+      (
+        sqlite.prepare('SELECT cancel_requested_at FROM executions WHERE id = ?').all(EXEC)[0] as {
+          cancel_requested_at: number
+        }
+      ).cancel_requested_at
+    ).toBe(flag)
     expect(await cancelRequested(env, EXEC)).toBe(true)
   })
 
@@ -108,9 +114,11 @@ describe('execution registry', () => {
     expect(await requestExecutionCancel(env, OTHER, 'u1')).toEqual({ found: false })
     expect(await cancelRequested(env, EXEC)).toBe(false)
     expect(
-      (sqlite.prepare('SELECT cancel_requested_at FROM executions WHERE id = ?').get(EXEC) as {
-        cancel_requested_at: number | null
-      }).cancel_requested_at
+      (
+        sqlite.prepare('SELECT cancel_requested_at FROM executions WHERE id = ?').all(EXEC)[0] as {
+          cancel_requested_at: number | null
+        }
+      ).cancel_requested_at
     ).toBeNull()
   })
 
@@ -128,7 +136,7 @@ describe('execution registry', () => {
     await finishExecution(env, EXEC, 'cancelled')
     await finishExecution(env, EXEC, 'ok')
 
-    const row = sqlite.prepare('SELECT finished_at, outcome FROM executions WHERE id = ?').get(EXEC) as {
+    const row = sqlite.prepare('SELECT finished_at, outcome FROM executions WHERE id = ?').all(EXEC)[0] as {
       finished_at: number | null
       outcome: string
     }

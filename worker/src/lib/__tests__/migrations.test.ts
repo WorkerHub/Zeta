@@ -112,7 +112,11 @@ describe('schema_v1 applied to a real database', () => {
     sqlite.exec(getMigrations(env('kp')).find((m) => m.name === 'schema_v1')!.sql)
 
     // The 11 tables of the collapsed baseline (schema_v5 adds executions later)
-    expect(tableNames(sqlite)).toEqual(Object.values(tables(env('kp'))).filter((t) => !t.endsWith('_executions')).sort())
+    expect(tableNames(sqlite)).toEqual(
+      Object.values(tables(env('kp')))
+        .filter((t) => !t.endsWith('_executions'))
+        .sort()
+    )
     expect(indexNames(sqlite).sort()).toEqual(
       [
         'idx_kp_users_email',
