@@ -3,7 +3,10 @@ import { Plus, Trash2, Power, Users, Link2, ChevronDown } from 'lucide-react'
 import { adminApi } from '../../lib/api'
 import { useLocale } from '../../hooks/useLocale'
 import ConfirmDialog from '../../components/ConfirmDialog'
-import type { AdminDatabase, CfD1Database, DatabaseGrant } from '../../types'
+import PostgresConnectionFields from '../../components/PostgresConnectionFields'
+import { canSavePostgres, describeTestResult } from '../../lib/pg-connection'
+import type { PgTestState } from '../../lib/pg-connection'
+import type { AdminDatabase, CfD1Database, DatabaseGrant, DbKind } from '../../types'
 
 export default function AdminDatabases() {
   const { t } = useLocale()
@@ -14,6 +17,13 @@ export default function AdminDatabases() {
   const [showAdd, setShowAdd] = useState(false)
   const [newDb, setNewDb] = useState({ name: '', description: '', cf_database_id: '' })
   const [addError, setAddError] = useState('')
+  // Connection-string targets (PostgreSQL): the string, and the last test connection's outcome
+  const [kind, setKind] = useState<DbKind>('sqlite')
+  const [connectionUrl, setConnectionUrl] = useState('')
+  const [testState, setTestState] = useState<PgTestState>('idle')
+  const [testedUrl, setTestedUrl] = useState<string | null>(null)
+  const [testError, setTestError] = useState('')
+  const [testInfo, setTestInfo] = useState('')
   const [linking, setLinking] = useState<AdminDatabase | null>(null)
   const [linkCfId, setLinkCfId] = useState('')
   const [linkError, setLinkError] = useState('')
@@ -62,20 +72,78 @@ export default function AdminDatabases() {
     setAddError('')
     if (opening) {
       setNewDb({ name: '', description: '', cf_database_id: '' })
+      setKind('sqlite')
+      resetConnection()
       loadAvailable().catch((err) => setAddError(err instanceof Error ? err.message : t('errors.generic')))
+    }
+  }
+
+  // A passing test only vouches for the string it ran against: editing the field or switching
+  // engine drops it, so the save button cannot outlive what was actually verified.
+  function resetConnection() {
+    setConnectionUrl('')
+    setTestState('idle')
+    setTestedUrl(null)
+    setTestError('')
+    setTestInfo('')
+  }
+
+  function changeKind(next: DbKind) {
+    if (next === kind) return
+    setKind(next)
+    // Never carry the other engine's input into a submission
+    setNewDb((db) => ({ ...db, cf_database_id: '' }))
+    resetConnection()
+    setAddError('')
+  }
+
+  function changeConnectionUrl(next: string) {
+    setConnectionUrl(next)
+    setTestState('idle')
+    setTestedUrl(null)
+    setTestError('')
+    setTestInfo('')
+  }
+
+  async function testConnection() {
+    const url = connectionUrl.trim()
+    if (!url || testState === 'testing') return
+    setTestState('testing')
+    setTestedUrl(null)
+    setTestError('')
+    setTestInfo('')
+    try {
+      const res = await adminApi.testConnection({ connection_url: url })
+      setTestInfo(describeTestResult(res))
+      setTestedUrl(url)
+      setTestState('passed')
+    } catch (err) {
+      setTestError(err instanceof Error ? err.message : t('admin_db.test_failed'))
+      setTestState('failed')
     }
   }
 
   async function addDatabase() {
     setAddError('')
     try {
-      await adminApi.createDatabase({
-        cf_database_id: newDb.cf_database_id,
-        name: newDb.name || undefined,
-        description: newDb.description || undefined,
-      })
+      if (kind === 'postgres') {
+        await adminApi.createDatabase({
+          kind: 'postgres',
+          connection_url: connectionUrl.trim(),
+          name: newDb.name || undefined,
+          description: newDb.description || undefined,
+        })
+      } else {
+        await adminApi.createDatabase({
+          kind: 'sqlite',
+          cf_database_id: newDb.cf_database_id,
+          name: newDb.name || undefined,
+          description: newDb.description || undefined,
+        })
+      }
       setShowAdd(false)
       setNewDb({ name: '', description: '', cf_database_id: '' })
+      resetConnection()
       load()
     } catch (err) {
       setAddError(err instanceof Error ? err.message : t('errors.generic'))
@@ -152,6 +220,23 @@ export default function AdminDatabases() {
   }
 
   const availableOptions = available.filter((d) => !d.added)
+  // A connection-string target is saved only after this exact string tested successfully
+  const canSave = kind === 'postgres' ? canSavePostgres(connectionUrl, testedUrl) : Boolean(newDb.cf_database_id)
+  // Rows written before the kind column exist are D1 registrations
+  const isD1 = (db: AdminDatabase) => (db.kind ?? 'sqlite') === 'sqlite'
+  // Every kind gets its own label: an unknown engine must never be shown as D1
+  const kindLabel = (k: DbKind | undefined) => {
+    switch (k) {
+      case 'postgres':
+        return t('admin_db.kind_postgres')
+      case 'mysql':
+        return t('admin_db.kind_mysql')
+      case 'spark':
+        return t('admin_db.kind_spark')
+      default:
+        return t('admin_db.kind_sqlite')
+    }
+  }
   // Whether the currently picked add/link target is Zeta's own application database.
   const newDbIsApp = newDb.cf_database_id
     ? available.some((d) => d.uuid === newDb.cf_database_id && d.is_app_db)
@@ -172,26 +257,26 @@ export default function AdminDatabases() {
       {/* Add form */}
       {showAdd && (
         <div className="card p-5 space-y-4">
-          <h2 className="text-heading text-ink-900">{t('admin_db.register_title')}</h2>
-          <p className="text-caption text-ink-500">{t('admin_db.register_desc')}</p>
+          <h2 className="text-heading text-ink-900">
+            {t(kind === 'postgres' ? 'admin_db.register_title_pg' : 'admin_db.register_title')}
+          </h2>
+          <p className="text-caption text-ink-500">
+            {t(kind === 'postgres' ? 'admin_db.register_desc_pg' : 'admin_db.register_desc')}
+          </p>
           <div className="grid sm:grid-cols-2 gap-4">
             <div className="sm:col-span-2">
-              <label htmlFor="db-cf" className="label">
-                {t('admin_db.cf_database')}
+              <label htmlFor="db-kind" className="label">
+                {t('admin_db.kind')}
               </label>
               <div className="relative">
                 <select
-                  id="db-cf"
+                  id="db-kind"
                   className="input appearance-none pr-9"
-                  value={newDb.cf_database_id}
-                  onChange={(e) => setNewDb({ ...newDb, cf_database_id: e.target.value })}
+                  value={kind}
+                  onChange={(e) => changeKind(e.target.value as DbKind)}
                 >
-                  <option value="">{t('admin_db.select_database')}</option>
-                  {availableOptions.map((d) => (
-                    <option key={d.uuid} value={d.uuid}>
-                      {d.name} ({d.uuid}){d.is_app_db ? ` — ${t('admin_db.app_db_badge')}` : ''}
-                    </option>
-                  ))}
+                  <option value="sqlite">{t('admin_db.kind_sqlite')}</option>
+                  <option value="postgres">{t('admin_db.kind_postgres')}</option>
                 </select>
                 <ChevronDown
                   size={14}
@@ -199,16 +284,52 @@ export default function AdminDatabases() {
                   className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-ink-400"
                 />
               </div>
-              {availableOptions.length === 0 && (
-                <p className="mt-1 text-caption text-ink-500">{t('admin_db.no_available')}</p>
-              )}
-              {newDbIsApp && (
-                <p className="mt-2 flex items-center gap-2 text-caption text-warning-600">
-                  <span className="badge badge-brand">{t('admin_db.app_db_badge')}</span>
-                  <span>{t('admin_db.app_db_warning')}</span>
-                </p>
-              )}
             </div>
+            {kind === 'postgres' ? (
+              <PostgresConnectionFields
+                url={connectionUrl}
+                testState={testState}
+                testError={testError}
+                testInfo={testInfo}
+                onUrlChange={changeConnectionUrl}
+                onTest={testConnection}
+              />
+            ) : (
+              <div className="sm:col-span-2">
+                <label htmlFor="db-cf" className="label">
+                  {t('admin_db.cf_database')}
+                </label>
+                <div className="relative">
+                  <select
+                    id="db-cf"
+                    className="input appearance-none pr-9"
+                    value={newDb.cf_database_id}
+                    onChange={(e) => setNewDb({ ...newDb, cf_database_id: e.target.value })}
+                  >
+                    <option value="">{t('admin_db.select_database')}</option>
+                    {availableOptions.map((d) => (
+                      <option key={d.uuid} value={d.uuid}>
+                        {d.name} ({d.uuid}){d.is_app_db ? ` — ${t('admin_db.app_db_badge')}` : ''}
+                      </option>
+                    ))}
+                  </select>
+                  <ChevronDown
+                    size={14}
+                    aria-hidden="true"
+                    className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-ink-400"
+                  />
+                </div>
+                {availableOptions.length === 0 && (
+                  <p className="mt-1 text-caption text-ink-500">{t('admin_db.no_available')}</p>
+                )}
+                {newDbIsApp && (
+                  <p className="mt-2 flex items-center gap-2 text-caption text-warning-600">
+                    <span className="badge badge-brand">{t('admin_db.app_db_badge')}</span>
+                    <span>{t('admin_db.app_db_warning')}</span>
+                  </p>
+                )}
+              </div>
+            )}
             <div>
               <label htmlFor="db-display-name" className="label">
                 {t('admin_db.display_name')}
@@ -237,13 +358,16 @@ export default function AdminDatabases() {
             </div>
           </div>
           {addError && <p className="text-body text-danger-600">{addError}</p>}
-          <div className="flex gap-3">
+          <div className="flex flex-wrap items-center gap-3">
             <button type="button" onClick={() => setShowAdd(false)} className="btn-secondary">
               {t('admin_db.cancel')}
             </button>
-            <button type="button" onClick={addDatabase} className="btn-primary" disabled={!newDb.cf_database_id}>
+            <button type="button" onClick={addDatabase} className="btn-primary" disabled={!canSave}>
               {t('admin_db.register')}
             </button>
+            {kind === 'postgres' && !canSave && (
+              <p className="text-caption text-ink-500">{t('admin_db.test_before_save')}</p>
+            )}
           </div>
         </div>
       )}
@@ -309,11 +433,14 @@ export default function AdminDatabases() {
                     <p className="flex items-center gap-2 text-body-strong text-ink-900">
                       {db.name}
                       {db.is_app_db && <span className="badge badge-brand">{t('admin_db.app_db_badge')}</span>}
+                      <span className="badge badge-neutral">{kindLabel(db.kind)}</span>
                     </p>
                     {db.description && <p className="text-caption text-ink-500">{db.description}</p>}
                   </td>
                   <td className="px-4 py-3 hidden md:table-cell">
-                    {db.cf_database_id ? (
+                    {!isD1(db) ? (
+                      <span className="text-caption text-ink-400">—</span>
+                    ) : db.cf_database_id ? (
                       <code className="text-caption text-ink-700 font-mono bg-ink-100 px-1.5 py-0.5 rounded tnum">
                         {db.cf_database_id}
                       </code>
@@ -330,7 +457,7 @@ export default function AdminDatabases() {
                   </td>
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-1 justify-end">
-                      {!db.cf_database_id && (
+                      {isD1(db) && !db.cf_database_id && (
                         <button
                           type="button"
                           onClick={() => startLink(db)}

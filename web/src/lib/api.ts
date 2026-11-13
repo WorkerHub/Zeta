@@ -4,6 +4,7 @@ import type {
   CfD1Database,
   Database,
   DatabaseGrant,
+  DbKind,
   Notebook,
   NotebookRun,
   NotebookRunSummary,
@@ -326,8 +327,20 @@ export const adminApi = {
 
   databases: () => apiFetch<{ results: AdminDatabase[] }>('/admin/databases'),
   listD1Databases: () => apiFetch<{ results: CfD1Database[] }>('/admin/d1/databases'),
-  createDatabase: (body: { cf_database_id: string; name?: string; description?: string }) =>
-    apiFetch<{ id: string }>('/admin/databases', { method: 'POST', body: JSON.stringify(body) }),
+  // One live connection to a connection-string target; stores nothing. The registration form
+  // gates its save button on a passing result for the exact string it is about to submit.
+  testConnection: (body: { connection_url: string }) =>
+    apiFetch<{ ok: boolean; server_version?: string; latency_ms?: number }>('/admin/databases/test-connection', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+  createDatabase: (body: {
+    kind?: DbKind
+    connection_url?: string
+    cf_database_id?: string
+    name?: string
+    description?: string
+  }) => apiFetch<{ id: string }>('/admin/databases', { method: 'POST', body: JSON.stringify(body) }),
   updateDatabase: (
     id: string,
     body: { name?: string; description?: string; is_active?: boolean; cf_database_id?: string }
