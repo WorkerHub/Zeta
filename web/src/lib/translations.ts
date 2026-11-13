@@ -124,6 +124,14 @@ export const translations: Record<Locale, Record<string, string>> = {
     'theme.dark': 'Dark',
     'theme.label': 'Theme',
 
+    // Theme colour presets
+    'theme_color.terracotta': 'Terracotta',
+    'theme_color.ocean': 'Ocean',
+    'theme_color.teal': 'Teal',
+    'theme_color.forest': 'Forest',
+    'theme_color.grape': 'Grape',
+    'theme_color.rose': 'Rose',
+
     // User menu
     'user.profile_security': 'Profile & Security',
     'user.admin_panel': 'Admin Panel',
@@ -151,6 +159,8 @@ export const translations: Record<Locale, Record<string, string>> = {
     'profile.back_to_query': 'Back to query',
     'profile.account': 'Account',
     'profile.role': 'Role',
+    'profile.theme_color': 'Theme color',
+    'profile.theme_color_desc': 'Buttons, selection and focus rings follow it. Saved in this browser only.',
     'profile.change_password': 'Change Password',
     'profile.current_password': 'Current password',
     'profile.new_password': 'New password',
@@ -306,7 +316,7 @@ export const translations: Record<Locale, Record<string, string>> = {
     'admin_db.link_desc':
       'This data source is not linked to a Cloudflare database yet, so it cannot be queried. Link it to switch it to the D1 HTTP API; permissions, history and saved runs are kept.',
     'admin_db.no_available': 'No unregistered D1 databases found in this account.',
-    'admin_db.app_db_badge': 'Application database',
+    'admin_db.app_db_badge': 'App DB',
     'admin_db.app_db_warning':
       "This is Zeta's own application database. Its internal tables are read-only and drop-type operations are disabled.",
 
@@ -555,6 +565,14 @@ export const translations: Record<Locale, Record<string, string>> = {
     'theme.dark': '深色',
     'theme.label': '主题',
 
+    // Theme colour presets
+    'theme_color.terracotta': '陶土',
+    'theme_color.ocean': '海蓝',
+    'theme_color.teal': '青碧',
+    'theme_color.forest': '森绿',
+    'theme_color.grape': '葡萄紫',
+    'theme_color.rose': '玫瑰',
+
     // User menu
     'user.profile_security': '个人资料与安全',
     'user.admin_panel': '管理面板',
@@ -581,6 +599,8 @@ export const translations: Record<Locale, Record<string, string>> = {
     'profile.back_to_query': '返回查询',
     'profile.account': '账户',
     'profile.role': '角色',
+    'profile.theme_color': '主题色',
+    'profile.theme_color_desc': '用于按钮、选中态与焦点环；仅保存在本浏览器。',
     'profile.change_password': '修改密码',
     'profile.current_password': '当前密码',
     'profile.new_password': '新密码',
@@ -734,7 +754,7 @@ export const translations: Record<Locale, Record<string, string>> = {
     'admin_db.link_desc':
       '该数据源尚未关联到 Cloudflare 数据库，因此暂时无法查询。将其关联到某个 Cloudflare 数据库即可切换为 D1 HTTP API；权限、历史与已保存的运行记录都会保留。',
     'admin_db.no_available': '该账号中没有未注册的 D1 数据库。',
-    'admin_db.app_db_badge': '应用数据库',
+    'admin_db.app_db_badge': '应用库',
     'admin_db.app_db_warning': '该库为 Zeta 自身应用库：内部表只读，删除类操作已禁用。',
 
     // Admin Settings

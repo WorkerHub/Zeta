@@ -24,6 +24,15 @@
   --color-brand-800: #7e3a25;
   --color-brand-900: #5c2b1c;
 
+  /* §2.1 preset swatches — each preset's 600, for the theme-colour picker only.
+     Never a themed role: these stay put when the preset changes. */
+  --color-swatch-terracotta: #c25e3f;
+  --color-swatch-ocean: #2563a8;
+  --color-swatch-teal: #1f7a72;
+  --color-swatch-forest: #2e7d4f;
+  --color-swatch-grape: #6d4fa1;
+  --color-swatch-rose: #b83a5e;
+
   /* §2.2 Warm neutrals (light values; dark overrides below) */
   --color-ink-0: #ffffff;
   --color-ink-50: #f7f5f2;
@@ -126,6 +135,132 @@
   --z-drawer: 50;
   --z-modal: 60;
   --z-toast: 70;
+}
+
+/* §2.1 brand presets. Terracotta is the default and therefore has no block: the `@theme`
+   values above are it, and the absent `data-theme-color` attribute on <html> means terracotta.
+   Order matters only for the light blocks against `.dark` (equal specificity, `.dark` wins by
+   source order for the same step); the `.dark[data-theme-color]` blocks carry 2 classes and
+   always win. Both blocks only touch `--color-brand-*` — ink and functional colours untouched. */
+[data-theme-color="ocean"] {
+  --color-brand-50: #f1f5fb;
+  --color-brand-100: #dbe6f3;
+  --color-brand-200: #b5cbe7;
+  --color-brand-300: #89acd8;
+  --color-brand-400: #5f90cb;
+  --color-brand-500: #4580c4;
+  --color-brand-600: #2563a8;
+  --color-brand-700: #1f5693;
+  --color-brand-800: #1f4979;
+  --color-brand-900: #1e3c5f;
+}
+[data-theme-color="teal"] {
+  --color-brand-50: #f0f6f5;
+  --color-brand-100: #dce9e7;
+  --color-brand-200: #b7d3cf;
+  --color-brand-300: #8bb8b2;
+  --color-brand-400: #61a19a;
+  --color-brand-500: #44948c;
+  --color-brand-600: #1f7a72;
+  --color-brand-700: #176962;
+  --color-brand-800: #19554f;
+  --color-brand-900: #1a433f;
+}
+[data-theme-color="forest"] {
+  --color-brand-50: #f1f6f2;
+  --color-brand-100: #ddeae0;
+  --color-brand-200: #b9d4c1;
+  --color-brand-300: #8fba9d;
+  --color-brand-400: #68a47c;
+  --color-brand-500: #4e976a;
+  --color-brand-600: #2e7d4f;
+  --color-brand-700: #256b43;
+  --color-brand-800: #225737;
+  --color-brand-900: #1f442d;
+}
+[data-theme-color="grape"] {
+  --color-brand-50: #f5f4fb;
+  --color-brand-100: #e6e2f2;
+  --color-brand-200: #cdc3e4;
+  --color-brand-300: #af9fd3;
+  --color-brand-400: #967fc4;
+  --color-brand-500: #886cbd;
+  --color-brand-600: #6d4fa1;
+  --color-brand-700: #5f448d;
+  --color-brand-800: #4f3b74;
+  --color-brand-900: #40325b;
+}
+[data-theme-color="rose"] {
+  --color-brand-50: #fdf2f3;
+  --color-brand-100: #f8dfe3;
+  --color-brand-200: #f0bec6;
+  --color-brand-300: #e596a5;
+  --color-brand-400: #d97188;
+  --color-brand-500: #d35978;
+  --color-brand-600: #b83a5e;
+  --color-brand-700: #9e2f4f;
+  --color-brand-800: #7e2840;
+  --color-brand-900: #612333;
+}
+.dark[data-theme-color="ocean"] {
+  --color-brand-50: #161f2b;
+  --color-brand-100: #1c2939;
+  --color-brand-200: #263a52;
+  --color-brand-300: #324e70;
+  --color-brand-400: #4278b6;
+  --color-brand-500: #4580c4;
+  --color-brand-600: #5e92cf;
+  --color-brand-700: #7eabe0;
+  --color-brand-800: #a5c6ee;
+  --color-brand-900: #cce2fc;
+}
+.dark[data-theme-color="teal"] {
+  --color-brand-50: #152120;
+  --color-brand-100: #1b2c2a;
+  --color-brand-200: #26403d;
+  --color-brand-300: #335854;
+  --color-brand-400: #428a83;
+  --color-brand-500: #44948c;
+  --color-brand-600: #5fa39c;
+  --color-brand-700: #80b8b1;
+  --color-brand-800: #a6cfc9;
+  --color-brand-900: #cce6e2;
+}
+.dark[data-theme-color="forest"] {
+  --color-brand-50: #16221a;
+  --color-brand-100: #1d2d22;
+  --color-brand-200: #294131;
+  --color-brand-300: #375943;
+  --color-brand-400: #4b8d64;
+  --color-brand-500: #4e976a;
+  --color-brand-600: #67a67d;
+  --color-brand-700: #85ba97;
+  --color-brand-800: #aad0b6;
+  --color-brand-900: #cee7d5;
+}
+.dark[data-theme-color="grape"] {
+  --color-brand-50: #201c29;
+  --color-brand-100: #2a2437;
+  --color-brand-200: #3c334f;
+  --color-brand-300: #52446d;
+  --color-brand-400: #7f66b0;
+  --color-brand-500: #886cbd;
+  --color-brand-600: #9880c9;
+  --color-brand-700: #af9bda;
+  --color-brand-800: #c8baea;
+  --color-brand-900: #e3daf9;
+}
+.dark[data-theme-color="rose"] {
+  --color-brand-50: #2c181c;
+  --color-brand-100: #3c1f25;
+  --color-brand-200: #572d36;
+  --color-brand-300: #783c4a;
+  --color-brand-400: #c45571;
+  --color-brand-500: #d35978;
+  --color-brand-600: #de7089;
+  --color-brand-700: #ec8da1;
+  --color-brand-800: #f7afbc;
+  --color-brand-900: #ffd2d9;
 }
 
 /* Dark theme: same tokens, warm-dark values (§2.1/§2.2/§2.3 dark columns) */
@@ -373,7 +508,7 @@
   .toggle-track[aria-checked="true"] {
     background: var(--color-brand-600);
     box-shadow:
-      inset 0 1px 3px rgb(194 94 63 / 0.3),
+      inset 0 1px 3px color-mix(in srgb, var(--color-brand-600) 30%, transparent),
       inset 0 0 1px rgb(28 24 21 / 0.1);
   }
   :where(.dark) .toggle-track {
@@ -385,7 +520,7 @@
   :where(.dark) .toggle-track[aria-checked="true"] {
     background: var(--color-brand-400);
     box-shadow:
-      inset 0 1px 3px rgb(201 113 79 / 0.3),
+      inset 0 1px 3px color-mix(in srgb, var(--color-brand-400) 30%, transparent),
       inset 0 0 1px rgb(0 0 0 / 0.1);
   }
   .toggle-thumb {
