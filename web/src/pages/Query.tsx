@@ -434,26 +434,28 @@ export default function QueryPage() {
         {/* Target switcher and its connect button — hidden on mobile (shown in the bottom bar) */}
         <div className="hidden sm:flex items-center gap-1.5">
           <div className="relative" ref={dbMenuDesktopRef}>
-            {/* Fixed width on desktop, two lines inside: the name, then the engine and provider.
-                Exactly as tall as the connect button beside it (h-10). */}
+            {/* The name alone, and only as wide as it needs (120–280px), so a short name leaves
+                no blank stretch inside the button. Exactly as tall as the connect button beside
+                it — 36px from sm up, 40px in the mobile bar. */}
             <button
               type="button"
               onClick={() => setShowDbMenu(!showDbMenu)}
-              className="flex h-10 w-[240px] items-center gap-2 rounded-md border border-ink-200 bg-ink-100 px-3 text-left transition-colors duration-(--duration-base) hover:bg-ink-200"
+              className="flex h-9 w-fit min-w-[120px] max-w-[280px] items-center gap-2 rounded-md border border-ink-200 bg-ink-100 px-3 text-left transition-colors duration-(--duration-base) hover:bg-ink-200"
             >
-              <span className="flex min-w-0 flex-1 flex-col justify-center gap-0.5">
-                <span className="flex min-w-0 items-center gap-1.5">
-                  <span
-                    className="truncate text-body-strong leading-tight text-ink-900"
-                    title={selectedDb?.name ?? t('query.select_db')}
-                  >
-                    {selectedDb?.name ?? t('query.select_db')}
-                  </span>
-                  {selectedDb?.is_app_db && (
-                    <span className="badge badge-brand shrink-0">{t('admin_db.app_db_badge')}</span>
-                  )}
+              <span className="flex min-w-0 items-center gap-1.5">
+                <span
+                  className="min-w-0 truncate text-body-strong leading-tight text-ink-900"
+                  title={selectedDb?.name ?? t('query.select_db')}
+                >
+                  {selectedDb?.name ?? t('query.select_db')}
                 </span>
-                {selectedDb && <DbKindMeta kind={selectedDb.kind} provider={selectedDb.provider} tone="muted" />}
+                {/* The badge yields to the name instead of covering it: on a narrow bar the two
+                    truncate together, and the chevron stays clear */}
+                {selectedDb?.is_app_db && (
+                  <span className="badge badge-brand min-w-0">
+                    <span className="truncate">{t('admin_db.app_db_badge')}</span>
+                  </span>
+                )}
               </span>
               <ChevronDown size={13} className="text-ink-400 shrink-0" />
             </button>
@@ -814,7 +816,8 @@ export default function QueryPage() {
       <div className="sm:hidden fixed bottom-0 left-0 right-0 z-(--z-sticky-bar) safe-b flex items-center gap-2 px-3 py-2 bg-ink-0 border-t border-ink-200">
         {/* DB selector */}
         <div className="relative flex-1 min-w-0" ref={dbMenuRef}>
-          {/* The same two-line button, filling the bar's available width */}
+          {/* The same button, filling the bar's available width and 40px tall, as the connect
+              button beside it: the name alone, the engine and provider stay in the menu's rows */}
           <button
             type="button"
             onClick={() => {
@@ -822,19 +825,18 @@ export default function QueryPage() {
             }}
             className="flex h-10 w-full min-w-0 items-center gap-2 rounded-md border border-ink-200 bg-ink-100 px-3 text-left transition-colors duration-(--duration-base)"
           >
-            <span className="flex min-w-0 flex-1 flex-col justify-center gap-0.5">
-              <span className="flex min-w-0 items-center gap-1.5">
-                <span
-                  className="truncate text-body-strong leading-tight text-ink-900"
-                  title={selectedDb?.name ?? t('query.select_db')}
-                >
-                  {selectedDb?.name ?? t('query.select_db')}
-                </span>
-                {selectedDb?.is_app_db && (
-                  <span className="badge badge-brand shrink-0">{t('admin_db.app_db_badge')}</span>
-                )}
+            <span className="flex min-w-0 flex-1 items-center gap-1.5">
+              <span
+                className="min-w-0 truncate text-body-strong leading-tight text-ink-900"
+                title={selectedDb?.name ?? t('query.select_db')}
+              >
+                {selectedDb?.name ?? t('query.select_db')}
               </span>
-              {selectedDb && <DbKindMeta kind={selectedDb.kind} provider={selectedDb.provider} tone="muted" />}
+              {selectedDb?.is_app_db && (
+                <span className="badge badge-brand min-w-0">
+                  <span className="truncate">{t('admin_db.app_db_badge')}</span>
+                </span>
+              )}
             </span>
             <ChevronDown size={13} className="text-ink-400 shrink-0" />
           </button>
