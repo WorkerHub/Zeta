@@ -1,9 +1,9 @@
 import { readFileSync } from 'node:fs'
-import { describe, it, expect, afterEach } from 'vitest'
 import { renderToStaticMarkup } from 'react-dom/server'
+import { afterEach, describe, expect, it } from 'vitest'
 import RunHistoryBar from '../../components/RunHistoryBar'
-import { t, setLocale } from '../translations'
 import type { NotebookRunSummary } from '../../types'
+import { setLocale, t } from '../translations'
 
 afterEach(() => setLocale('en'))
 
