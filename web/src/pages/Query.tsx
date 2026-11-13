@@ -31,6 +31,7 @@ import { useLocale } from '../hooks/useLocale'
 import { useNotebooks } from '../hooks/useNotebooks'
 import { useNotebookRuns } from '../hooks/useNotebookRuns'
 import QueryResults from '../components/QueryResults'
+import DbKindMeta from '../components/DbKindMeta'
 import RunHistoryDrawer from '../components/RunHistoryDrawer'
 import ConfirmDialog from '../components/ConfirmDialog'
 import Logo from '../components/Logo'
@@ -337,13 +338,14 @@ export default function QueryPage() {
           <button
             type="button"
             onClick={() => setShowDbMenu(!showDbMenu)}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-ink-100 hover:bg-ink-200 border border-ink-200 text-body-strong text-ink-700 transition-colors duration-(--duration-base) max-w-[200px]"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-ink-100 hover:bg-ink-200 border border-ink-200 text-body-strong text-ink-700 transition-colors duration-(--duration-base) max-w-[280px]"
           >
-            <span className="truncate">{selectedDb?.name ?? t('query.select_db')}</span>
+            <span className="truncate min-w-0">{selectedDb?.name ?? t('query.select_db')}</span>
+            {selectedDb && <DbKindMeta kind={selectedDb.kind} className="shrink-0" />}
             <ChevronDown size={13} className="text-ink-400 shrink-0 ml-0.5" />
           </button>
           {showDbMenu && (
-            <div className="absolute left-0 top-full mt-1 w-64 bg-ink-0 border border-ink-200 rounded-lg shadow-md z-(--z-dropdown) overflow-hidden animate-overlay-enter">
+            <div className="absolute left-0 top-full mt-1 w-80 bg-ink-0 border border-ink-200 rounded-lg shadow-md z-(--z-dropdown) overflow-hidden animate-overlay-enter">
               {databases.length === 0 ? (
                 <p className="px-4 py-3 text-body text-ink-500">{t('query.no_databases')}</p>
               ) : (
@@ -359,9 +361,10 @@ export default function QueryPage() {
                       selectedDb?.id === db.id ? 'text-brand-600 dark:text-brand-400 font-medium' : 'text-ink-700'
                     }`}
                   >
-                    <span className="flex items-center gap-2">
-                      {db.name}
-                      {db.is_app_db && <span className="badge badge-brand">{t('admin_db.app_db_badge')}</span>}
+                    <span className="flex items-center gap-2 min-w-0">
+                      <span className="truncate">{db.name}</span>
+                      {db.is_app_db && <span className="badge badge-brand shrink-0">{t('admin_db.app_db_badge')}</span>}
+                      <DbKindMeta kind={db.kind} className="shrink-0" />
                     </span>
                   </button>
                 ))
@@ -683,7 +686,7 @@ export default function QueryPage() {
       {/* Mobile bottom bar */}
       <div className="sm:hidden fixed bottom-0 left-0 right-0 z-(--z-sticky-bar) safe-b flex items-center gap-2 px-3 py-2 bg-ink-0 border-t border-ink-200">
         {/* DB selector */}
-        <div className="relative flex-1" ref={dbMenuRef}>
+        <div className="relative flex-1 min-w-0" ref={dbMenuRef}>
           <button
             type="button"
             onClick={() => {
@@ -691,11 +694,12 @@ export default function QueryPage() {
             }}
             className="w-full flex items-center gap-1.5 px-3 py-2 rounded-md bg-ink-100 border border-ink-200 text-body-strong text-ink-700 transition-colors duration-(--duration-base)"
           >
-            <span className="truncate flex-1 text-left">{selectedDb?.name ?? t('query.select_db')}</span>
+            <span className="truncate flex-1 min-w-0 text-left">{selectedDb?.name ?? t('query.select_db')}</span>
+            {selectedDb && <DbKindMeta kind={selectedDb.kind} className="shrink-0" />}
             <ChevronDown size={13} className="text-ink-400 shrink-0" />
           </button>
           {showDbMenu && (
-            <div className="absolute left-0 bottom-full mb-1 w-56 bg-ink-0 border border-ink-200 rounded-lg shadow-md z-(--z-dropdown) overflow-hidden animate-overlay-enter">
+            <div className="absolute left-0 bottom-full mb-1 w-80 max-w-[calc(100vw-1.5rem)] bg-ink-0 border border-ink-200 rounded-lg shadow-md z-(--z-dropdown) overflow-hidden animate-overlay-enter">
               {databases.map((db) => (
                 <button
                   type="button"
@@ -706,9 +710,10 @@ export default function QueryPage() {
                   }}
                   className={`w-full text-left px-4 py-2.5 text-body hover:bg-ink-100 transition-colors duration-(--duration-base) ${selectedDb?.id === db.id ? 'text-brand-600 dark:text-brand-400 font-medium' : 'text-ink-700'}`}
                 >
-                  <span className="flex items-center gap-2">
-                    {db.name}
-                    {db.is_app_db && <span className="badge badge-brand">{t('admin_db.app_db_badge')}</span>}
+                  <span className="flex items-center gap-2 min-w-0">
+                    <span className="truncate">{db.name}</span>
+                    {db.is_app_db && <span className="badge badge-brand shrink-0">{t('admin_db.app_db_badge')}</span>}
+                    <DbKindMeta kind={db.kind} className="shrink-0" />
                   </span>
                 </button>
               ))}
