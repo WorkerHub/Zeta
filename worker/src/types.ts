@@ -72,6 +72,10 @@ export interface DatabaseRow {
   // Engine of the registered target (see lib/bindings.ts). Rows created before schema_v2 read back
   // without the column's value on an un-migrated database; callers treat that as 'sqlite'.
   kind: DatabaseKind
+  // The registration's own provider label, or null to show the engine's (schema_v3; see
+  // lib/provider.ts). Display-only — no execution or permission path reads it. Rows read from a
+  // registry that predates the column come back without the value; callers treat that as null.
+  provider: string | null
   // Sealed JSON payload for non-D1 targets (`enc:v1:…`, see lib/secrets.ts). Always null for D1
   // targets; never returned by an API response.
   connection_secret: string | null

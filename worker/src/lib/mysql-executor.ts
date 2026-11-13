@@ -12,10 +12,11 @@ import { isWriteClass, limitReadSql, type SqlClass } from './sql-guard'
 // so whatever one request does to the session is felt by the next. The B ruling takes that seriously
 // from both ends: `USE` is allowed for users (a session statement, not a read or a write) while `SET`,
 // transaction control and the rest of the session/privilege statements stay forbidden (see
-// lib/sql-guard.ts), and every session opened here *starts* by pinning the registered default database
-// — so a `USE` from an earlier request, or from another tool on the same instance, is never inherited.
-// Cross-database qualified names (`other_db.table`) are not intercepted: they are how a query reaches
-// another schema, now that `USE` is a per-request starting point rather than a persistent choice.
+// lib/sql-guard.ts), and every session opened here *starts* by pinning a database — the one the
+// request chose for its session, else the registered default — so a `USE` from an earlier request, or
+// from another tool on the same instance, is never inherited. Cross-database qualified names
+// (`other_db.table`) are not intercepted: they are how a query reaches another schema, now that `USE`
+// is a per-request starting point rather than a persistent choice.
 //
 // The driver is imported dynamically so the D1 paths (the vast majority of requests) never pay for
 // loading it, exactly like the PostgreSQL executor.
@@ -137,7 +138,7 @@ export function describeMySqlError(err: unknown, url = '', connect = false): MyS
 
 type ExecuteResult = { rows?: unknown[] | null; rowsAffected?: number | null }
 
-// The database the session must start on, taken from the stored (normalised) URL.
+// The database a session falls back to, taken from the stored (normalised) URL.
 function databaseOf(url: string): string | null {
   try {
     const path = new URL(url).pathname.replace(/^\//, '')
@@ -153,6 +154,14 @@ function useStatement(database: string): string {
   return `USE \`${database.split('`').join('``')}\``
 }
 
+// Where a session is pinned before its own statements run: the database the request chose for its
+// session (a "current database" picker) when it named one, otherwise the registration's own. A blank
+// choice is no choice at all, so it falls back instead of pinning an empty identifier.
+function pinTarget(url: string, sessionDatabase?: string | null): string | null {
+  const chosen = sessionDatabase?.trim()
+  return chosen ? chosen : databaseOf(url)
+}
+
 // The driver passes (url, { method, body, headers, cache }) to the injected fetch; the timeout is
 // added on top, so a hung endpoint fails as a transport error instead of holding the request.
 const timedFetch = (input: string, init: RequestInit = {}): Promise<Response> =>
@@ -164,12 +173,14 @@ const timedFetch = (input: string, init: RequestInit = {}): Promise<Response> =>
 // The B ruling (2026-11-13): `USE` is part of the SQL a user may run, and the endpoint reuses one
 // session per (credentials, database), so a `USE` from any earlier request — or from another tool on
 // the same instance — would otherwise decide where *our* statements land. The first statement of every
-// session therefore sets the registered default database again. That one statement also proves the
-// connection, and it fails as a configuration error when the database does not exist
-// (`Error 1049 (42000)`, see describeMySqlError), so nothing is lost against a bare `select 1`.
-export async function openMySqlSession(url: string): Promise<MySqlSession> {
+// session therefore pins a database again: the one the request chose for its session when it named one
+// (`sessionDatabase`, a session statement the caller owns), otherwise the registered default. That one
+// statement also proves the connection, and it fails as a configuration error when the database does
+// not exist (`Error 1049 (42000)`, see describeMySqlError), so nothing is lost against a bare
+// `select 1`.
+export async function openMySqlSession(url: string, sessionDatabase?: string | null): Promise<MySqlSession> {
   const { connect } = await import('@tidbcloud/serverless')
-  const expected = databaseOf(url)
+  const expected = pinTarget(url, sessionDatabase)
   let connection: ReturnType<typeof connect>
   try {
     connection = connect({
@@ -177,7 +188,8 @@ export async function openMySqlSession(url: string): Promise<MySqlSession> {
       // Workers verifies the endpoint certificate against the platform trust store; nothing to inject.
       fetch: timedFetch as unknown as NonNullable<Parameters<typeof connect>[0]['fetch']>,
     })
-    // A URL without a database cannot pin one; the driver's own default then has to do.
+    // A URL without a database and no session choice cannot pin one; the driver's own default then has
+    // to do.
     await connection.execute(expected ? useStatement(expected) : 'select 1', null, { fullResult: true })
   } catch (err) {
     throw describeMySqlError(err, url, true)

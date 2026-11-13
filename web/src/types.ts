@@ -23,6 +23,9 @@ export interface Database {
   name: string
   description: string | null
   kind?: DbKind
+  // The provider this target runs on, for display only: the registration's own text when it has one,
+  // otherwise the provider Zeta registers that engine on (see lib/db-provider.ts)
+  provider?: string | null
   binding_name?: string
   cf_database_id?: string | null
   permission: DbPermission
@@ -35,6 +38,9 @@ export interface AdminDatabase {
   name: string
   description: string | null
   kind?: DbKind
+  // The effective provider (display) and the admin's own text as typed (form prefill only)
+  provider?: string | null
+  provider_custom?: string | null
   binding_name: string
   cf_database_id: string | null
   is_active: number

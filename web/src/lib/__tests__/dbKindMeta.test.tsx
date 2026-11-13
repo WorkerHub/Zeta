@@ -6,7 +6,8 @@ import type { DbKind } from '../../types'
 
 afterEach(() => setLocale('en'))
 
-const render = (kind?: DbKind) => renderToStaticMarkup(<DbKindMeta kind={kind} />)
+const render = (kind?: DbKind, provider?: string | null, tone?: 'default' | 'muted') =>
+  renderToStaticMarkup(<DbKindMeta kind={kind} provider={provider} tone={tone} />)
 
 describe('DbKindMeta', () => {
   it('names the engine and the provider it runs on', () => {
@@ -39,5 +40,33 @@ describe('DbKindMeta', () => {
     setLocale('zh')
     expect(render('mysql')).toContain('TiDB')
     expect(render('sqlite')).toContain('SQLite')
+  })
+
+  it("shows the registration's own provider instead of the derived one", () => {
+    const html = render('postgres', 'Aiven')
+    expect(html).toContain('Aiven')
+    expect(html).not.toContain('Neon')
+    expect(html).toContain('·')
+  })
+
+  it('treats a blank provider text as none at all', () => {
+    expect(render('postgres', '   ')).toContain('Neon')
+    expect(render('spark', '')).not.toContain('·')
+  })
+
+  it('gives a Spark target the provider it was registered with', () => {
+    const html = render('spark', 'Instabox')
+    expect(html).toContain('SparkSQL')
+    expect(html).toContain('Instabox')
+  })
+
+  it("quiets the whole pair on the switcher button's second line", () => {
+    const html = render('postgres', undefined, 'muted')
+    expect(html).toContain('text-ink-500')
+    expect(html).not.toContain('text-info-600')
+    expect(html).not.toContain('text-ink-700')
+    // One step smaller than a row's own pair: it sits under the target's name
+    expect(html).toContain('text-micro')
+    expect(render('postgres')).toContain('text-caption')
   })
 })

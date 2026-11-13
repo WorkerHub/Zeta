@@ -11,7 +11,8 @@ interface Props {
 }
 
 /**
- * The one connect control of the query page, sitting beside the target switcher.
+ * The one connect control of the query page, sitting beside the target switcher. It is exactly as
+ * tall as that button (`h-10`), so the pair reads as one control strip.
  *
  * Not connected reads as the page's only action (brand); connected reads as a state (neutral) and
  * turns into "disconnect" on hover, so the button never hides what the click will do. Nothing about
@@ -22,7 +23,7 @@ export default function ConnectButton({ connected, busy, onConnect, onDisconnect
 
   if (busy) {
     return (
-      <button type="button" disabled aria-busy="true" className="btn-secondary btn-sm gap-1.5 shrink-0">
+      <button type="button" disabled aria-busy="true" className="btn-secondary btn-sm h-10 gap-1.5 shrink-0">
         <Loader2 size={13} className="animate-spin" aria-hidden="true" />
         {t('query.connect')}
       </button>
@@ -36,7 +37,7 @@ export default function ConnectButton({ connected, busy, onConnect, onDisconnect
         onClick={onConnect}
         aria-pressed={false}
         title={t('query.connect')}
-        className="btn-primary btn-sm gap-1.5 shrink-0"
+        className="btn-primary btn-sm h-10 gap-1.5 shrink-0"
       >
         <PlugZap size={13} aria-hidden="true" />
         {t('query.connect')}
@@ -51,7 +52,7 @@ export default function ConnectButton({ connected, busy, onConnect, onDisconnect
       aria-pressed={true}
       aria-label={t('query.disconnect')}
       title={t('query.disconnect')}
-      className="btn-secondary btn-sm gap-1.5 shrink-0 group"
+      className="btn-secondary btn-sm h-10 gap-1.5 shrink-0 group"
     >
       <Check size={13} aria-hidden="true" className="group-hover:hidden group-focus-visible:hidden" />
       <Unplug size={13} aria-hidden="true" className="hidden group-hover:block group-focus-visible:block" />

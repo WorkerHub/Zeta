@@ -9,6 +9,7 @@ import { MySqlQueryError, testMySqlConnection } from '../lib/mysql-executor'
 import { normalizeMySqlUrl } from '../lib/mysql-url'
 import { PostgresQueryError, testPostgresConnection } from '../lib/pg-executor'
 import { normalizePostgresUrl } from '../lib/pg-url'
+import { effectiveProvider, normalizeProvider } from '../lib/provider'
 import { MAX_RUN_LIMIT, MAX_RUN_QUOTA_MB, parseBoundedInt, pruneRuns } from '../lib/runs'
 import { sealLegacySecret, sealSecret } from '../lib/secrets'
 import { runSetup } from '../lib/setup'
@@ -250,7 +251,7 @@ function d1Error(c: Context<{ Bindings: Env; Variables: Variables }>, err: unkno
 // A database row read from a registry that predates a column (POST /api/setup not re-run after
 // upgrading) fails the registry statements with "no such column". Point the admin at the fix
 // instead of leaking the raw D1 error.
-const MISSING_REGISTRY_COLUMN = /no such column: (cf_database_id|kind|connection_secret)/i
+const MISSING_REGISTRY_COLUMN = /no such column: (cf_database_id|kind|provider|connection_secret)/i
 function missingColumnResponse(c: Context<{ Bindings: Env; Variables: Variables }>, err: unknown): Response | null {
   if (err instanceof Error && MISSING_REGISTRY_COLUMN.test(err.message)) {
     return c.json({ error: 'The database registry needs an upgrade. Re-run POST /api/setup.' }, 500)
@@ -359,19 +360,27 @@ async function verifyCfDatabase(
   return { name: cf.name }
 }
 
+// One registry row as the admin panel sees it, shared by the list and the edit response so the two can
+// never disagree. The sealed connection payload never leaves the Worker (`has_connection` is what the
+// UI needs), the provider is resolved to the label it shows, and whether a row targets the
+// application's own database is annotated on every read, not stored.
+function adminDatabaseDto(env: Env, row: DatabaseRow) {
+  const { connection_secret, ...rest } = row
+  const kind = rest.kind ?? 'sqlite'
+  return {
+    ...rest,
+    kind,
+    provider: effectiveProvider(kind, rest.provider),
+    provider_custom: rest.provider ?? null,
+    has_connection: connection_secret !== null && connection_secret !== undefined,
+    is_app_db: isAppDb(env, row.cf_database_id),
+  }
+}
+
 admin.get('/databases', async (c) => {
   const T = tables(c.env)
   const rows = await c.env.DB.prepare(`SELECT * FROM ${T.d1_databases} ORDER BY name`).all<DatabaseRow>()
-  // The sealed connection payload never leaves the Worker (`has_connection` is what the UI needs);
-  // whether a row targets the application's own database is annotated on every read, not stored.
-  return c.json({
-    results: rows.results.map(({ connection_secret, ...row }) => ({
-      ...row,
-      kind: row.kind ?? 'sqlite',
-      has_connection: connection_secret !== null && connection_secret !== undefined,
-      is_app_db: isAppDb(c.env, row.cf_database_id),
-    })),
-  })
+  return c.json({ results: rows.results.map((row) => adminDatabaseDto(c.env, row)) })
 })
 
 // Proves pasted credentials without saving anything: the admin form's "test connection" button.
@@ -442,12 +451,17 @@ admin.post('/databases', async (c) => {
       connection_url?: unknown
       platform_token?: unknown
       app_token?: unknown
+      provider?: unknown
     }>()
     .catch(() => null)
   if (!body) return c.json({ error: 'Invalid body' }, 400)
 
   const kind = body.kind ?? 'sqlite'
   if (kind !== 'sqlite' && !isConnectionKind(kind)) return c.json({ error: 'Invalid database kind' }, 400)
+
+  // Display-only label; a blank value keeps the engine's own provider.
+  const provider = normalizeProvider(body.provider)
+  if (!provider.ok) return c.json({ error: provider.error }, 400)
 
   // Credential-based engines: the pasted credentials are proven against the real server first, and
   // only a successful connection leads to a row (see verifyConnection).
@@ -459,8 +473,8 @@ admin.post('/databases', async (c) => {
     const id = uuid()
     try {
       await c.env.DB.prepare(
-        `INSERT INTO ${T.d1_databases} (id, name, description, binding_name, cf_database_id, kind, connection_secret, is_active, created_at, created_by)
-         VALUES (?1, ?2, ?3, ?4, NULL, ?5, ?6, 1, ?7, ?8)`
+        `INSERT INTO ${T.d1_databases} (id, name, description, binding_name, cf_database_id, kind, provider, connection_secret, is_active, created_at, created_by)
+         VALUES (?1, ?2, ?3, ?4, NULL, ?5, ?6, ?7, 1, ?8, ?9)`
       )
         .bind(
           id,
@@ -468,6 +482,7 @@ admin.post('/databases', async (c) => {
           body.description ?? null,
           `${CONNECTION_PREFIXES[kind]}:${id}`,
           kind,
+          provider.value,
           await sealSecret(c.env, JSON.stringify(verified.stored)),
           now(),
           c.get('userId')
@@ -510,8 +525,8 @@ admin.post('/databases', async (c) => {
 
     const id = uuid()
     await c.env.DB.prepare(
-      `INSERT INTO ${T.d1_databases} (id, name, description, binding_name, cf_database_id, is_active, created_at, created_by)
-       VALUES (?1, ?2, ?3, ?4, ?5, 1, ?6, ?7)`
+      `INSERT INTO ${T.d1_databases} (id, name, description, binding_name, cf_database_id, provider, is_active, created_at, created_by)
+       VALUES (?1, ?2, ?3, ?4, ?5, ?6, 1, ?7, ?8)`
     )
       .bind(
         id,
@@ -519,6 +534,7 @@ admin.post('/databases', async (c) => {
         body.description ?? null,
         `cf:${body.cf_database_id}`,
         body.cf_database_id,
+        provider.value,
         now(),
         c.get('userId')
       )
@@ -550,6 +566,7 @@ admin.patch('/databases/:id', async (c) => {
       connection_url?: unknown
       platform_token?: unknown
       app_token?: unknown
+      provider?: unknown
     }>()
     .catch(() => null)
   if (!body) return c.json({ error: 'Invalid body' }, 400)
@@ -623,19 +640,33 @@ admin.patch('/databases/:id', async (c) => {
     updates.push(`is_active = ?${i++}`)
     bindings.push(body.is_active ? 1 : 0)
   }
+  if (body.provider !== undefined) {
+    // A blank value clears the custom label and brings back the engine's own provider.
+    const provider = normalizeProvider(body.provider)
+    if (!provider.ok) return c.json({ error: provider.error }, 400)
+    updates.push(`provider = ?${i++}`)
+    bindings.push(provider.value)
+  }
 
   if (updates.length === 0) return c.json({ error: 'Nothing to update' }, 400)
   bindings.push(c.req.param('id'))
 
+  // The row is read back after the write so the response carries exactly what was stored — the
+  // caller can render it without a second request — and never the sealed payload.
+  let updated: DatabaseRow | null = null
   try {
     await c.env.DB.prepare(`UPDATE ${T.d1_databases} SET ${updates.join(', ')} WHERE id = ?${i}`)
       .bind(...bindings)
       .run()
+    updated = await c.env.DB.prepare(`SELECT * FROM ${T.d1_databases} WHERE id = ?1`)
+      .bind(c.req.param('id'))
+      .first<DatabaseRow>()
   } catch (err) {
     const missing = missingColumnResponse(c, err)
     if (missing) return missing
     throw err
   }
+  if (!updated) return c.json({ error: 'Database not found' }, 404)
 
   c.executionCtx.waitUntil(
     audit(c.env, {
@@ -645,7 +676,7 @@ admin.patch('/databases/:id', async (c) => {
       ip: c.req.header('cf-connecting-ip'),
     })
   )
-  return c.json({ message: 'Updated' })
+  return c.json({ message: 'Updated', database: adminDatabaseDto(c.env, updated) })
 })
 
 admin.delete('/databases/:id', async (c) => {

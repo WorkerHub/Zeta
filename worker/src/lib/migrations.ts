@@ -199,5 +199,12 @@ export function getMigrations(env: Pick<Env, 'TABLE_PREFIX'>): Migration[] {
         `ALTER TABLE ${T.d1_databases} ADD COLUMN connection_secret TEXT`,
       ].join(';\n'),
     },
+    {
+      // Database registry: the provider label shown beside the engine, when a registration names its
+      // own instead of the engine's usual one (see lib/provider.ts). Nullable and read as null by
+      // rows that predate it, so the upgrade keeps every existing row exactly as it displays today.
+      name: 'schema_v3',
+      sql: `ALTER TABLE ${T.d1_databases} ADD COLUMN provider TEXT`,
+    },
   ]
 }

@@ -20,6 +20,7 @@ describe('resolveQueryTarget', () => {
     binding_name: 'QUERY_DB_1',
     cf_database_id: null,
     kind: 'sqlite',
+    provider: null,
     connection_secret: null,
     is_active: 1,
     created_at: 0,

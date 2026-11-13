@@ -96,6 +96,20 @@ describeLive('spark-live: the published port', () => {
     }
   })
 
+  it('lets USE through as a session statement and reports a missing database as sql', SLOW, async () => {
+    const session = await openSparkSession(requireAccess())
+    try {
+      // `USE` is no longer refused by the guard. A database that does not exist is reported by Spark
+      // itself, through the ordinary SQL-error path.
+      const error = await session.run(`use zeta_absent_${Date.now()}`, 'read', 5000).catch((err) => err)
+      log('USE a missing database', { kind: error.kind, code: error.code, head: String(error.message).slice(0, 160) })
+      expect(error).toBeInstanceOf(SparkQueryError)
+      expect(error.kind).toBe('sql')
+    } finally {
+      await session.close()
+    }
+  })
+
   it('runs a write without inventing an affected-row count', SLOW, async () => {
     const table = `zeta_live_${Date.now()}`
     const session = await openSparkSession(requireAccess())

@@ -103,3 +103,59 @@ export function splitSqlStatements(sql: string): string[] {
 
   return statements
 }
+
+// Leading whitespace and comments carry no meaning for the first keyword: `-- note\nUSE db` is a
+// USE like any other.
+function stripLeadingComments(sql: string): string {
+  let rest = sql
+  for (;;) {
+    const trimmed = rest.trimStart()
+    if (trimmed.startsWith('--') || trimmed.startsWith('#')) {
+      const end = trimmed.indexOf('\n')
+      if (end === -1) return ''
+      rest = trimmed.slice(end + 1)
+      continue
+    }
+    if (trimmed.startsWith('/*')) {
+      const end = trimmed.indexOf('*/')
+      if (end === -1) return ''
+      rest = trimmed.slice(end + 2)
+      continue
+    }
+    return trimmed
+  }
+}
+
+// The database a `USE` statement points the session at, or null for anything else. The page needs it
+// because the worker never echoes the pinned database back: a run that switched the MySQL session
+// records the name here, so the next request can carry it (lib/connection-state.ts). Only the first
+// keyword decides — `USERS` and `SELECT 'use x'` are not this statement — and the identifier is
+// unquoted the way MySQL quotes it (backticks, doubling inside).
+export function usedDatabaseOf(statement: string): string | null {
+  const match = /^use\s+([\s\S]+)$/i.exec(stripLeadingComments(statement))
+  if (!match) return null
+  let target = match[1]!.trim()
+  if (target.endsWith(';')) target = target.slice(0, -1).trim()
+  if (!target) return null
+
+  const quote = target[0]
+  if (quote === '`' || quote === '"') {
+    if (target.length < 2 || !target.endsWith(quote)) return null
+    // Inside the quotes a quote character must be doubled; a single one ends the identifier early
+    // and leaves something after it, which is not a plain USE.
+    const inner = target.slice(1, -1)
+    let name = ''
+    for (let i = 0; i < inner.length; i++) {
+      const char = inner[i]!
+      if (char !== quote) {
+        name += char
+        continue
+      }
+      if (inner[i + 1] !== quote) return null
+      name += quote
+      i++
+    }
+    return name !== '' ? name : null
+  }
+  return /^[^\s;'"`]+$/.test(target) ? target : null
+}
