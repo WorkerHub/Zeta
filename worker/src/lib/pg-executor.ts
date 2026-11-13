@@ -187,18 +187,23 @@ export async function cancelPostgresExecution(url: string, marker: string): Prom
     }
   }
 
+  let timer: ReturnType<typeof setTimeout> | undefined
   const deadline = new Promise<boolean>((_, reject) => {
-    setTimeout(() => reject(new Error('cancel timed out')), CANCEL_TIMEOUT_MS)
+    timer = setTimeout(() => reject(new Error('cancel timed out')), CANCEL_TIMEOUT_MS)
   })
 
   try {
     return { killed: await Promise.race([attempt(), deadline]) }
   } catch (err) {
-    // Never echo the marker or the connection string — both are deployment internals, and a driver
-    // error can quote the URL verbatim.
-    const detail = err instanceof Error ? redact(err.message, url) : typeof err
+    // Neither the marker nor the connection string may reach a log line: both are deployment
+    // internals, and a driver error can quote the URL verbatim.
+    const detail = err instanceof Error ? redact(err.message, url).split(marker).join('[redacted]') : typeof err
     console.error(`Postgres cancel did not complete: ${detail}`)
     return { killed: false }
+  } finally {
+    // The loser of the race is abandoned, not cancelled: without this the timer would keep the
+    // isolate alive for the rest of the budget after every successful cancel.
+    if (timer !== undefined) clearTimeout(timer)
   }
 }
 

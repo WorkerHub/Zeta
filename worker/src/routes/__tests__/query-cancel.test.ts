@@ -365,12 +365,17 @@ describe('cancelling a Spark execution', () => {
 })
 
 describe('POST /api/query/cancel permissions and contract', () => {
-  it("answers 404 for another user's execution and for an unknown id, identically", async () => {
+  it("answers 404 for another user's execution and for an unknown id, identically — admins included", async () => {
     const { env } = await cancelEnv()
     pg.onRun = async () => {
       const foreign = await cancel(env, EXEC, 'u2')
       expect(foreign.status).toBe(404)
       expect(await foreign.json()).toEqual({ error: 'Execution not found' })
+      // Cancelling belongs to the initiator alone: an admin has no override, and the answer is the
+      // same one a stranger gets (no enumeration of other people's executions)
+      const asAdmin = await cancel(env, EXEC, 'a1', 'admin')
+      expect(asAdmin.status).toBe(404)
+      expect(await asAdmin.json()).toEqual({ error: 'Execution not found' })
       const anon = await cancel(env, OTHER)
       expect(anon.status).toBe(404)
       expect(await anon.json()).toEqual({ error: 'Execution not found' })
@@ -383,7 +388,7 @@ describe('POST /api/query/cancel permissions and contract', () => {
       postJson({ databaseId: 'pg1', sql: 'SELECT 1', executionId: EXEC }, { headers: await bearer(env, 'u1') })
     )
     expect(res.status).toBe(200)
-    // u2's attempt set no flag and sent no kill
+    // Neither the stranger's nor the admin's attempt set a flag or sent a kill
     expect(await res.json()).toMatchObject({ cancelled: false })
     expect(pg.cancels).toEqual([])
   })
