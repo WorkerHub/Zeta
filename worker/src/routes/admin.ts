@@ -12,6 +12,8 @@ import { normalizePostgresUrl } from '../lib/pg-url'
 import { MAX_RUN_LIMIT, MAX_RUN_QUOTA_MB, parseBoundedInt, pruneRuns } from '../lib/runs'
 import { sealLegacySecret, sealSecret } from '../lib/secrets'
 import { runSetup } from '../lib/setup'
+import { normalizeSparkAccess } from '../lib/spark-access'
+import { SparkQueryError, testSparkConnection } from '../lib/spark-executor'
 import { requireAdmin } from '../middleware/auth'
 import type { DatabaseRow, Env, UserRow, Variables } from '../types'
 
@@ -256,42 +258,81 @@ function missingColumnResponse(c: Context<{ Bindings: Env; Variables: Variables 
   return null
 }
 
-// Maps a connection-string engine's error to an admin-facing response. These routes are
-// admin-only, so the readable detail is shown verbatim — the pasted connection string never is
-// (lib/pg-executor.ts and lib/mysql-executor.ts redact it). Nothing is written to the logs.
+// Maps a credential-based engine's error to an admin-facing response. These routes are
+// admin-only, so the readable detail is shown verbatim — the pasted connection string or token never
+// is (lib/pg-executor.ts, lib/mysql-executor.ts and lib/spark-executor.ts redact them). Nothing is
+// written to the logs. A Spark failure also carries its stable code, for the form's copy.
 function connectionError(c: Context<{ Bindings: Env; Variables: Variables }>, err: unknown) {
+  if (err instanceof SparkQueryError) {
+    // The registration form renders the Spark code in the reader's language, exactly like the query
+    // paths do (SPEC v2.6).
+    return c.json({ error: err.message, code: err.code }, 400)
+  }
   if (err instanceof PostgresQueryError || err instanceof MySqlQueryError) {
     return c.json({ error: err.message }, 400)
   }
   return c.json({ error: err instanceof Error ? err.message : String(err) }, 500)
 }
 
-// The engines that are registered from a connection string rather than from a Cloudflare database.
-type ConnectionKind = 'postgres' | 'mysql'
+// The engines that are registered from pasted credentials rather than from a Cloudflare database.
+type ConnectionKind = 'postgres' | 'mysql' | 'spark'
 
 function isConnectionKind(kind: unknown): kind is ConnectionKind {
-  return kind === 'postgres' || kind === 'mysql'
+  return kind === 'postgres' || kind === 'mysql' || kind === 'spark'
 }
 
-// Proves a pasted connection string against the real server before anything is saved.
-// Registration, re-saving and the explicit test endpoint all go through it, so such a row can only
-// exist after a connection succeeded. MySQL means TiDB Cloud Starter only: its normaliser refuses
-// every other host.
+const CONNECTION_LABELS: Record<ConnectionKind, string> = {
+  postgres: 'PostgreSQL',
+  mysql: 'MySQL',
+  spark: 'SparkSQL',
+}
+
+// The `binding_name` prefix of a registered target: short, stable, never shown as an engine name.
+const CONNECTION_PREFIXES: Record<ConnectionKind, string> = { postgres: 'pg', mysql: 'my', spark: 'spark' }
+
+// The fields one registration request may carry. A Spark target is the only engine that needs tokens
+// besides its address.
+interface ConnectionBody {
+  connection_url?: unknown
+  platform_token?: unknown
+  app_token?: unknown
+}
+
+// Proves pasted credentials against the real server before anything is saved. Registration,
+// re-saving and the explicit test endpoint all go through it, so such a row can only exist after a
+// connection succeeded. MySQL means TiDB Cloud Starter only: its normaliser refuses every other
+// host. A Spark target is proven with /health plus one statement (see lib/spark-executor.ts), and
+// what it stores is the normalised address with both tokens.
 async function verifyConnection(
   c: Context<{ Bindings: Env; Variables: Variables }>,
   kind: ConnectionKind,
-  connectionUrl: unknown
-): Promise<Response | { url: string; database: string; serverVersion: string }> {
-  const label = kind === 'mysql' ? 'MySQL' : 'PostgreSQL'
-  if (typeof connectionUrl !== 'string' || !connectionUrl.trim()) {
+  body: ConnectionBody
+): Promise<Response | { stored: Record<string, unknown>; database: string; serverVersion: string }> {
+  const label = CONNECTION_LABELS[kind]
+  if (typeof body.connection_url !== 'string' || !body.connection_url.trim()) {
     return c.json({ error: `connection_url is required for a ${label} database` }, 400)
   }
-  const normalized = kind === 'mysql' ? normalizeMySqlUrl(connectionUrl) : normalizePostgresUrl(connectionUrl)
+  if (kind === 'spark') {
+    const access = normalizeSparkAccess({
+      url: body.connection_url,
+      platform_token: body.platform_token,
+      app_token: body.app_token,
+    })
+    if (!access.ok) return c.json({ error: access.error }, 400)
+    try {
+      const { server_version } = await testSparkConnection(access.access)
+      return { stored: { ...access.access }, database: access.host, serverVersion: server_version }
+    } catch (err) {
+      return connectionError(c, err)
+    }
+  }
+  const normalized =
+    kind === 'mysql' ? normalizeMySqlUrl(body.connection_url) : normalizePostgresUrl(body.connection_url)
   if (!normalized.ok) return c.json({ error: normalized.error }, 400)
   try {
     const { server_version } =
       kind === 'mysql' ? await testMySqlConnection(normalized.url) : await testPostgresConnection(normalized.url)
-    return { url: normalized.url, database: normalized.database, serverVersion: server_version }
+    return { stored: { url: normalized.url }, database: normalized.database, serverVersion: server_version }
   } catch (err) {
     return connectionError(c, err)
   }
@@ -332,16 +373,18 @@ admin.get('/databases', async (c) => {
   })
 })
 
-// Proves a pasted connection string without saving anything: the admin form's "test connection"
-// button. `kind` defaults to `postgres`, which is what this endpoint served before MySQL targets
-// existed. Admin-only, so the provider's message is shown as-is (redacted of the URL).
+// Proves pasted credentials without saving anything: the admin form's "test connection" button.
+// `kind` defaults to `postgres`, which is what this endpoint served before MySQL and Spark targets
+// existed. Admin-only, so the provider's message is shown as-is (redacted of the URL and tokens).
 admin.post('/databases/test-connection', async (c) => {
-  const body = await c.req.json<{ connection_url?: unknown; kind?: unknown }>().catch(() => null)
+  const body = await c.req
+    .json<{ connection_url?: unknown; kind?: unknown; platform_token?: unknown; app_token?: unknown }>()
+    .catch(() => null)
   if (!body) return c.json({ error: 'Invalid body' }, 400)
   const kind = body.kind ?? 'postgres'
   if (!isConnectionKind(kind)) return c.json({ error: 'Invalid database kind' }, 400)
   const started = Date.now()
-  const verified = await verifyConnection(c, kind, body.connection_url)
+  const verified = await verifyConnection(c, kind, body)
   if (verified instanceof Response) return verified
   return c.json({
     ok: true,
@@ -396,6 +439,8 @@ admin.post('/databases', async (c) => {
       description?: string
       cf_database_id?: string
       connection_url?: unknown
+      platform_token?: unknown
+      app_token?: unknown
     }>()
     .catch(() => null)
   if (!body) return c.json({ error: 'Invalid body' }, 400)
@@ -403,10 +448,10 @@ admin.post('/databases', async (c) => {
   const kind = body.kind ?? 'sqlite'
   if (kind !== 'sqlite' && !isConnectionKind(kind)) return c.json({ error: 'Invalid database kind' }, 400)
 
-  // Connection-string engines: the pasted string is proven against the real server first, and only
-  // a successful connection leads to a row (see verifyConnection).
+  // Credential-based engines: the pasted credentials are proven against the real server first, and
+  // only a successful connection leads to a row (see verifyConnection).
   if (isConnectionKind(kind)) {
-    const verified = await verifyConnection(c, kind, body.connection_url)
+    const verified = await verifyConnection(c, kind, body)
     if (verified instanceof Response) return verified
 
     const T = tables(c.env)
@@ -420,9 +465,9 @@ admin.post('/databases', async (c) => {
           id,
           body.name?.trim() || verified.database,
           body.description ?? null,
-          `${kind === 'mysql' ? 'my' : 'pg'}:${id}`,
+          `${CONNECTION_PREFIXES[kind]}:${id}`,
           kind,
-          await sealSecret(c.env, JSON.stringify({ url: verified.url })),
+          await sealSecret(c.env, JSON.stringify(verified.stored)),
           now(),
           c.get('userId')
         )
@@ -502,13 +547,15 @@ admin.patch('/databases/:id', async (c) => {
       is_active?: boolean
       cf_database_id?: string
       connection_url?: unknown
+      platform_token?: unknown
+      app_token?: unknown
     }>()
     .catch(() => null)
   if (!body) return c.json({ error: 'Invalid body' }, 400)
 
   const T = tables(c.env)
-  // The row's engine decides what may be edited: a connection-string row (PostgreSQL/MySQL) takes a
-  // connection string, a SQLite row takes a Cloudflare database link.
+  // The row's engine decides what may be edited: a credential-based row (PostgreSQL/MySQL/Spark) takes
+  // its own registration fields, a SQLite row takes a Cloudflare database link.
   let row: { id: string; kind: string | null; cf_database_id: string | null } | null
   try {
     row = await c.env.DB.prepare(`SELECT id, kind, cf_database_id FROM ${T.d1_databases} WHERE id = ?1`)
@@ -523,10 +570,7 @@ admin.patch('/databases/:id', async (c) => {
   const rowKind: ConnectionKind | 'sqlite' = isConnectionKind(row.kind) ? row.kind : 'sqlite'
 
   if (body.cf_database_id !== undefined && rowKind !== 'sqlite') {
-    return c.json(
-      { error: `A ${rowKind === 'mysql' ? 'MySQL' : 'PostgreSQL'} database is not linked to a Cloudflare database.` },
-      400
-    )
+    return c.json({ error: `A ${CONNECTION_LABELS[rowKind]} database is not linked to a Cloudflare database.` }, 400)
   }
 
   const updates: string[] = []
@@ -537,10 +581,10 @@ admin.patch('/databases/:id', async (c) => {
     if (rowKind === 'sqlite') {
       return c.json({ error: 'Only connection-string databases take a connection string.' }, 400)
     }
-    const verified = await verifyConnection(c, rowKind, body.connection_url)
+    const verified = await verifyConnection(c, rowKind, body)
     if (verified instanceof Response) return verified
     updates.push(`connection_secret = ?${i++}`)
-    bindings.push(await sealSecret(c.env, JSON.stringify({ url: verified.url })))
+    bindings.push(await sealSecret(c.env, JSON.stringify(verified.stored)))
   }
 
   if (body.cf_database_id !== undefined) {

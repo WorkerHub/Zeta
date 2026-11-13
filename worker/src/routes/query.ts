@@ -11,6 +11,14 @@ import { openPostgresSession, PostgresQueryError, type PostgresSession } from '.
 import { normalizePostgresUrl } from '../lib/pg-url'
 import { type RunStatement, reserveRunSeq, saveRun } from '../lib/runs'
 import { openSecret } from '../lib/secrets'
+import { normalizeSparkAccess } from '../lib/spark-access'
+import {
+  CONNECT_TEST_OPEN,
+  openSparkSession,
+  SparkQueryError,
+  type SparkErrorCode,
+  type SparkSession,
+} from '../lib/spark-executor'
 import {
   checkSqlAccess,
   classifySql,
@@ -40,14 +48,40 @@ function queryError(c: Context<{ Bindings: Env; Variables: Variables }>, detail:
 
 type Ctx = Context<{ Bindings: Env; Variables: Variables }>
 
+// A failure while *opening* the executor. The engines' classified errors already know how much of
+// themselves may be shown (see resolveExecError) — a stopped Spark machine must not degrade into a
+// generic configuration error — and Spark's `code` rides along.
+function openExecutorError(c: Ctx, err: unknown): Response {
+  if (err instanceof SparkQueryError || err instanceof PostgresQueryError || err instanceof MySqlQueryError) {
+    const mapped = resolveExecError(c, err)
+    return c.json(mapped.code ? { error: mapped.message, code: mapped.code } : { error: mapped.message }, mapped.status)
+  }
+  return queryError(c, err instanceof Error ? err.message : String(err))
+}
+
 // Maps an execution error to a client-safe message and HTTP status. SQL errors and rate limits are
-// shown to everyone; transport/auth/config errors are deployment details shown only to admins.
+// shown to everyone; transport/auth/config errors are deployment details shown only to admins. A
+// Spark failure also carries its stable `code`, which the UI renders in the reader's language — but
+// only alongside a message that may itself be shown, so a member never learns that a token was
+// rejected.
 type ErrorStatus = 400 | 429 | 500
-function resolveExecError(c: Ctx, err: unknown): { message: string; status: ErrorStatus } {
+type ExecError = { message: string; status: ErrorStatus; code?: SparkErrorCode }
+function resolveExecError(c: Ctx, err: unknown): ExecError {
   if (err instanceof D1HttpError) {
     if (err.kind === 'sql') return { message: err.message, status: 400 }
     if (err.kind === 'rate_limit') return { message: err.message, status: 429 }
     if (c.get('userRole') === 'admin') return { message: `${err.message} Contact the admin.`, status: 500 }
+    console.error(`Query execution error: ${err.message}`)
+    return { message: 'Database configuration error. Contact the admin.', status: 500 }
+  }
+  if (err instanceof SparkQueryError) {
+    if (err.kind === 'sql') return { message: err.message, status: 400, code: err.code }
+    // The machine's own state is not a deployment secret: a stopped or booting machine is exactly
+    // what the person running the query needs to hear (SPEC v2.6).
+    if (err.kind === 'stopped' || err.kind === 'starting') {
+      return { message: err.message, status: 500, code: err.code }
+    }
+    if (c.get('userRole') === 'admin') return { message: err.message, status: 500, code: err.code }
     console.error(`Query execution error: ${err.message}`)
     return { message: 'Database configuration error. Contact the admin.', status: 500 }
   }
@@ -120,10 +154,14 @@ async function executeD1Statement(
   return { results: truncated ? rows.slice(0, MAX_RESULT_ROWS) : rows, meta: res.meta, truncated }
 }
 
-// Reads the sealed connection payload of a registry row and returns the URL it holds. The URL is
-// decrypted here only — never in an API response — and the caller normalises it again so an old row
-// cannot smuggle in a dropped parameter. `fail` builds the engine's own config error.
-async function readStoredConnection(env: Env, db: DatabaseRow, fail: (message: string) => Error): Promise<string> {
+// Reads the sealed payload of a registry row and returns it as an object. It is decrypted here only —
+// never in an API response — and the caller normalises it again, so an old row cannot smuggle in a
+// dropped parameter. `fail` builds the engine's own config error.
+async function readStoredPayload(
+  env: Env,
+  db: DatabaseRow,
+  fail: (message: string) => Error
+): Promise<Record<string, unknown>> {
   if (!db.connection_secret) throw fail('This database has no stored connection.')
   try {
     const stored = await openSecret(env, db.connection_secret)
@@ -133,11 +171,10 @@ async function readStoredConnection(env: Env, db: DatabaseRow, fail: (message: s
     } catch {
       throw fail('The stored connection for this database is unreadable.')
     }
-    const raw = (payload as { url?: unknown } | null)?.url
-    if (typeof raw !== 'string' || !raw) throw fail('The stored connection for this database is unreadable.')
-    return raw
+    if (!payload || typeof payload !== 'object') throw fail('The stored connection for this database is unreadable.')
+    return payload as Record<string, unknown>
   } catch (err) {
-    if (err instanceof PostgresQueryError || err instanceof MySqlQueryError) throw err
+    if (err instanceof PostgresQueryError || err instanceof MySqlQueryError || err instanceof SparkQueryError) throw err
     // A changed ENCRYPTION_KEY makes stored payloads undecryptable: a configuration problem, and
     // one the admin has to fix by saving the connection again.
     console.error(`Stored connection could not be read: ${err instanceof Error ? err.name : typeof err}`)
@@ -145,10 +182,24 @@ async function readStoredConnection(env: Env, db: DatabaseRow, fail: (message: s
   }
 }
 
-// Opens the executor for one request. A connection-string target decrypts its stored URL here (the
+// The URL a connection-string engine keeps in its payload.
+function payloadUrl(payload: Record<string, unknown>, fail: (message: string) => Error): string {
+  const url = payload.url
+  if (typeof url !== 'string' || !url) throw fail('The stored connection for this database is unreadable.')
+  return url
+}
+
+// Opens the executor for one request. A connection-string target decrypts its stored payload here (the
 // only place it is unwrapped), normalises it again, and proves the connection before any statement
-// runs. Failures throw the engine's classified error, which the routes report as a target error.
-async function openExecutor(env: Env, db: DatabaseRow, target: QueryTarget): Promise<Executor> {
+// runs. `connectTest` asks a Spark target for the longer connection-check budget (20 s health probe,
+// 120 s hard cap): the admin's test step and POST /api/query/probe use it, a query does not.
+// Failures throw the engine's classified error, which the routes report as a target error.
+async function openExecutor(
+  env: Env,
+  db: DatabaseRow,
+  target: QueryTarget,
+  opts: { connectTest?: boolean } = {}
+): Promise<Executor> {
   if (target.kind === 'http') {
     return {
       run: (sql, kind) => executeD1Statement(env, target, sql, kind),
@@ -156,9 +207,23 @@ async function openExecutor(env: Env, db: DatabaseRow, target: QueryTarget): Pro
     }
   }
 
+  if (target.kind === 'spark') {
+    const fail = (m: string) => new SparkQueryError(m, 'config', 'spark_config')
+    const access = normalizeSparkAccess(await readStoredPayload(env, db, fail))
+    if (!access.ok) throw new SparkQueryError(access.error, 'config', 'spark_config')
+    const session: SparkSession = await openSparkSession(
+      access.access,
+      opts.connectTest ? CONNECT_TEST_OPEN : undefined
+    )
+    return {
+      run: (sql, kind) => session.run(sql, kind, MAX_RESULT_ROWS),
+      close: () => session.close(),
+    }
+  }
+
   if (target.kind === 'mysql') {
-    const raw = await readStoredConnection(env, db, (m) => new MySqlQueryError(m, 'config'))
-    const normalized = normalizeMySqlUrl(raw)
+    const fail = (m: string) => new MySqlQueryError(m, 'config')
+    const normalized = normalizeMySqlUrl(payloadUrl(await readStoredPayload(env, db, fail), fail))
     if (!normalized.ok) throw new MySqlQueryError(normalized.error, 'config')
     const session: MySqlSession = await openMySqlSession(normalized.url)
     return {
@@ -167,8 +232,8 @@ async function openExecutor(env: Env, db: DatabaseRow, target: QueryTarget): Pro
     }
   }
 
-  const raw = await readStoredConnection(env, db, (m) => new PostgresQueryError(m, 'config'))
-  const normalized = normalizePostgresUrl(raw)
+  const fail = (m: string) => new PostgresQueryError(m, 'config')
+  const normalized = normalizePostgresUrl(payloadUrl(await readStoredPayload(env, db, fail), fail))
   if (!normalized.ok) throw new PostgresQueryError(normalized.error, 'config')
 
   const session: PostgresSession = await openPostgresSession(normalized.url)
@@ -192,7 +257,7 @@ function translate(sql: string, dialect: SqlDialect): { sql: string; error?: str
 }
 
 function dialectOf(db: DatabaseRow): SqlDialect {
-  if (db.kind === 'postgres' || db.kind === 'mysql') return db.kind
+  if (db.kind === 'postgres' || db.kind === 'mysql' || db.kind === 'spark') return db.kind
   return 'sqlite'
 }
 
@@ -271,13 +336,14 @@ query.post('/', async (c) => {
   try {
     executor = await openExecutor(c.env, db, resolved.target)
   } catch (err) {
-    return queryError(c, err instanceof Error ? err.message : String(err))
+    return openExecutorError(c, err)
   }
 
   try {
     let result: Executed | null = null
     let errorMsg: string | null = null
     let errorStatus: ErrorStatus = 400
+    let errorCode: SparkErrorCode | undefined
 
     try {
       result = await executor.run(runSql, kind)
@@ -285,6 +351,7 @@ query.post('/', async (c) => {
       const mapped = resolveExecError(c, err)
       errorMsg = mapped.message
       errorStatus = mapped.status
+      errorCode = mapped.code
     }
 
     const duration = Date.now() - executedAt
@@ -323,7 +390,12 @@ query.post('/', async (c) => {
       )
     }
 
-    if (errorMsg || !result) return c.json({ error: errorMsg, ...run }, errorStatus)
+    // A Spark failure also names its code, so the UI can render the sentence in the reader's language
+    // (SPEC v2.6). A batch's per-statement entries stay plain text.
+    if (errorMsg || !result) {
+      const body = errorCode ? { error: errorMsg, code: errorCode, ...run } : { error: errorMsg, ...run }
+      return c.json(body, errorStatus)
+    }
     const payload = isWriteClass(kind)
       ? { meta: result.meta, results: [] }
       : { results: result.results, meta: result.meta, truncated: result.truncated }
@@ -409,7 +481,7 @@ query.post('/batch', async (c) => {
   try {
     executor = await openExecutor(c.env, db, resolved.target)
   } catch (err) {
-    return queryError(c, err instanceof Error ? err.message : String(err))
+    return openExecutorError(c, err)
   }
 
   try {
@@ -493,6 +565,63 @@ query.post('/batch', async (c) => {
     }
 
     return c.json({ results })
+  } finally {
+    await executor.close()
+  }
+})
+
+// ── POST /api/query/probe ─────────────────────────────────────────────────────
+
+// Whether a registered target is reachable *right now*, for the "connection" button: it opens the
+// target exactly as a query would and runs one throwaway statement, then closes. It writes no history
+// row and uses up no notebook run number. A D1 target is reached over Cloudflare's API rather than a
+// machine that boots, so there is no state to probe and no request is made at all.
+query.post('/probe', async (c) => {
+  const body = await c.req.json<{ databaseId?: unknown }>().catch(() => null)
+  if (typeof body?.databaseId !== 'string' || !body.databaseId) {
+    return c.json({ error: 'databaseId is required' }, 400)
+  }
+
+  const userId = c.get('userId')
+  const role = c.get('userRole')
+  const T = tables(c.env)
+  const db = await c.env.DB.prepare(`SELECT * FROM ${T.d1_databases} WHERE id = ?1 AND is_active = 1`)
+    .bind(body.databaseId)
+    .first<DatabaseRow>()
+  if (!db) return c.json({ error: 'Database not found' }, 404)
+
+  // The same access rule as a query: an admin, or a stored permission row.
+  if (role !== 'admin') {
+    const perm = await c.env.DB.prepare(
+      `SELECT permission FROM ${T.user_database_permissions} WHERE user_id = ?1 AND database_id = ?2`
+    )
+      .bind(userId, db.id)
+      .first<{ permission: string }>()
+    if (!perm) return c.json({ error: 'Access denied' }, 403)
+  }
+
+  const kind = db.kind ?? 'sqlite'
+  if (kind === 'sqlite') return c.json({ ok: true, kind, latency_ms: 0 })
+
+  const started = Date.now()
+  const resolved = resolveQueryTarget(c.env, db)
+  if (!resolved.ok) return queryError(c, resolved.error)
+
+  let executor: Executor
+  try {
+    // The connection-check budget: a Spark machine that is still booting (~17 s) still tests green,
+    // which is exactly what the query path must not wait for.
+    executor = await openExecutor(c.env, db, resolved.target, { connectTest: true })
+  } catch (err) {
+    return openExecutorError(c, err)
+  }
+
+  try {
+    await executor.run('select 1', 'read')
+    return c.json({ ok: true, kind, latency_ms: Date.now() - started })
+  } catch (err) {
+    const mapped = resolveExecError(c, err)
+    return c.json(mapped.code ? { error: mapped.message, code: mapped.code } : { error: mapped.message }, mapped.status)
   } finally {
     await executor.close()
   }

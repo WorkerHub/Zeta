@@ -3,19 +3,21 @@ import { appDbId, appDbTargetAllowed, isAppDb } from './d1-http'
 
 // How a registered database is executed. `http` is the D1 HTTP API (SQLite); `postgres` runs over
 // a PostgreSQL wire connection opened for the request (see lib/pg-executor.ts); `mysql` is TiDB
-// Cloud Starter over its HTTPS endpoint (see lib/mysql-executor.ts).
+// Cloud Starter over its HTTPS endpoint (see lib/mysql-executor.ts); `spark` is the published port of
+// a Spark machine over its JSON contract (see lib/spark-executor.ts).
 export type QueryTarget =
   | { kind: 'http'; databaseId: string }
   | { kind: 'postgres'; databaseId: string }
   | { kind: 'mysql'; databaseId: string }
+  | { kind: 'spark'; databaseId: string }
 
 export type QueryTargetResult = { ok: true; target: QueryTarget } | { ok: false; error: string }
 
 // Resolves a registered database row to its execution target, by the row's engine.
 //
-//   * `postgres` / `mysql` — needs a stored connection; the URL itself is decrypted where the
-//     executor is opened (lib/pg-executor.ts, lib/mysql-executor.ts), never here or in an API
-//     response.
+//   * `postgres` / `mysql` / `spark` — needs a stored payload; the tokens and the URL are decrypted
+//     where the executor is opened (lib/pg-executor.ts, lib/mysql-executor.ts, lib/spark-executor.ts),
+//     never here or in an API response.
 //   * `sqlite` (and rows created before the `kind` column existed) — the D1 HTTP API. The row must
 //     carry a cf_database_id. The application's own database is refused unless
 //     ALLOW_APP_DB_AS_TARGET is enabled (shared-database deployments; the app-DB guardrails in
@@ -26,7 +28,7 @@ export type QueryTargetResult = { ok: true; target: QueryTarget } | { ok: false;
 //
 // A connection-string engine has no cf_database_id, so it can never be the application database.
 export function resolveQueryTarget(env: Env, db: DatabaseRow): QueryTargetResult {
-  if (db.kind === 'postgres' || db.kind === 'mysql') {
+  if (db.kind === 'postgres' || db.kind === 'mysql' || db.kind === 'spark') {
     if (!db.connection_secret) {
       return {
         ok: false,
