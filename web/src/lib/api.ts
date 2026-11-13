@@ -262,11 +262,21 @@ export const queryApi = {
       seq?: number
       executed_at?: number
     }>('/query', { method: 'POST', body: JSON.stringify(body), signal }),
+  // A notebook's several statements in one request. A statement that fails stops the batch:
+  // `results` then holds only the statements that were attempted (the failing one included) and
+  // `halted` is true — the run reports how many never ran. Every statement ran when it is false
+  // or left out.
   executeBatch: (
     body: { databaseId: string; statements: string[]; notebookId?: string; sessionDatabase?: string },
     signal?: AbortSignal
   ) =>
-    apiFetch<{ results: StatementResult[]; run_id?: string; seq?: number; executed_at?: number }>('/query/batch', {
+    apiFetch<{
+      results: StatementResult[]
+      halted?: boolean
+      run_id?: string
+      seq?: number
+      executed_at?: number
+    }>('/query/batch', {
       method: 'POST',
       body: JSON.stringify(body),
       signal,

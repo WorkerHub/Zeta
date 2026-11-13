@@ -403,6 +403,7 @@ export const translations: Record<Locale, Record<string, string>> = {
     'results.running_sql': 'Running SQL: {sql}',
     'results.running_sql_statements': 'Running SQL: {sql} ({n} statements)',
     'results.stored_rows': '(only the first {n} rows were saved — run again to see all)',
+    'results.halted': 'Statement {n} failed — the batch stopped, so {m} statement(s) did not run',
 
     // Saved runs
     'runs.ran_at': 'Ran {time}',
@@ -838,6 +839,7 @@ export const translations: Record<Locale, Record<string, string>> = {
     'results.running_sql': '正在执行 SQL：{sql}',
     'results.running_sql_statements': '正在执行 SQL：{sql}（共 {n} 条）',
     'results.stored_rows': '（仅保存了前 {n} 行 — 重新运行可查看全部）',
+    'results.halted': '第 {n} 条语句出错，已停止，其余 {m} 条未执行',
 
     // Saved runs
     'runs.ran_at': '运行于 {time}',
