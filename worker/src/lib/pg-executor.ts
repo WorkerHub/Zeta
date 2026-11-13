@@ -40,6 +40,18 @@ export interface PostgresSession {
 
 const CONNECT_TIMEOUT_SECONDS = 15
 
+// The application_name a cancel connection opens with. It is deliberately not the marker of any
+// execution, so a cancel can never address (and cancel) its own statement. Cancelling is therefore
+// denied to a statement that could not be told apart from this one: only a marker ever addresses a
+// connection here.
+export const CANCEL_APPLICATION_NAME = 'zeta-cancel'
+
+// How long one cancel may take, end to end: one connection's own budget, no more. The cancel
+// endpoint answers as soon as the flag is set (the kill runs off its critical path), so waiting is
+// free — while cutting the attempt short returns "not killed" for a kill that then still lands,
+// which would be misleading evidence. A dead target is bounded by the connect timeout anyway.
+const CANCEL_TIMEOUT_MS = CONNECT_TIMEOUT_SECONDS * 1000
+
 // Never echo the pasted connection string back to a caller or into a log: a connection error can
 // carry it verbatim, and it holds the credentials.
 function redact(message: string, url: string): string {
@@ -72,8 +84,13 @@ export function describePostgresError(err: unknown, url = '', connect = false): 
 }
 
 // Opens one connection and proves it works before the caller runs anything, so a bad host or
-// credential surfaces once per request instead of once per statement.
-export async function openPostgresSession(url: string): Promise<PostgresSession> {
+// credential surfaces once per request instead of once per statement. `applicationName` marks this
+// connection's backend with the request's execution id — the only address a cancel can use safely
+// on a pooled endpoint (see cancelPostgresExecution).
+export async function openPostgresSession(
+  url: string,
+  opts: { applicationName?: string } = {}
+): Promise<PostgresSession> {
   const { default: postgres } = await import('postgres')
   let sql: ReturnType<typeof postgres> | undefined
   try {
@@ -87,6 +104,9 @@ export async function openPostgresSession(url: string): Promise<PostgresSession>
       // Never produce a channel binding: Workers cannot hash the server certificate (see pg-url.ts).
       channel_binding: 'prefer',
       onnotice: () => {},
+      // Sent as a startup parameter, so it survives a pooled endpoint attaching this client to a
+      // backend. Omitted entirely when the request has no execution id.
+      connection: opts.applicationName ? { application_name: opts.applicationName } : undefined,
     })
     await sql.unsafe('select 1')
   } catch (err) {
@@ -129,6 +149,61 @@ export async function openPostgresSession(url: string): Promise<PostgresSession>
       closed = true
       await sql.end({ timeout: 5 }).catch(() => {})
     },
+  }
+}
+
+// Cancels the statements of one execution: every backend whose session carries this execution's
+// application_name marker has its running statement cancelled. A *marker* is the only safe address
+// here — on a pooled endpoint the backend pid of a connection changes hands between statements, so a
+// pid-based kill can stop another client's statement, while a marker-based kill can only miss.
+//
+// Returns evidence, never proof: pg_cancel_backend() also reports success for an idle backend, and a
+// pooled endpoint may have no backend carrying the marker at that moment (the kill misses and the
+// statement runs to completion). Whether an execution was cancelled is answered by the registry row
+// (lib/executions.ts) and by the original request's own 57014, never by this value.
+export async function cancelPostgresExecution(url: string, marker: string): Promise<{ killed: boolean }> {
+  if (!marker) return { killed: false }
+
+  const attempt = async (): Promise<boolean> => {
+    const { default: postgres } = await import('postgres')
+    const sql = postgres(url, {
+      ssl: 'require',
+      prepare: false,
+      max: 1,
+      connect_timeout: CONNECT_TIMEOUT_SECONDS,
+      channel_binding: 'prefer',
+      onnotice: () => {},
+      connection: { application_name: CANCEL_APPLICATION_NAME },
+    })
+    try {
+      const rows = (await sql.unsafe(
+        `select pg_cancel_backend(pid) as ok from pg_stat_activity
+         where application_name = $1 and pid <> pg_backend_pid() and state = 'active'`,
+        [marker]
+      )) as unknown as { ok: boolean | null }[]
+      return rows.some((row) => row.ok === true)
+    } finally {
+      await sql.end({ timeout: 1 }).catch(() => {})
+    }
+  }
+
+  let timer: ReturnType<typeof setTimeout> | undefined
+  const deadline = new Promise<boolean>((_, reject) => {
+    timer = setTimeout(() => reject(new Error('cancel timed out')), CANCEL_TIMEOUT_MS)
+  })
+
+  try {
+    return { killed: await Promise.race([attempt(), deadline]) }
+  } catch (err) {
+    // Neither the marker nor the connection string may reach a log line: both are deployment
+    // internals, and a driver error can quote the URL verbatim.
+    const detail = err instanceof Error ? redact(err.message, url).split(marker).join('[redacted]') : typeof err
+    console.error(`Postgres cancel did not complete: ${detail}`)
+    return { killed: false }
+  } finally {
+    // The loser of the race is abandoned, not cancelled: without this the timer would keep the
+    // isolate alive for the rest of the budget after every successful cancel.
+    if (timer !== undefined) clearTimeout(timer)
   }
 }
 

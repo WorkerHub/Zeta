@@ -82,6 +82,7 @@ export interface StatementResult {
   truncated?: boolean // server capped the returned rows
   error?: string
   stored_rows?: number // a saved run kept only this many of the rows
+  cancelled?: boolean // the user cancelled this statement while it ran (never an error)
 }
 
 export interface Notebook {
@@ -107,6 +108,9 @@ export interface NotebookRunSummary {
   // The batch stopped at a failing statement, so fewer statements are in `results` than were
   // submitted. false for a run whose every statement ran (stored with the run, see lib/runs.ts).
   halted?: boolean
+  // The user cancelled the run: it stopped early on purpose (stored with the run), so its tab and
+  // its results announce a cancellation rather than a success (see lib/runs.ts).
+  cancelled?: boolean
   row_count: number
   error_count: number
   duration_ms: number

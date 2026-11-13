@@ -28,6 +28,10 @@ export interface RunStatement {
   changes?: number
   truncated?: boolean
   error?: string
+  // The statement was stopped by a cancellation rather than rejected or failed: it carries no
+  // `error` (a cancel is not a mistake), so a run's error_count does not count it. See
+  // POST /api/query/cancel and lib/executions.ts.
+  cancelled?: boolean
   // Set when only the first `stored_rows` of `results` were saved
   stored_rows?: number
 }
@@ -51,6 +55,7 @@ export function packRunResults(statements: RunStatement[], budget = MAX_STORED_R
       const entry: RunStatement = { sql: s.sql.slice(0, sqlLength), results: [], duration_ms: s.duration_ms }
       if (s.changes !== undefined) entry.changes = s.changes
       if (s.truncated) entry.truncated = true
+      if (s.cancelled) entry.cancelled = true
       if (s.error !== undefined) entry.error = s.error.slice(0, MAX_STORED_ERROR)
       return entry
     })
@@ -183,6 +188,10 @@ export interface NewRun {
   // The batch stopped at a failing statement instead of running to the end (see POST
   // /api/query/batch). A single-statement run, and a batch that ran to the end, save false.
   halted: boolean
+  // A cancellation stopped this run (see POST /api/query/cancel and lib/executions.ts): at a
+  // statement boundary for D1 and TiDB, mid-statement for PostgreSQL and Spark. Never combined with
+  // `halted` — a cancelled statement carries no error, so the two report different things.
+  cancelled: boolean
   durationMs: number
   executedAt: number // milliseconds, so runs started within the same second keep their order
 }
@@ -197,8 +206,8 @@ export async function saveRun(env: Env, run: NewRun): Promise<void> {
   await env.DB.batch([
     env.DB.prepare(
       `INSERT INTO ${T.notebook_runs} (id, notebook_id, user_id, database_id, sql, statement_count, row_count,
-         error_count, duration_ms, storage_truncated, results_bytes, executed_at, seq, halted, results)
-       VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)`
+         error_count, duration_ms, storage_truncated, results_bytes, executed_at, seq, halted, cancelled, results)
+       VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16)`
     ).bind(
       run.id,
       run.notebookId,
@@ -214,6 +223,7 @@ export async function saveRun(env: Env, run: NewRun): Promise<void> {
       run.executedAt,
       run.seq,
       run.halted ? 1 : 0,
+      run.cancelled ? 1 : 0,
       packed.json
     ),
     env.DB.prepare(

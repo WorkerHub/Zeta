@@ -6,13 +6,11 @@ import { oneDark } from '@codemirror/theme-one-dark'
 import { keymap } from '@codemirror/view'
 import { Prec } from '@codemirror/state'
 import {
-  Play,
   ChevronDown,
   LogOut,
   User as UserIcon,
   History,
   AlertCircle,
-  Loader2,
   Shield,
   Monitor,
   Sun,
@@ -33,6 +31,7 @@ import { useNotebookRuns } from '../hooks/useNotebookRuns'
 import QueryResults from '../components/QueryResults'
 import DbKindMeta from '../components/DbKindMeta'
 import ConnectButton from '../components/ConnectButton'
+import RunActionButton from '../components/RunActionButton'
 import RunHistoryDrawer from '../components/RunHistoryDrawer'
 import ConfirmDialog from '../components/ConfirmDialog'
 import Logo from '../components/Logo'
@@ -40,9 +39,9 @@ import { useConnections } from '../hooks/useConnections'
 import { knocksBack } from '../lib/connection-state'
 import { errorCodeText } from '../lib/error-copy'
 import { splitSqlStatements, usedDatabaseOf } from '../lib/sql'
-import { haltNotice } from '../lib/runs'
+import { haltNotice, cancelNotice } from '../lib/runs'
 import { missingSessionDatabase } from '../lib/session-database'
-import type { Database as DbType, DbKind, NotebookRunSummary, StatementResult } from '../types'
+import type { Database as DbType, NotebookRunSummary, StatementResult } from '../types'
 
 const THEME_ICONS = { auto: Monitor, light: Sun, dark: Moon }
 
@@ -83,23 +82,23 @@ export default function QueryPage() {
     forgetSessionDatabase,
   } = useConnections(knownDbIds)
   const connected = selectedDb ? isConnected(selectedDb.id) : false
-  // The engine the run in flight targets: the Spark cancellation caveat is engine-specific
-  const [runningKind, setRunningKind] = useState<DbKind>('sqlite')
   // Saved runs per notebook; what the results panel shows comes from here
   const runs = useNotebookRuns(activeId)
   const {
     running,
+    cancelling,
     runningDatabaseName,
     runningSql,
     runningStatementCount,
     runError,
     transient,
     transientHalted,
+    transientCancelled,
     selectedRun,
     selectedResults,
     startRun,
     finishRun,
-    cancelRun: cancelNotebookRun,
+    setCancelling,
   } = runs
   const statementResults: StatementResult[] =
     transient ?? (selectedResults?.status === 'ready' ? selectedResults.results : [])
@@ -109,6 +108,13 @@ export default function QueryPage() {
     ? transientHalted
     : selectedResults?.status === 'ready'
       ? (selectedResults.halted ?? null)
+      : null
+  // A cancelled run does the same, with the engine's caveat when the response that produced it
+  // knows the engine (a run opened from history keeps only the flag)
+  const shownCancelled = transient
+    ? transientCancelled
+    : selectedResults?.status === 'ready'
+      ? (selectedResults.cancelled ?? null)
       : null
   const [activeResultIdx, setActiveResultIdx] = useState(0)
   // Failures outside a query run (loading databases, deleting a notebook, managing saved runs)
@@ -126,8 +132,9 @@ export default function QueryPage() {
   const dbMenuRef = useRef<HTMLDivElement>(null)
   const dbMenuDesktopRef = useRef<HTMLDivElement>(null)
   const userMenuRef = useRef<HTMLDivElement>(null)
-  // The run in flight of each notebook, so cancelling aborts the right request
-  const runControllers = useRef(new Map<string, AbortController>())
+  // The run in flight of each notebook: the id a cancel addresses, and the controller that only
+  // drops the request when the page or the notebook goes away (a user's cancel never aborts it)
+  const executions = useRef(new Map<string, { id: string; controller: AbortController }>())
   // The drawer returns focus here when it closes
   const historyBtnRef = useRef<HTMLButtonElement>(null)
 
@@ -188,21 +195,23 @@ export default function QueryPage() {
     const nbId = activeId
     const db = selectedDb
     if (!db || !nbId || !sqlToRun) return
-    // The keyboard shortcut runs this too, so the gate cannot live on the button alone
-    if (!isConnected(db.id)) return
+    // The keyboard shortcut runs this too, so the gate cannot live on the button alone. A run in
+    // flight is cancelled from that button instead of being replaced by another one — the map is
+    // read synchronously, so two keystrokes in one frame cannot start two executions.
+    if (executions.current.has(nbId) || !isConnected(db.id)) return
 
     const statements = splitSqlStatements(sqlToRun)
     if (statements.length === 0) return
     // MySQL's endpoint reuses one server-side session per credentials: the request has to say which
     // database that session is on, or the worker pins the registered one (lib/connection-state.ts)
     const sessionDatabase = db.kind === 'mysql' ? sessionDatabaseOf(db.id) : null
-    // The database this run leaves the session on: the last USE that actually ran. A rejected
-    // statement changed nothing, so only the successful entries count.
-    const rememberSessionUse = (entries: Array<{ sql: string; error?: string }>) => {
+    // The database this run leaves the session on: the last USE that actually ran. A rejected or
+    // cancelled statement changed nothing, so only the successful entries count.
+    const rememberSessionUse = (entries: Array<{ sql: string; error?: string; cancelled?: boolean }>) => {
       if (db.kind !== 'mysql') return
       let last: string | null = null
       for (const entry of entries) {
-        if (entry.error) continue
+        if (entry.error || entry.cancelled) continue
         const switched = usedDatabaseOf(entry.sql)
         if (switched) last = switched
       }
@@ -210,18 +219,17 @@ export default function QueryPage() {
     }
 
     // The run belongs to the notebook it started in, even if the user switches tabs meanwhile.
-    // Its controller lets the temporary tab's X abort this request. The SQL it submitted is kept
-    // with the run, so the results panel can name the statement that is executing.
-    runControllers.current.get(nbId)?.abort()
+    // `executionId` is what a cancel addresses (routes/query.ts); the controller is only for
+    // teardown — page unmount, deleted notebook — never for a user's cancel.
+    const executionId = crypto.randomUUID()
     const controller = new AbortController()
-    runControllers.current.set(nbId, controller)
+    executions.current.set(nbId, { id: executionId, controller })
     startRun(nbId, db.name, statements[0]!, statements.length)
-    setRunningKind(db.kind ?? 'sqlite')
     setActiveResultIdx(0)
 
     // A saved run (one the server names and numbers) goes into the notebook's run list
     const summary = (
-      saved: { run_id?: unknown; seq?: unknown; executed_at?: unknown },
+      saved: { run_id?: unknown; seq?: unknown; executed_at?: unknown; cancelled?: unknown },
       results: StatementResult[]
     ): NotebookRunSummary | null =>
       typeof saved.run_id === 'string' && typeof saved.seq === 'number'
@@ -236,6 +244,8 @@ export default function QueryPage() {
             statement_count: statements.length,
             row_count: results.reduce((n, r) => n + (r.changes ?? r.results.length), 0),
             error_count: results.filter((r) => r.error).length,
+            // A cancelled run stays in the history as a cancellation, not as a success
+            cancelled: saved.cancelled === true,
             duration_ms: results.reduce((n, r) => n + r.duration_ms, 0),
             storage_truncated: 0,
             results_bytes: 0,
@@ -250,20 +260,35 @@ export default function QueryPage() {
         const stmt = statements[0]!
         try {
           const res = await queryApi.execute(
-            { databaseId: db.id, sql: stmt, notebookId: nbId, ...(sessionDatabase ? { sessionDatabase } : {}) },
+            {
+              databaseId: db.id,
+              sql: stmt,
+              notebookId: nbId,
+              ...(sessionDatabase ? { sessionDatabase } : {}),
+              executionId,
+            },
             controller.signal
           )
-          const entry: StatementResult = {
-            sql: stmt,
-            results: res.results ?? [],
-            duration_ms: res.duration_ms ?? 0,
-            changes: res.meta?.changes,
-            truncated: res.truncated,
-          }
-          finishRun(nbId, { run: summary(res, [entry]), results: [entry] })
-          rememberSessionUse([{ sql: stmt }])
+          // A cancelled execution returns no results: the statement it stopped is the run's one
+          // entry, marked cancelled — the shape the worker stores with the run
+          const entry: StatementResult = res.cancelled
+            ? { sql: stmt, results: [], duration_ms: res.duration_ms ?? 0, cancelled: true }
+            : {
+                sql: stmt,
+                results: res.results ?? [],
+                duration_ms: res.duration_ms ?? 0,
+                changes: res.meta?.changes,
+                truncated: res.truncated,
+              }
+          finishRun(nbId, {
+            run: summary(res, [entry]),
+            results: [entry],
+            cancelled: res.cancelled ? cancelNotice(db.kind ?? 'sqlite') : null,
+          })
+          if (!res.cancelled) rememberSessionUse([{ sql: stmt }])
         } catch (err) {
-          // Cancelled: the panel keeps what it showed, this response is not an error to report
+          // The request was dropped by teardown (page left, notebook deleted): there is nobody left
+          // to report it to. A user's cancel is not this path — its response carries `cancelled`.
           if (controller.signal.aborted) return
           const entry: StatementResult = { sql: stmt, results: [], duration_ms: 0, error: describeError(err) }
           // A statement that ran and failed is saved too; the error response names the run
@@ -282,13 +307,20 @@ export default function QueryPage() {
       } else {
         // Multiple statements — use batch endpoint
         const res = await queryApi.executeBatch(
-          { databaseId: db.id, statements, notebookId: nbId, ...(sessionDatabase ? { sessionDatabase } : {}) },
+          {
+            databaseId: db.id,
+            statements,
+            notebookId: nbId,
+            ...(sessionDatabase ? { sessionDatabase } : {}),
+            executionId,
+          },
           controller.signal
         )
         finishRun(nbId, {
           run: summary(res, res.results),
           results: res.results,
           halted: haltNotice(res.halted, res.results, statements.length),
+          cancelled: res.cancelled ? cancelNotice(db.kind ?? 'sqlite') : null,
         })
         rememberSessionUse(res.results)
       }
@@ -301,7 +333,7 @@ export default function QueryPage() {
         forgetSessionDatabase(db.id)
       }
     } finally {
-      if (runControllers.current.get(nbId) === controller) runControllers.current.delete(nbId)
+      if (executions.current.get(nbId)?.controller === controller) executions.current.delete(nbId)
     }
   }, [
     activeId,
@@ -317,14 +349,29 @@ export default function QueryPage() {
     forgetSessionDatabase,
   ])
 
-  // The temporary run tab's X: abort the request, ahead of its response, and drop the run
-  const cancelRun = useCallback(() => {
+  // The run button and the run tab's X ask the worker to cancel the execution in flight (the
+  // executionId its request carried). The request itself keeps running: it returns on its own,
+  // carrying `cancelled`, and that response is what ends the run.
+  const cancelActiveRun = useCallback(async () => {
     const nbId = activeId
-    if (!nbId) return
-    runControllers.current.get(nbId)?.abort()
-    runControllers.current.delete(nbId)
-    cancelNotebookRun(nbId)
-  }, [activeId, cancelNotebookRun])
+    const exec = nbId ? executions.current.get(nbId) : undefined
+    if (!nbId || !exec || cancelling) return
+    // The button says 正在取消… right away: the signal is short, the run's own response is the end
+    setCancelling(nbId, true)
+    try {
+      const res = await queryApi.cancel(exec.id)
+      // It had already finished: its response is on its way and decides what the panel shows
+      if (!res.cancelled) setCancelling(nbId, false)
+    } catch (err) {
+      setCancelling(nbId, false)
+      // 404 = unknown or finished execution (another user's id answers the same): nothing to report,
+      // the run's own response is all there is to wait for
+      if (!(err instanceof ApiError && err.status === 404)) setPageError(t('errors.cancel_failed'))
+    }
+  }, [activeId, cancelling, setCancelling, t])
+
+  // The execution button: start a run, or cancel the one in flight (it stays clickable meanwhile)
+  const primaryAction = running ? cancelActiveRun : runQuery
 
   // The connect button: probe the current target and report a failure in the page banner
   const connectTarget = useCallback(
@@ -342,11 +389,12 @@ export default function QueryPage() {
     [connect, t]
   )
 
-  // Nothing is left to show once the page goes away
+  // Nothing is left to show once the page goes away: drop the requests (not a cancel signal —
+  // there is nobody left to show its result to)
   useEffect(() => {
-    const controllers = runControllers.current
+    const inFlight = executions.current
     return () => {
-      for (const controller of controllers.values()) controller.abort()
+      for (const exec of inFlight.values()) exec.controller.abort()
     }
   }, [])
 
@@ -742,16 +790,18 @@ export default function QueryPage() {
                   </span>
                 )}
                 <span className="text-caption text-ink-400 hidden sm:block tnum">{t('query.shortcut')}</span>
-                <button
-                  type="button"
-                  onClick={runQuery}
-                  disabled={running || !selectedDb || !connected}
+                <RunActionButton
+                  label={
+                    selectedSql.trim() ? t('query.run_selection') : sqlHasMultiple ? t('query.run_all') : t('query.run')
+                  }
+                  running={running}
+                  cancelling={cancelling}
+                  enabled={!!selectedDb && connected}
                   title={selectedDb && !connected ? t('query.connect_first') : undefined}
+                  onClick={primaryAction}
                   className="btn-primary btn-sm gap-1.5 hidden sm:flex"
-                >
-                  {running ? <Loader2 size={13} className="animate-spin" /> : <Play size={13} />}
-                  {selectedSql.trim() ? t('query.run_selection') : sqlHasMultiple ? t('query.run_all') : t('query.run')}
-                </button>
+                  iconSize={13}
+                />
               </div>
             </div>
             <div className="flex-1 overflow-hidden">
@@ -805,7 +855,7 @@ export default function QueryPage() {
               runningDatabaseName={runningDatabaseName}
               runningSql={runningSql}
               runningStatementCount={runningStatementCount}
-              runningHint={runningKind === 'spark' ? t('query.spark_cancel_hint') : ''}
+              cancelled={shownCancelled}
               runError={runError}
               transient={transient}
               halted={shownHalted}
@@ -821,7 +871,7 @@ export default function QueryPage() {
               onSelectRun={runs.selectRun}
               onLoadMore={runs.loadMore}
               onDeleteRun={(runId) => reportRunAction(runs.deleteRun(runId))}
-              onCancelRun={cancelRun}
+              onCancelRun={cancelActiveRun}
             />
           </div>
         </div>
@@ -889,16 +939,16 @@ export default function QueryPage() {
         )}
 
         {/* Run button */}
-        <button
-          type="button"
-          onClick={runQuery}
-          disabled={running || !selectedDb || !connected}
+        <RunActionButton
+          label={selectedSql.trim() ? t('query.run_selection') : t('query.run')}
+          running={running}
+          cancelling={cancelling}
+          enabled={!!selectedDb && connected}
           title={selectedDb && !connected ? t('query.connect_first') : undefined}
+          onClick={primaryAction}
           className="btn-primary h-10 gap-1.5 px-4"
-        >
-          {running ? <Loader2 size={14} className="animate-spin" /> : <Play size={14} />}
-          {selectedSql.trim() ? t('query.run_selection') : t('query.run')}
-        </button>
+          iconSize={14}
+        />
       </div>
 
       {/* Notebook deletion confirmation (design-system dialog, §3.1 micro_interaction) */}
@@ -913,8 +963,8 @@ export default function QueryPage() {
             setDeletingNotebookId(null)
             setPageError('')
             // Its runs go away with it: a request still in flight must not land in them
-            runControllers.current.get(nbId)?.abort()
-            runControllers.current.delete(nbId)
+            executions.current.get(nbId)?.controller.abort()
+            executions.current.delete(nbId)
             deleteNotebook(nbId)
               .then(() => runs.forgetNotebook(nbId))
               .catch((err) => setPageError(err instanceof Error ? err.message : t('errors.delete_notebook_failed')))

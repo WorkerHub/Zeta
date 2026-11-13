@@ -186,4 +186,29 @@ describe('runMigrations anti-silent-switch guard', () => {
     expect((await runMigrations(env)).migrations).toEqual(prod('applied'))
     expect(ledgerRows(sqlite, '_ZETA_schema_migrations')).toEqual(PROD_NAMES)
   })
+
+  it('does not treat the table of a pending migration as missing (schema_v5 on a v1–v4 database)', async () => {
+    const { db, sqlite } = sqliteD1()
+    const env: Envish = fakeEnv({ DB: db, TABLE_PREFIX: 'ZETA' })
+    const migrations = getMigrations({ TABLE_PREFIX: 'ZETA' })
+    const upToV4 = migrations.slice(0, migrations.findIndex((m) => m.name === 'schema_v4') + 1)
+    await runMigrations(env, upToV4)
+    expect(tableNames(sqlite)).not.toContain('ZETA_executions')
+
+    // The very upgrade that creates executions: the guard counts what the recorded migrations
+    // create, not the size of the current registry
+    const upgrade = await runMigrations(env)
+
+    expect(upgrade.migrations.at(-1)).toEqual({ name: 'schema_v5', status: 'applied' })
+    expect(tableNames(sqlite)).toContain('ZETA_executions')
+  })
+
+  it('still refuses once a table its ledger covers was really dropped', async () => {
+    const { db, sqlite } = sqliteD1()
+    const env: Envish = fakeEnv({ DB: db, TABLE_PREFIX: 'ZETA' })
+    await runMigrations(env)
+    sqlite.exec('DROP TABLE ZETA_executions')
+
+    await expect(runMigrations(env)).rejects.toThrow(/drop _ZETA_schema_migrations as well/)
+  })
 })

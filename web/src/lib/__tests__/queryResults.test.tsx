@@ -101,6 +101,79 @@ describe('QueryResults after a batch that halted', () => {
   })
 })
 
+describe('QueryResults for a cancelled run', () => {
+  // A batch cancelled while its second statement ran: the first one's rows survive
+  const batch: StatementResult[] = [
+    { sql: 'SELECT 1', results: [{ n: 1 }], duration_ms: 2 },
+    { sql: 'SELECT SLEEP(30)', results: [], duration_ms: 1500, cancelled: true },
+  ]
+  const caveat = { caveat: true }
+  const killed = { caveat: false }
+
+  it('says the execution was cancelled, above the results it left behind', () => {
+    const html = render({
+      results: batch,
+      cancelled: caveat,
+      selectedResults: { status: 'ready', results: batch, cancelled: caveat },
+    })
+    expect(html).toContain(t('results.cancelled'))
+    expect(html).toContain(t('results.cancelled_caveat'))
+    expect(html.indexOf(t('results.cancelled'))).toBeLessThan(html.indexOf('<table'))
+    expect(html).toContain('>1<') // the statement that had already finished keeps its rows
+  })
+
+  it('leaves the caveat out for an engine that really kills the statement', () => {
+    const html = render({
+      results: batch,
+      cancelled: killed,
+      selectedResults: { status: 'ready', results: batch, cancelled: killed },
+    })
+    expect(html).toContain(t('results.cancelled'))
+    expect(html).not.toContain(t('results.cancelled_caveat'))
+  })
+
+  it('says nothing for a run that was not cancelled', () => {
+    const html = render({})
+    expect(html).not.toContain(t('results.cancelled'))
+    expect(html).not.toContain(t('results.cancelled_short'))
+  })
+
+  it('says nothing while another run is in flight', () => {
+    const html = render({ results: batch, cancelled: caveat, running: true, runningDatabaseName: 'one' })
+    expect(html).not.toContain(t('results.cancelled'))
+  })
+
+  it('marks the statement it stopped as cancelled, not as a success', () => {
+    const html = render({ results: batch, activeIndex: 1, cancelled: caveat })
+    expect(html).toContain(`#2 · ${t('results.cancelled_short')} · 1500ms`)
+    // Neither the success mark nor an error: the body says the execution was cancelled
+    expect(html).not.toContain('animate-success-pop')
+    expect(html).toContain(t('results.cancelled'))
+  })
+
+  it('shows the notice for results the server did not name as well', () => {
+    const html = render({
+      transient: batch,
+      results: batch,
+      cancelled: caveat,
+      selectedResults: null,
+      selectedRun: null,
+    })
+    expect(html).toContain(t('results.cancelled_caveat'))
+  })
+
+  it('carries the Chinese wording verbatim', () => {
+    setLocale('zh')
+    const html = render({
+      results: batch,
+      cancelled: caveat,
+      selectedResults: { status: 'ready', results: batch, cancelled: caveat },
+    })
+    expect(html).toContain('已取消执行')
+    expect(html).toContain('本条语句仍在服务端跑完，其余语句不再执行')
+  })
+})
+
 describe('QueryResults while a run is in flight', () => {
   it('keeps the history strip and the previous results on screen', () => {
     const html = render({ running: true, runningDatabaseName: 'one' })
@@ -200,11 +273,22 @@ describe('QueryResults after a run', () => {
     expect(html).toContain('>9<')
   })
 
-  it('drops the mask and keeps the previous results when the run was cancelled', () => {
-    const html = render({ runningSql: 'SELECT 2', runningStatementCount: 1 })
-    expect(html).not.toContain(t('results.running_sql', { sql: 'SELECT 2' }))
+  it('drops the mask when a cancelled run lands its own result', () => {
+    const stopped: StatementResult[] = [{ sql: 'SELECT SLEEP(30)', results: [], duration_ms: 1500, cancelled: true }]
+    const next = run('run-2', 2)
+    const notice = { caveat: true }
+    const html = render({
+      runningSql: 'SELECT SLEEP(30)',
+      runningStatementCount: 1,
+      selectedRun: next,
+      selectedResults: { status: 'ready', results: stopped, cancelled: notice },
+      results: stopped,
+      cancelled: notice,
+      runList: [next, oldRun],
+    })
+    expect(html).not.toContain(t('results.running_sql', { sql: 'SELECT SLEEP(30)' }))
     expect(html).not.toContain('role="status"')
-    expect(table(html)).toBe(table(render({})))
+    expect(html).toContain(t('results.cancelled'))
   })
 
   it('keeps the history strip when the run failed', () => {

@@ -1,6 +1,6 @@
-import { AlertCircle, AlertTriangle, Loader2 } from 'lucide-react'
+import { AlertCircle, AlertTriangle, CircleSlash, Loader2 } from 'lucide-react'
 import { useLocale } from '../hooks/useLocale'
-import type { HaltNotice } from '../lib/runs'
+import type { CancelNotice, HaltNotice } from '../lib/runs'
 import type { RunResults } from '../hooks/useNotebookRuns'
 import type { NotebookRunSummary, StatementResult } from '../types'
 import ResultsPanel from './ResultsPanel'
@@ -11,8 +11,8 @@ interface Props {
   runningDatabaseName: string
   runningSql: string
   runningStatementCount: number
-  /** A caveat about the run in flight (Spark: cancelling does not stop the statement). */
-  runningHint?: string
+  /** The shown run was cancelled by the user (the engine caveat rides along when it is known). */
+  cancelled?: CancelNotice | null
   /** The shown run was a batch that stopped at a failing statement. */
   halted?: HaltNotice | null
   runError: string
@@ -45,7 +45,7 @@ export default function QueryResults({
   runningDatabaseName,
   runningSql,
   runningStatementCount,
-  runningHint = '',
+  cancelled = null,
   halted = null,
   runError,
   transient,
@@ -105,6 +105,18 @@ export default function QueryResults({
         </div>
       ) : (
         <>
+          {/* A run the user cancelled: one line above the results it left behind, saying what stopped
+              and — for an engine that can only stop the batch (D1, TiDB) — that the statement in
+              flight still finishes on the server. Hidden while another run is in flight. */}
+          {cancelled && !running && (
+            <div className="mx-4 mt-3 flex items-start gap-1.5 text-caption text-ink-700 shrink-0">
+              <CircleSlash size={13} className="mt-0.5 shrink-0 text-ink-400" aria-hidden="true" />
+              <span className="min-w-0">
+                {t('results.cancelled')}
+                {cancelled.caveat && <span className="block text-ink-500">{t('results.cancelled_caveat')}</span>}
+              </span>
+            </div>
+          )}
           {/* A batch that stopped at its failing statement: one line above the results it left
               behind, naming the statement that failed and what never ran. Hidden while another
               run is in flight — the mask covers the panel those results belong to. */}
@@ -123,7 +135,6 @@ export default function QueryResults({
                 onSelectIndex={onSelectIndex}
                 running={running}
                 runningLabel={runningLabel}
-                runningHint={runningHint}
               />
             ) : running ? (
               <div
@@ -136,7 +147,6 @@ export default function QueryResults({
                     {runningLabel}
                   </span>
                 </span>
-                {runningHint && <p className="max-w-[520px] text-center text-caption text-ink-500">{runningHint}</p>}
               </div>
             ) : selectedResults && selectedResults.status !== 'ready' ? (
               <div className="flex items-center justify-center h-full gap-2 px-4 text-center text-body text-ink-400">

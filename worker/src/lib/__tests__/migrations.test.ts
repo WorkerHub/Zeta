@@ -31,7 +31,7 @@ const statements = (prefix: string | undefined) =>
 describe('getMigrations', () => {
   it('appends the registry and saved-run migrations to the collapsed schema_v1, with no PRAGMA probing', () => {
     const migrations = getMigrations(env('ZETA'))
-    expect(migrations.map((m) => m.name)).toEqual(['schema_v1', 'schema_v2', 'schema_v3', 'schema_v4'])
+    expect(migrations.map((m) => m.name)).toEqual(['schema_v1', 'schema_v2', 'schema_v3', 'schema_v4', 'schema_v5'])
     expect(migrations[0]!.sql).not.toMatch(/PRAGMA/)
     expect(migrations[0]!.sql).not.toMatch(/\bALTER TABLE\b/)
     // No SQL line comments: exec() collapses the SQL onto one line (see migrations-runner.ts)
@@ -69,14 +69,32 @@ describe('getMigrations', () => {
     )
   })
 
+  it('creates the execution registry and the saved-run cancelled flag, both prefix-aware', () => {
+    const sql = getMigrations(env('ZETA')).find((m) => m.name === 'schema_v5')!.sql
+    expect(sql).toContain('CREATE TABLE IF NOT EXISTS ZETA_executions (')
+    expect(sql).toContain('CREATE INDEX IF NOT EXISTS idx_ZETA_executions_started ON ZETA_executions(started_at)')
+    expect(sql).toContain('ALTER TABLE ZETA_notebook_runs ADD COLUMN cancelled INTEGER NOT NULL DEFAULT 0')
+    expect(sql).toContain('REFERENCES ZETA_users(id)')
+    expect(sql).toContain('REFERENCES ZETA_d1_databases(id)')
+    // Additive only: nothing is dropped, renamed or rewritten (ON DELETE is the FK rule, not a query)
+    expect(sql).not.toMatch(/\b(DROP|RENAME)\b/i)
+    expect(sql).not.toMatch(/\bUPDATE\b|\bDELETE FROM\b/i)
+    expect(getMigrations(env('')).find((m) => m.name === 'schema_v5')!.sql).toContain(
+      'CREATE TABLE IF NOT EXISTS executions ('
+    )
+  })
+
   it('parameterises every table and index name by the effective prefix', () => {
     const sql = getMigrations(env('ZETA')).find((m) => m.name === 'schema_v1')!.sql
     const T = tables(env('ZETA'))
-    for (const name of Object.values(T)) expect(sql).toContain(name)
+    // Every table schema_v1 creates (executions arrives in schema_v5)
+    for (const name of Object.values(T).filter((name) => !name.endsWith('_executions'))) {
+      expect(sql).toContain(name)
+    }
     expect(sql).toContain('idx_ZETA_notebook_runs_seq')
     expect(sql).toContain('REFERENCES ZETA_users(id)')
     // ... and creates nothing unprefixed
-    for (const name of Object.values(tables(env('')))) {
+    for (const name of Object.values(tables(env(''))).filter((name) => !name.endsWith('executions'))) {
       expect(sql).not.toMatch(new RegExp(`CREATE TABLE IF NOT EXISTS ${name}\\b`))
     }
   })
@@ -93,7 +111,12 @@ describe('schema_v1 applied to a real database', () => {
     const { sqlite } = sqliteD1()
     sqlite.exec(getMigrations(env('kp')).find((m) => m.name === 'schema_v1')!.sql)
 
-    expect(tableNames(sqlite)).toEqual(Object.values(tables(env('kp'))).sort())
+    // The 11 tables of the collapsed baseline (schema_v5 adds executions later)
+    expect(tableNames(sqlite)).toEqual(
+      Object.values(tables(env('kp')))
+        .filter((t) => !t.endsWith('_executions'))
+        .sort()
+    )
     expect(indexNames(sqlite).sort()).toEqual(
       [
         'idx_kp_users_email',

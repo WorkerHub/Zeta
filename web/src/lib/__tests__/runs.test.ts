@@ -2,16 +2,18 @@ import { describe, it, expect } from 'vitest'
 import {
   addRun,
   cacheResults,
-  cancelPending,
+  cancelNotice,
   clearRunsState,
   emptyRunsState,
   haltNotice,
   idlePending,
   receivePage,
   removeRun,
+  runCancelNotice,
   runHaltNotice,
   runningPending,
   settleRun,
+  withCancelling,
 } from '../runs'
 import type { NotebookRunSummary, StatementResult } from '../../types'
 
@@ -148,19 +150,44 @@ describe('the run in flight', () => {
     expect(settleRun(pending, { error: 'boom' })).toMatchObject({
       pending: { sql: '', statementCount: 0 },
     })
-    expect(cancelPending(pending)).toMatchObject({ sql: '', statementCount: 0 })
   })
 
-  it('drops the response of a cancelled run, so it can never become a saved one', () => {
-    const cancelled = cancelPending(runningPending('one', 'SELECT 1', 1))
-    expect(cancelled).toEqual(idlePending)
-    const settled = settleRun(cancelled, { run: run('late', 9), results: [] })
-    expect(settled).toMatchObject({ accepted: false, pending: idlePending })
+  // 正在取消… belongs to the run in flight, so it goes away with it
+  it('marks the run in flight as cancelling, and can take it back', () => {
+    const pending = runningPending('one', 'SELECT 1', 1)
+    const cancelling = withCancelling(pending, true)
+    expect(cancelling).toMatchObject({ running: true, cancelling: true })
+    expect(withCancelling(cancelling, false)).toMatchObject({ running: true, cancelling: false })
+    // Writing the flag it already has changes nothing
+    expect(withCancelling(cancelling, true)).toBe(cancelling)
   })
 
-  it('does not cancel a run that is not in flight', () => {
-    expect(cancelPending(idlePending)).toBe(idlePending)
-    expect(cancelPending({ ...idlePending, error: 'boom' })).toEqual({ ...idlePending, error: 'boom' })
+  it('does not mark a run that is not in flight', () => {
+    expect(withCancelling(idlePending, true)).toBe(idlePending)
+    expect(withCancelling({ ...idlePending, error: 'boom' }, true)).toEqual({ ...idlePending, error: 'boom' })
+  })
+
+  it('lands a cancelled execution as its own outcome, with the notice its engine earns', () => {
+    const notice = cancelNotice('sqlite')
+    const settled = settleRun(withCancelling(runningPending('one', 'SELECT 1', 1), true), {
+      run: run('cancelled', 9),
+      results: [],
+      cancelled: notice,
+    })
+    if (!settled.accepted) throw new Error('expected the outcome to be accepted')
+    expect(settled.run?.id).toBe('cancelled')
+    // The notice rides with the run that landed; the next one starts from a clean slate
+    expect(settled.pending).toEqual(idlePending)
+  })
+
+  it('keeps the cancelled notice with results the server did not name', () => {
+    const notice = cancelNotice('mysql')
+    expect(
+      settleRun(runningPending('one', 'SELECT SLEEP(30)', 1), { run: null, results: [], cancelled: notice })
+    ).toMatchObject({
+      accepted: true,
+      pending: { running: false, transient: [], cancelled: notice },
+    })
   })
 
   it('keeps the halted notice with results the server did not name', () => {
@@ -229,5 +256,22 @@ describe('haltNotice', () => {
     expect(runHaltNotice({ ...ran, halted: false }, errorAt(3))).toBeNull()
     // A record written before the halt column existed has no flag: nothing is announced
     expect(runHaltNotice(ran, errorAt(2))).toBeNull()
+  })
+})
+
+describe('cancelNotice', () => {
+  it('adds the caveat only for the engines that cannot kill a statement', () => {
+    // D1 has no cancellation channel and TiDB kills nothing: their statement finishes on the server
+    expect(cancelNotice('sqlite')).toEqual({ caveat: true })
+    expect(cancelNotice('mysql')).toEqual({ caveat: true })
+    // PostgreSQL cancels by application_name and Spark by execution-level job group: really killed
+    expect(cancelNotice('postgres')).toEqual({ caveat: false })
+    expect(cancelNotice('spark')).toEqual({ caveat: false })
+  })
+
+  it("reads a saved run's own record, which carries no engine to claim a caveat for", () => {
+    expect(runCancelNotice({ cancelled: true })).toEqual({ caveat: false })
+    expect(runCancelNotice({ cancelled: false })).toBeNull()
+    expect(runCancelNotice({})).toBeNull()
   })
 })

@@ -289,6 +289,25 @@ function hasMySqlTopLevelLock(tokens: Token[]): boolean {
   return hasTopLevelLock(tokens) || hasTopLevelWord(tokens, 1, 'lock')
 }
 
+// ── postgres ────────────────────────────────────────────────────────────────────────────────
+// The two functions that end *other* sessions' work. Zeta cancels its own executions with them
+// (lib/pg-executor.ts), from its own connection — but a query target may be a shared database, and a
+// caller who could call them could stop statements of connections that are not theirs (including
+// other Zeta users' executions and the app's own service connections). A statement that names
+// either as a call is refused outright, at any nesting depth and schema-qualified (`pg_catalog.…`);
+// nothing else about the dialect changes — reading `pg_stat_activity` stays an ordinary read.
+const POSTGRES_FORBIDDEN_FUNCTIONS = new Set(['pg_cancel_backend', 'pg_terminate_backend'])
+
+function postgresForbiddenPattern(tokens: Token[]): boolean {
+  for (let i = 0; i < tokens.length; i++) {
+    const t = tokens[i]!
+    if (t.type !== 'word' || !POSTGRES_FORBIDDEN_FUNCTIONS.has(t.value)) continue
+    const next = tokens[i + 1]
+    if (next?.type === 'punct' && next.value === '(') return true
+  }
+  return false
+}
+
 // ── spark ────────────────────────────────────────────────────────────────────────────────────
 // SparkSQL runs on one long-lived SparkSession that every request shares (the service serialises on
 // a global lock), so a statement that rewrites the session, loads code or resources, or reaches the
@@ -507,6 +526,8 @@ export function classifySql(sql: string, dialect: SqlDialect = 'sqlite'): SqlCla
   // Spark's file sources and TRANSFORM … USING can sit in a CTE body or a subquery, so they are
   // checked over the whole token stream before the statement's first word decides the rest.
   if (dialect === 'spark' && sparkForbiddenPattern(sql, all)) return 'forbidden'
+  // Ending another session's statement is refused on PostgreSQL wherever the call hides.
+  if (dialect === 'postgres' && postgresForbiddenPattern(all)) return 'forbidden'
   const statements: Token[][] = [[]]
   for (const t of all) {
     if (t.type === 'punct' && t.value === ';') statements.push([])
