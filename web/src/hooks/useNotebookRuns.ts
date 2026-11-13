@@ -10,8 +10,10 @@ import {
   idlePending,
   receivePage,
   removeRun,
+  runHaltNotice,
   runningPending,
   settleRun,
+  type HaltNotice,
   type NotebookRunsState,
   type PendingRun,
   type RunOutcome,
@@ -19,10 +21,11 @@ import {
 import type { StatementResult } from '../types'
 
 // Results of one saved run: being fetched, ready, hidden (the user lost access to its database)
-// or failed to load
+// or failed to load. `halted` is the notice the run's own record earns (it is stored with the run),
+// so a run opened from history announces the same halt as the response that created it.
 export type RunResults =
   | { status: 'loading' }
-  | { status: 'ready'; results: StatementResult[] }
+  | { status: 'ready'; results: StatementResult[]; halted?: HaltNotice | null }
   | { status: 'denied' }
   | { status: 'failed' }
 
@@ -106,7 +109,15 @@ export function useNotebookRuns(activeId: string | null) {
     setResults((prev) => cacheResults(prev, selectedRunId, { status: 'loading' }))
     notebooksApi
       .run(activeId, selectedRunId)
-      .then((run) => setResults((prev) => cacheResults(prev, selectedRunId, { status: 'ready', results: run.results })))
+      .then((run) =>
+        setResults((prev) =>
+          cacheResults(prev, selectedRunId, {
+            status: 'ready',
+            results: run.results,
+            halted: runHaltNotice(run, run.results),
+          })
+        )
+      )
       .catch((err) =>
         setResults((prev) =>
           cacheResults(prev, selectedRunId, {
@@ -178,7 +189,9 @@ export function useNotebookRuns(activeId: string | null) {
       if (!settled.accepted) return
       const run = settled.run
       if (run) {
-        setResults((prev) => cacheResults(prev, run.id, { status: 'ready', results: settled.results }))
+        // The notice rides with this run's results, so selecting it again shows it too
+        const halted = 'error' in outcome ? null : (outcome.halted ?? null)
+        setResults((prev) => cacheResults(prev, run.id, { status: 'ready', results: settled.results, halted }))
         patchNotebook(nbId, (s) => addRun(s, run))
       }
       commitPending(nbId, settled.pending)
@@ -225,6 +238,7 @@ export function useNotebookRuns(activeId: string | null) {
     runningStatementCount: activePending.statementCount,
     runError: activePending.error,
     transient: activePending.transient,
+    transientHalted: activePending.halted,
     selectRun,
     loadMore,
     deleteRun,

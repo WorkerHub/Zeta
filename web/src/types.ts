@@ -103,7 +103,10 @@ export interface NotebookRunSummary {
   database_id: string
   database_name: string | null
   sql: string
-  statement_count: number
+  statement_count: number // statements the run submitted; a halted run returns fewer results
+  // The batch stopped at a failing statement, so fewer statements are in `results` than were
+  // submitted. false for a run whose every statement ran (stored with the run, see lib/runs.ts).
+  halted?: boolean
   row_count: number
   error_count: number
   duration_ms: number

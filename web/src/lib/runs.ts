@@ -66,15 +66,57 @@ export function removeRun(s: NotebookRunsState, runId: string): NotebookRunsStat
 
 // ── The run in flight ────────────────────────────────────────────────────────
 
+// A batch that stopped at its first failing statement (the worker's `halted`): the failing
+// statement's position (from 1) and how many submitted statements never ran.
+export interface HaltNotice {
+  failedAt: number
+  remaining: number
+}
+
+// The notice a batch response earns. A run that completed is not halted (the worker leaves
+// `halted` out or sends false), and a halt that left nothing unrun has nothing to announce, so
+// both give null. The failing statement is the last entry carrying an error; the position falls
+// back to the returned count when the worker sent no error entry.
+export function haltNotice(
+  halted: boolean | undefined,
+  results: StatementResult[],
+  submitted: number
+): HaltNotice | null {
+  const remaining = submitted - results.length
+  if (!halted || results.length === 0 || remaining <= 0) return null
+  let failedAt = results.length
+  for (let i = results.length - 1; i >= 0; i--) {
+    if (results[i]!.error) {
+      failedAt = i + 1
+      break
+    }
+  }
+  return { failedAt, remaining }
+}
+
+// The notice a run saved by the worker carries: its record keeps `halted` and how many statements
+// the run submitted (`statement_count`), so a run opened from history — after a reload or on
+// another device — announces the same halt as the response that created it. A record from before
+// the halt column existed has no `halted`, and one whose counts do not leave anything unrun gives
+// null, so nothing is ever announced from guesswork.
+export function runHaltNotice(
+  run: { halted?: boolean; statement_count: number },
+  results: StatementResult[]
+): HaltNotice | null {
+  return haltNotice(run.halted, results, run.statement_count)
+}
+
 // A run in progress, or what one left behind when the server did not name it: an error message,
 // or results that were not stored as a run (transient). `databaseName` is the database the run
 // was started on, shown in the history strip while it runs. `sql` is the statement the run is
 // executing (the first one when several were submitted) and `statementCount` how many there are,
-// which the results panel names while it runs.
+// which the results panel names while it runs. `halted` rides with the transient results (a saved
+// run carries its own notice with its cached results).
 export interface PendingRun {
   running: boolean
   error: string
   transient: StatementResult[] | null
+  halted: HaltNotice | null
   databaseName: string
   sql: string
   statementCount: number
@@ -84,6 +126,7 @@ export const idlePending: PendingRun = {
   running: false,
   error: '',
   transient: null,
+  halted: null,
   databaseName: '',
   sql: '',
   statementCount: 0,
@@ -93,12 +136,15 @@ export const runningPending = (databaseName: string, sql: string, statementCount
   running: true,
   error: '',
   transient: null,
+  halted: null,
   databaseName,
   sql,
   statementCount,
 })
 
-export type RunOutcome = { run: NotebookRunSummary | null; results: StatementResult[] } | { error: string }
+export type RunOutcome =
+  | { run: NotebookRunSummary | null; results: StatementResult[]; halted?: HaltNotice | null }
+  | { error: string }
 
 // Applies a run's outcome only while that notebook's run is still in flight: a response arriving
 // after the user cancelled is rejected, so it can neither replace what the panel shows nor turn
@@ -114,7 +160,7 @@ export function settleRun(pending: PendingRun, outcome: RunOutcome): SettledRun 
   if (!outcome.run)
     return {
       accepted: true,
-      pending: { ...idlePending, transient: outcome.results },
+      pending: { ...idlePending, transient: outcome.results, halted: outcome.halted ?? null },
       run: null,
       results: outcome.results,
     }

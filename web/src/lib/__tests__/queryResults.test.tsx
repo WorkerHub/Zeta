@@ -61,6 +61,46 @@ function render(props: Partial<Parameters<typeof QueryResults>[0]>) {
 // The results table as rendered, to compare two states' result area byte for byte
 const table = (html: string) => /<table[\s\S]*?<\/table>/.exec(html)?.[0]
 
+describe('QueryResults after a batch that halted', () => {
+  // Three statements submitted, two attempted, the second one failed
+  const partial: StatementResult[] = [
+    { sql: 'SELECT 1', results: [{ n: 1 }], duration_ms: 2 },
+    { sql: 'SELECT boom', results: [], duration_ms: 0, error: 'no such column: boom' },
+  ]
+  const halted = { failedAt: 2, remaining: 1 }
+
+  it('names the failing statement and what never ran, above the results it left', () => {
+    const html = render({ results: partial, halted, selectedResults: { status: 'ready', results: partial, halted } })
+    expect(html).toContain(t('results.halted', { n: 2, m: 1 }))
+    expect(html.indexOf(t('results.halted', { n: 2, m: 1 }))).toBeLessThan(html.indexOf('<table'))
+    // Both attempted statements are there, the failing one carrying its error
+    expect(html).toContain('SELECT boom')
+    expect(html).toContain(`<span class="text-micro tnum text-ink-500">#2 · ${t('results.error_short')} · 0ms</span>`)
+  })
+
+  it('says nothing about a run that completed', () => {
+    const html = render({})
+    expect(html).not.toContain(t('results.halted', { n: 1, m: 1 }))
+    expect(html).not.toContain('did not run')
+  })
+
+  it('says nothing while another run is in flight', () => {
+    const html = render({ results: partial, halted, running: true, runningDatabaseName: 'one' })
+    expect(html).not.toContain(t('results.halted', { n: 2, m: 1 }))
+  })
+
+  it('shows the notice for results the server did not name as well', () => {
+    const html = render({ transient: partial, results: partial, halted, selectedResults: null, selectedRun: null })
+    expect(html).toContain(t('results.halted', { n: 2, m: 1 }))
+  })
+
+  it('shows the notice in Chinese with the same numbers', () => {
+    setLocale('zh')
+    const html = render({ results: partial, halted, selectedResults: { status: 'ready', results: partial, halted } })
+    expect(html).toContain('第 2 条语句出错，已停止，其余 1 条未执行')
+  })
+})
+
 describe('QueryResults while a run is in flight', () => {
   it('keeps the history strip and the previous results on screen', () => {
     const html = render({ running: true, runningDatabaseName: 'one' })
