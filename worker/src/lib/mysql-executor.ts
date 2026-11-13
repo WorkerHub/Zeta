@@ -151,10 +151,15 @@ const timedFetch = (input: string, init: RequestInit = {}): Promise<Response> =>
 
 // Opens one driver connection and proves it with a `select 1` before the caller runs anything, so a
 // bad host, credential or network path surfaces once per request instead of once per statement.
-// The proof also reads `database()`: the endpoint pins one session per (credentials, database) and
-// reuses it for every later request, so a `USE` issued anywhere else (a CLI on the same instance,
-// another tool) would leave our statements silently running against the wrong schema. That is a
-// configuration problem the admin has to fix, not a query to guess about — fail closed on it.
+//
+// DEVIATION FROM THE FROZEN PLAN — kept by Muse's ruling of 2026-11-13, do not "simplify" it back.
+// Plan §3.3 specifies the proof as a bare `select 1`; this proof also reads `database()` and fails
+// closed (config) when the session sits on a different schema than the stored URL. Why: the endpoint
+// keeps ONE session per (credentials, database) and reuses it for every later request (plan §10-7),
+// so a `USE` issued anywhere else — a CLI on the same instance, another tool — would otherwise leave
+// our statements silently running against the wrong schema. Querying the wrong database is a data
+// correctness risk, so it is a hard configuration error for the admin to fix, not a query to guess
+// about. Approved to stay in the plan (was raised as an out-of-plan guard at review).
 export async function openMySqlSession(url: string): Promise<MySqlSession> {
   const { connect } = await import('@tidbcloud/serverless')
   const expected = databaseOf(url)
@@ -169,6 +174,7 @@ export async function openMySqlSession(url: string): Promise<MySqlSession> {
       fullResult: true,
     })) as ExecuteResult
     const actual = (proof.rows?.[0] as { db?: unknown } | undefined)?.db
+    // Beyond the plan's bare `select 1` — the 2026-11-13 approved deviation documented above.
     if (expected && typeof actual === 'string' && actual && actual !== expected) {
       throw new MySqlQueryError(
         `The instance's session is on database "${actual}" instead of "${expected}". Save the target again in Admin → Databases, or run USE \`${expected}\` on that instance.`,
