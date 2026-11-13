@@ -74,12 +74,27 @@ afterEach(() => {
 })
 
 describe('openMySqlSession', () => {
-  it('proves the connection with select 1 before running anything else', async () => {
+  it('proves the connection with select 1 and the session database before running anything else', async () => {
     seed()
     await openMySqlSession(URL)
     expect(driver.connects).toHaveLength(1)
     expect(driver.connects[0]!.url).toBe(URL)
-    expect(driver.executes.map((e) => e.sql)).toEqual(['select 1'])
+    expect(driver.executes.map((e) => e.sql)).toEqual(['select 1 as ok, database() as db'])
+  })
+
+  it('fails closed when the instance session points at another database', async () => {
+    // The endpoint keeps one session per (credentials, database) and reuses it, so a `USE` issued
+    // elsewhere would otherwise route our statements into the wrong schema.
+    driver.queue.push({ rows: [{ ok: 1, db: 'somewhere_else' }] })
+    await expect(openMySqlSession(URL)).rejects.toMatchObject({ kind: 'config' })
+    expect(driver.executes).toHaveLength(1)
+  })
+
+  it('accepts a session already on the registered database', async () => {
+    driver.queue.push({ rows: [{ ok: 1, db: 'zeta' }] })
+    const session = await openMySqlSession(URL)
+    expect(driver.executes).toHaveLength(1)
+    await session.close()
   })
 
   it('runs a read through the row cap with a MySQL subquery alias', async () => {
@@ -137,18 +152,28 @@ describe('openMySqlSession', () => {
 
 describe('describeMySqlError', () => {
   it('classifies a rejected statement (status 400 with an errno line) as sql', () => {
-    const err = dbError("Error 1146 (42S02): Table 'zeta.missing' doesn't exist", 400, '1146')
+    const err = dbError("Execute SQL fail: Error 1146 (42S02): Table 'zeta.missing' doesn't exist", 400, '61100002')
     expect(describeMySqlError(err)).toMatchObject({ kind: 'sql' })
   })
 
-  it('classifies 1105 as sql provisionally (live re-check pending)', () => {
+  it('classifies a parser error, which carries no errno line, as sql too', () => {
+    // Live shape (plan §10-6): `You have an error in your SQL syntax: line 1 column 5 near "SELEC 1"`
+    const err = dbError('You have an error in your SQL syntax: line 1 column 5 near "SELEC 1" ', 400, '400')
+    expect(describeMySqlError(err).kind).toBe('sql')
+  })
+
+  it('classifies 1105 as sql (finalized by the live re-check)', () => {
     const err = dbError('Error 1105 (HY000): context deadline exceeded', 400)
     expect(describeMySqlError(err).kind).toBe('sql')
   })
 
-  it('classifies a 400 that is not a statement error as config', () => {
-    const err = dbError('database name is required', 400)
-    expect(describeMySqlError(err).kind).toBe('config')
+  it('classifies an unknown database as config, even though it arrives as 401', () => {
+    // Live shape: `Error 1049 (42000): Unknown database 'nope'` with status 401
+    const err = dbError("Error 1049 (42000): Unknown database 'nope'", 401)
+    const described = describeMySqlError(err)
+    expect(described.kind).toBe('config')
+    expect(described.message).toContain('does not exist')
+    expect(described.message).not.toContain('Authentication')
   })
 
   it('classifies rejected credentials as auth', () => {

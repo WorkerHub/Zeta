@@ -180,6 +180,9 @@ describe('classifySql (mysql dialect)', () => {
     ['kill', 'KILL 1', 'forbidden'],
     ['shutdown', 'SHUTDOWN', 'forbidden'],
     ['start transaction', 'START TRANSACTION', 'forbidden'],
+    // `BEGIN` is MySQL's synonym of START TRANSACTION: the live re-check showed the endpoint keeps one
+    // session per credentials, so an open transaction there would capture every other request.
+    ['begin', 'BEGIN', 'forbidden'],
     ['commit', 'COMMIT', 'forbidden'],
     ['rollback', 'ROLLBACK', 'forbidden'],
     ['savepoint', 'SAVEPOINT s', 'forbidden'],

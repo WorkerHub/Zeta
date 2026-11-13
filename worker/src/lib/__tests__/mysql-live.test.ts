@@ -5,13 +5,42 @@ import { normalizeMySqlUrl } from '../mysql-url'
 // Opt-in live test: runs only when a real TiDB Cloud Starter connection string is provided in the
 // environment (team secret, never committed). It walks the re-check list of the phase-2 plan (§10):
 // normalisation, server version, the type mapping (BLOB/BIT byte-for-byte), the 5000-row cap, the
-// three failure classes, the absence of session state and one HTTP call per batch statement.
+// three failure classes, the session semantics and one HTTP call per batch statement.
 //
 //   TIDB_URL=… pnpm test -- mysql-live
 //
 // Everything it prints is prefixed `[mysql-live]` so the evidence can be pasted into the delivery
 // report. It creates and drops its own table and touches nothing else.
 const LIVE_URL = process.env.TIDB_URL ?? ''
+
+// A free instance's fixture URL may point at a system schema without DDL rights (this one points at
+// `sys`), so the write tests look for a database this user can create a table in: the string's own
+// database first, then `test`, which TiDB Cloud Starter grants to every instance user.
+async function writableUrl(base: string): Promise<string> {
+  const parsed = new URL(base)
+  const own = parsed.pathname.replace(/^\//, '')
+  const candidates = own && own !== 'test' ? [own, 'test'] : ['test']
+  const errors: string[] = []
+  for (const database of candidates) {
+    const url = new URL(base)
+    url.pathname = `/${database}`
+    const session = await openMySqlSession(url.toString()).catch((err) => {
+      errors.push(`${database}: ${describeMySqlError(err).message}`)
+      return null
+    })
+    if (!session) continue
+    try {
+      await session.run('CREATE TABLE IF NOT EXISTS zeta_live_probe (id INT PRIMARY KEY)', 'write', 5000)
+      await session.run('DROP TABLE zeta_live_probe', 'write', 5000)
+      return url.toString()
+    } catch (err) {
+      errors.push(`${database}: ${describeMySqlError(err).message}`)
+    } finally {
+      await session.close()
+    }
+  }
+  throw new Error(`no writable database on this instance (${errors.join(' | ')})`)
+}
 
 function hexOfBase64(value: unknown): string {
   if (typeof value !== 'string') return `<not a string: ${typeof value}>`
@@ -35,11 +64,17 @@ describe.skipIf(!LIVE_URL)('mysql executor against a live TiDB Cloud Starter', (
     log('normalised host', normalized.host)
     log('database', normalized.database)
 
-    // A rejected string never carries its credentials back
-    const rejected = normalizeMySqlUrl(LIVE_URL.replace('@', '@wrong.'))
+    // The stored form is a fixed point: normalising it again changes nothing.
+    const again = normalizeMySqlUrl(normalized.url)
+    expect(again.ok && again.url).toBe(normalized.url)
+
+    // A string for another host is refused, and the message never carries the credential back.
+    const password = decodeURIComponent(new URL(normalized.url).password)
+    const elsewhere = new URL(normalized.url)
+    elsewhere.hostname = 'db.example.com'
+    const rejected = normalizeMySqlUrl(elsewhere.toString())
     expect(rejected.ok).toBe(false)
-    const password = new URL(normalized.url).password
-    if (!rejected.ok && password) expect(rejected.error).not.toContain(decodeURIComponent(password))
+    if (!rejected.ok && password) expect(rejected.error).not.toContain(password)
   })
 
   it('reads the server version through the test-connection path', { timeout: 120_000 }, async () => {
@@ -51,8 +86,9 @@ describe.skipIf(!LIVE_URL)('mysql executor against a live TiDB Cloud Starter', (
   })
 
   it('round-trips the documented type mapping and caps the rows', { timeout: 180_000 }, async () => {
-    const normalized = normalizeMySqlUrl(LIVE_URL)
+    const normalized = normalizeMySqlUrl(await writableUrl(LIVE_URL))
     if (!normalized.ok) throw new Error(normalized.error)
+    log('type test database', normalized.database)
     const session = await openMySqlSession(normalized.url)
     try {
       await session.run(`drop table if exists ${table}`, 'write', 5000)
@@ -91,8 +127,9 @@ describe.skipIf(!LIVE_URL)('mysql executor against a live TiDB Cloud Starter', (
       expect(row.dt).toBe('2026-11-12 15:39:41')
       expect(row.doc).toEqual({ n: 1 })
       expect(row.flag).toBe(1)
-      expect(typeof row.blob_col).toBe('string')
-      expect(typeof row.bits).toBe('string')
+      // §10-3, finalized: the bytes match what was written — no extra leading 0x00 on BLOB or BIT.
+      expect(hexOfBase64(row.blob_col)).toBe('0102')
+      expect(hexOfBase64(row.bits)).toBe('03')
 
       // Row cap: 5005 rows in one statement, then a read capped at 5000.
       const values = Array.from({ length: 5005 }, (_, i) => `(${i + 1})`).join(',')
@@ -103,10 +140,13 @@ describe.skipIf(!LIVE_URL)('mysql executor against a live TiDB Cloud Starter', (
       expect(capped.results).toHaveLength(5000)
       expect(capped.truncated).toBe(true)
 
-      // A missing table is a statement error, shown to everyone (400 on the route)
+      // §10-6: statement errors arrive as 400 and are shown to everyone.
       const missing = await session.run('select * from zeta_missing_table_xyz', 'read', 5000).catch((err) => err)
-      log('missing table', { kind: missing?.kind, status: missing?.status, message: missing?.message })
+      log('missing table', { kind: missing?.kind, message: missing?.message })
       expect(missing).toMatchObject({ kind: 'sql' })
+      const syntax = await session.run('SELEC 1', 'read', 5000).catch((err) => err)
+      log('syntax error', { kind: syntax?.kind, message: syntax?.message })
+      expect(syntax).toMatchObject({ kind: 'sql' })
     } finally {
       await session.run(`drop table if exists ${table}`, 'write', 5000).catch(() => {})
       await session.close()
@@ -120,7 +160,7 @@ describe.skipIf(!LIVE_URL)('mysql executor against a live TiDB Cloud Starter', (
     const password = decodeURIComponent(parsed.password)
     const database = parsed.pathname.replace(/^\//, '')
 
-    const withPassword = (next: string) => {
+    const withpassword = (next: string) => {
       const url = new URL(normalized.url)
       url.password = next
       return url.toString()
@@ -136,10 +176,10 @@ describe.skipIf(!LIVE_URL)('mysql executor against a live TiDB Cloud Starter', (
       return url.toString()
     }
 
-    // Wrong credential → auth, wrong database → config, unreachable gateway → transport.
-    // These are the plan's provisional expectations (§3.5); the log line is the re-check evidence.
+    // Wrong credential → auth, wrong database → config (the endpoint answers 401 + Error 1049 for it),
+    // unreachable gateway → transport. This is the §10-5 conclusion, recorded in the log line.
     const cases = [
-      ['auth (wrong password)', withPassword(`${password}-wrong`), 'auth'],
+      ['auth (wrong password)', withpassword(`${password}-wrong`), 'auth'],
       ['config (wrong database)', withDatabase(`${database}_nope`), 'config'],
       ['transport (unreachable host)', withHost('gateway99.dead-region.prod.aws.tidbcloud.com'), 'transport'],
     ] as const
@@ -164,18 +204,26 @@ describe.skipIf(!LIVE_URL)('mysql executor against a live TiDB Cloud Starter', (
     }
   })
 
-  it('keeps no session state between statements', { timeout: 120_000 }, async () => {
+  it('records that the endpoint keeps one session per credentials (§10-7)', { timeout: 120_000 }, async () => {
     const normalized = normalizeMySqlUrl(LIVE_URL)
     if (!normalized.ok) throw new Error(normalized.error)
-    const session = await openMySqlSession(normalized.url)
+    const first = await openMySqlSession(normalized.url)
     try {
-      // The route refuses these two, but the executor itself must show why: nothing carries over.
-      await session.run('SET @zeta_live_x = 1', 'write', 5000)
-      const read = await session.run('SELECT @zeta_live_x AS x', 'read', 5000)
-      log('session variable after SET', read.results[0])
-      expect(read.results[0]?.x ?? null).toBeNull()
+      // The route refuses `SET` (lib/sql-guard.ts), but the executor itself shows what the endpoint
+      // does: a user variable set here is visible from a *fresh* driver connection afterwards.
+      await first.run('SET @zeta_live_shared = 1', 'write', 5000)
+      const second = await openMySqlSession(normalized.url)
+      try {
+        const read = await second.run('SELECT @zeta_live_shared AS v', 'read', 5000)
+        log('user variable from a fresh connection', read.results[0])
+        expect(read.results[0]?.v).toBe('1')
+      } finally {
+        await second.close()
+      }
     } finally {
-      await session.close()
+      // Leave the shared session as it was found.
+      await first.run('SET @zeta_live_shared := NULL', 'write', 5000).catch(() => {})
+      await first.close()
     }
   })
 

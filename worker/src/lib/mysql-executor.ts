@@ -7,8 +7,12 @@ import { isWriteClass, limitReadSql, type SqlClass } from './sql-guard'
 // connection object and every statement of a batch runs through that one object in order; nothing
 // is pooled or cached between requests (Workers requests do not share memory anyway).
 //
-// The statements are stateless on purpose: no `persist()` and no `begin()`, so no server-side
-// session survives between statements. `USE`/`SET` are refused by the SQL guard for that reason.
+// The executor never asks for session features: no `persist()`, no `begin()`, no `USE`/`SET` of its
+// own. It cannot rely on per-request isolation either — the live re-check (2026-11-13, plan §10-7)
+// showed the HTTP endpoint pins **one** server-side session per set of credentials and returns the
+// same `CONNECTION_ID` to every request (even from a fresh process), so `USE`/`SET`/`BEGIN` from one
+// statement would persist for every other request of the app. That is why lib/sql-guard.ts refuses
+// them for this dialect instead of treating them as harmless.
 //
 // The driver is imported dynamically so the D1 paths (the vast majority of requests) never pay for
 // loading it, exactly like the PostgreSQL executor.
@@ -77,16 +81,21 @@ function safeDecode(value: string): string {
   }
 }
 
-// The endpoint answers a rejected statement with `Error <errno> (<sqlstate>): …`, both for statement
-// errors and for the `Error 1105 (HY000)` family. Everything else at 400 is a request-shape problem.
-const STATEMENT_ERROR = /^Error \d+ \([0-9A-Za-z]{5}\)/
+// Live re-check (2026-11-13, TiDB Cloud Starter v8.5.3, plan §10-6): the endpoint answers **every**
+// rejected statement with 400 — parser errors carry no `Error <errno>` line at all
+// (`You have an error in your SQL syntax: …`), table/column/privilege errors arrive as
+// `Execute SQL fail: Error 1146 (42S02): …`, unsupported statements as `Unsupported SQL …`. Credential
+// and database problems both come back as 401 instead. The status therefore decides, not the wording,
+// and an offline-instance `Error 1105 (HY000)` would land on 400 like any other statement error.
+const UNKNOWN_DATABASE = /Error 1049 \(42000\)/
 
 // `btoa` refuses anything outside Latin-1, which is how a credential with a non-Latin-1 character
 // fails — a stored-connection problem, not a statement problem.
 const UNENCODABLE_CREDENTIALS = /invalidcharactererror|latin1|latin-1|iso-8859-1/i
 
-// Maps a driver error to a classified, readable one (plan §3.5). `connect` means the request never
-// got as far as running SQL, so anything there is a configuration/transport problem.
+// Maps a driver error to a classified, readable one (plan §3.5, finalized by the live re-check).
+// `connect` means the request never got as far as running SQL, so anything there is a
+// configuration/transport problem.
 export function describeMySqlError(err: unknown, url = '', connect = false): MySqlQueryError {
   if (err instanceof MySqlQueryError) return err
   const raw = err instanceof Error ? err.message : String(err)
@@ -98,7 +107,14 @@ export function describeMySqlError(err: unknown, url = '', connect = false): MyS
   if (/empty session/i.test(raw)) {
     return new MySqlQueryError(`The endpoint did not keep a session, try again: ${message}`, 'transport')
   }
-  if (status === 401 || status === 403) return new MySqlQueryError(`Authentication failed: ${message}`, 'auth')
+  if (status === 401 || status === 403) {
+    // Live: an unknown database also arrives as 401 (`Error 1049 (42000)`), so it must not be shown as
+    // a credential problem — it is a deployment detail the admin fixes by saving the target again.
+    if (UNKNOWN_DATABASE.test(raw)) {
+      return new MySqlQueryError(`The database does not exist: ${message}`, 'config')
+    }
+    return new MySqlQueryError(`Authentication failed: ${message}`, 'auth')
+  }
   // No rate-limit class exists in this API: 429 is a deployment-level detail with a quota hint.
   if (status === 429) {
     return new MySqlQueryError(`The endpoint is rate limiting or over quota: ${message}`, 'transport')
@@ -106,13 +122,9 @@ export function describeMySqlError(err: unknown, url = '', connect = false): MyS
   if (status >= 500 && status < 600) {
     return new MySqlQueryError(`Could not reach the database: ${message}`, 'transport')
   }
-  if (status === 400) {
-    // Error 1105 is provisionally treated as a statement error; the live re-check (plan §10-6)
-    // decides whether it stays there.
-    return STATEMENT_ERROR.test(raw)
-      ? new MySqlQueryError(message, 'sql')
-      : new MySqlQueryError(`The connection is not usable as configured: ${message}`, 'config')
-  }
+  // 400 = the server rejected this statement, whatever its wording (see the note above). Shown to
+  // everyone as a 400.
+  if (status === 400) return new MySqlQueryError(message, 'sql')
   if (UNENCODABLE_CREDENTIALS.test(raw)) {
     return new MySqlQueryError(`The stored credentials cannot be encoded: ${message}`, 'config')
   }
@@ -122,6 +134,16 @@ export function describeMySqlError(err: unknown, url = '', connect = false): MyS
 
 type ExecuteResult = { rows?: unknown[] | null; rowsAffected?: number | null }
 
+// The database the session must be pointed at, taken from the stored (normalised) URL.
+function databaseOf(url: string): string | null {
+  try {
+    const path = new URL(url).pathname.replace(/^\//, '')
+    return path ? decodeURIComponent(path) : null
+  } catch {
+    return null
+  }
+}
+
 // The driver passes (url, { method, body, headers, cache }) to the injected fetch; the timeout is
 // added on top, so a hung endpoint fails as a transport error instead of holding the request.
 const timedFetch = (input: string, init: RequestInit = {}): Promise<Response> =>
@@ -129,8 +151,13 @@ const timedFetch = (input: string, init: RequestInit = {}): Promise<Response> =>
 
 // Opens one driver connection and proves it with a `select 1` before the caller runs anything, so a
 // bad host, credential or network path surfaces once per request instead of once per statement.
+// The proof also reads `database()`: the endpoint pins one session per (credentials, database) and
+// reuses it for every later request, so a `USE` issued anywhere else (a CLI on the same instance,
+// another tool) would leave our statements silently running against the wrong schema. That is a
+// configuration problem the admin has to fix, not a query to guess about — fail closed on it.
 export async function openMySqlSession(url: string): Promise<MySqlSession> {
   const { connect } = await import('@tidbcloud/serverless')
+  const expected = databaseOf(url)
   let connection: ReturnType<typeof connect>
   try {
     connection = connect({
@@ -138,7 +165,16 @@ export async function openMySqlSession(url: string): Promise<MySqlSession> {
       // Workers verifies the endpoint certificate against the platform trust store; nothing to inject.
       fetch: timedFetch as unknown as NonNullable<Parameters<typeof connect>[0]['fetch']>,
     })
-    await connection.execute('select 1', null, { fullResult: true })
+    const proof = (await connection.execute('select 1 as ok, database() as db', null, {
+      fullResult: true,
+    })) as ExecuteResult
+    const actual = (proof.rows?.[0] as { db?: unknown } | undefined)?.db
+    if (expected && typeof actual === 'string' && actual && actual !== expected) {
+      throw new MySqlQueryError(
+        `The instance's session is on database "${actual}" instead of "${expected}". Save the target again in Admin → Databases, or run USE \`${expected}\` on that instance.`,
+        'config'
+      )
+    }
   } catch (err) {
     throw describeMySqlError(err, url, true)
   }

@@ -147,9 +147,14 @@ const FILE_STATEMENTS = new Set(['copy', 'load'])
 const CTE_WRITE_KEYWORDS = new Set(['insert', 'update', 'delete', 'replace', 'merge'])
 
 // MySQL statements that name no data but change the connection, the server or the caller's
-// privileges — and, on a stateless HTTP endpoint, cannot even work as they read: `USE`/`SET @x` do
-// not carry over to the next statement, so allowing them would only mislead. `CREATE USER/ROLE` is
-// caught separately (it starts with `create`).
+// privileges. `CREATE USER/ROLE` is caught separately (it starts with `create`).
+//
+// Live re-check (2026-11-13, plan §10-7): the endpoint keeps **one** session per set of credentials,
+// shared by every request of the app (same `CONNECTION_ID` from a fresh process, `SET @x` and `USE`
+// both visible to the next request). `USE`/`SET` therefore do work — and would silently rewrite the
+// session for every other user's query, which is worse than the earlier "they do nothing" reading.
+// `BEGIN` is MySQL's synonym of the already-forbidden `START TRANSACTION`: an open transaction in the
+// shared session would capture other requests' statements.
 const MYSQL_FORBIDDEN_KEYWORDS = new Set([
   'lock',
   'unlock',
@@ -162,6 +167,7 @@ const MYSQL_FORBIDDEN_KEYWORDS = new Set([
   'kill',
   'shutdown',
   'start',
+  'begin',
   'commit',
   'rollback',
   'savepoint',
