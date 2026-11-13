@@ -171,15 +171,15 @@ export default function RunHistoryBar({
         <div
           ref={scrollerRef}
           onScroll={loadMoreAtEnd}
-          className="relative flex flex-1 min-w-0 overflow-x-auto overscroll-x-contain py-0.5 [scrollbar-width:thin]"
+          className="relative flex flex-1 min-w-0 overflow-x-auto overscroll-x-contain py-0.5 run-history-scroll"
         >
           {/* ml-auto keeps a short strip at the right; a long one overflows to the right and scrolls */}
           <div className="ml-auto flex items-center gap-1 shrink-0">
-            <div role="tablist" aria-label={t('runs.tablist')} className="flex items-center gap-1">
+            <div role="tablist" aria-label={t('runs.tablist')} className="run-tab-strip flex items-center gap-1">
               {/* The run in flight: a tab-shaped marker that cannot be selected (clicking it does
                   nothing, arrow keys navigate the saved runs only) and whose X cancels the run */}
               {running && (
-                <div className="flex items-center shrink-0 rounded-md border border-brand-200 bg-brand-50 text-brand-700">
+                <div className="flex items-center shrink-0 rounded-md border border-brand-200 bg-brand-50 text-brand-700 run-tab-accent">
                   <div className="flex items-center gap-1 pl-1.5 pr-1 py-0.5 font-mono tnum">
                     <Loader2 size={11} className="animate-spin shrink-0" aria-hidden="true" />
                     <span className="sr-only">{t('query.running')}</span>#{pendingSeq}
@@ -205,7 +205,7 @@ export default function RunHistoryBar({
                     key={run.id}
                     className={`flex items-center shrink-0 rounded-md border ${
                       active
-                        ? 'border-brand-200 bg-brand-50 text-brand-700'
+                        ? 'border-brand-200 bg-brand-50 text-brand-700 run-tab-accent'
                         : 'border-transparent text-ink-500 hover:bg-ink-100'
                     }`}
                   >
