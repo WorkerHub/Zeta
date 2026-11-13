@@ -3,6 +3,7 @@ import type { SparkAccess } from '../spark-access'
 import {
   CONNECT_HARD_CAP_MS,
   CONNECT_TEST_OPEN,
+  MAX_SESSION_CHARS,
   openSparkSession,
   probeSparkHealth,
   QUERY_HEALTH,
@@ -151,6 +152,47 @@ describe('openSparkSession', () => {
     expect(String(calls[1]!.init.body)).not.toContain('zeta_limit')
   })
 
+  it("sends the caller's session with every statement of the request", async () => {
+    script.push(healthOk(), queryOk({ columns: ['n'], rows: [[1]] }), queryOk({ columns: ['n'], rows: [[2]] }))
+    const session = await openSparkSession(ACCESS, { session: 'u1' })
+    await session.run('select 1', 'read', 1)
+    await session.run('select 2', 'read', 1)
+    // One request is one session: a batch's statements must not straddle two of them
+    expect(JSON.parse(String(calls[1]!.init.body))).toEqual({ sql: 'select 1', maxRows: 1, session: 'u1' })
+    expect(JSON.parse(String(calls[2]!.init.body))).toEqual({ sql: 'select 2', maxRows: 1, session: 'u1' })
+  })
+
+  it('leaves the field out without a session, and drops a blank one', async () => {
+    script.push(
+      healthOk(),
+      queryOk({ columns: ['n'], rows: [[1]] }),
+      healthOk(),
+      queryOk({ columns: ['n'], rows: [[2]] })
+    )
+    const plain = await openSparkSession(ACCESS)
+    await plain.run('select 1', 'read', 1)
+    expect(JSON.parse(String(calls[1]!.init.body))).toEqual({ sql: 'select 1', maxRows: 1 })
+
+    const blank = await openSparkSession(ACCESS, { session: '   ' })
+    await blank.run('select 2', 'read', 1)
+    expect(JSON.parse(String(calls[3]!.init.body))).toEqual({ sql: 'select 2', maxRows: 1 })
+  })
+
+  it('refuses a session over the contract ceiling before any request is made', async () => {
+    const error = await openSparkSession(ACCESS, { session: 'x'.repeat(MAX_SESSION_CHARS + 1) }).catch((err) => err)
+    expect(error).toMatchObject({ kind: 'config', code: 'spark_config' })
+    // Neither /health nor /query: an unusable identifier never costs the machine a request
+    expect(calls).toHaveLength(0)
+  })
+
+  it('accepts a session of exactly the contract ceiling', async () => {
+    const session = 'y'.repeat(MAX_SESSION_CHARS)
+    script.push(healthOk(), queryOk({ columns: ['n'], rows: [[1]] }))
+    const opened = await openSparkSession(ACCESS, { session })
+    await opened.run('select 1', 'read', 1)
+    expect(JSON.parse(String(calls[1]!.init.body))).toEqual({ sql: 'select 1', maxRows: 1, session })
+  })
+
   it('passes truncated through, whether the cap was reached or not', async () => {
     script.push(healthOk(), queryOk({ columns: ['n'], rows: [[1], [2]], truncated: true }))
     const session = await openSparkSession(ACCESS)
@@ -287,6 +329,12 @@ describe('testSparkConnection', () => {
     await expect(testSparkConnection(ACCESS)).resolves.toEqual({ server_version: '3.5.3' })
     expect(calls.map((c) => c.url)).toEqual([`${ACCESS.url}/health`, `${ACCESS.url}/query`])
     expect(JSON.parse(String(calls[1]!.init.body))).toEqual({ sql: 'select 1', maxRows: 1 })
+  })
+
+  it("carries the admin's session on its select 1", async () => {
+    script.push(healthOk(), queryOk({ columns: ['ok'], rows: [[1]] }))
+    await testSparkConnection(ACCESS, 'a1')
+    expect(JSON.parse(String(calls[1]!.init.body))).toEqual({ sql: 'select 1', maxRows: 1, session: 'a1' })
   })
 
   it('fails on a health-only answer, because an application token is not proven by it', async () => {

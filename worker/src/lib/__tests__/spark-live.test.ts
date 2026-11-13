@@ -117,3 +117,44 @@ describeLive('spark-live: the published port', () => {
     }
   })
 })
+
+// One request carries the caller's `session`, and the machine keeps one SparkSession per value. The
+// block below proves both halves of that contract from Zeta's side: a temp view stays inside the
+// session that created it, while a table in the metastore is there for every session. It is gated on
+// its own switch because it needs the service that understands the field — run it after that upgrade:
+//
+//   SPARK_LIVE_MULTI_SESSION=1 ./node_modules/.bin/vitest run spark-live
+const MULTI_SESSION = process.env.SPARK_LIVE_MULTI_SESSION === '1'
+const describeMultiSession = access && MULTI_SESSION ? describe : describe.skip
+
+describeMultiSession('spark-live: one session per caller', () => {
+  it('keeps temp views private and the metastore shared across two sessions', SLOW, async () => {
+    const stamp = Date.now()
+    const view = `zeta_sess_view_${stamp}`
+    const table = `zeta_sess_shared_${stamp}`
+    const first = await openSparkSession(requireAccess(), { session: `zeta-live-a-${stamp}` })
+    const second = await openSparkSession(requireAccess(), { session: `zeta-live-b-${stamp}` })
+    try {
+      // A temp view belongs to the session that created it, and to no other
+      await first.run(`create or replace temp view ${view} as select 1 as x`, 'write', 5000)
+      const own = await first.run(`select x from ${view}`, 'read', 5000)
+      log('same session sees its temp view', own.results[0])
+      expect(Number(own.results[0]?.x)).toBe(1)
+
+      const other = await second.run(`select * from ${view}`, 'read', 5000).catch((err) => err)
+      log('other session cannot see the temp view', { kind: other.kind, code: other.code })
+      expect(other).toMatchObject({ kind: 'sql', code: 'spark_sql' })
+
+      // The metastore is shared: what one session writes, the other reads
+      await first.run(`create table ${table} (id int)`, 'write', 5000)
+      await first.run(`insert into ${table} values (1), (2), (3)`, 'write', 5000)
+      const shared = await second.run(`select count(*) as n from ${table}`, 'read', 5000)
+      log('other session reads the shared table', shared.results[0])
+      expect(Number(shared.results[0]?.n)).toBe(3)
+    } finally {
+      await first.run(`drop table if exists ${table}`, 'write', 5000).catch(() => {})
+      await first.close()
+      await second.close()
+    }
+  })
+})

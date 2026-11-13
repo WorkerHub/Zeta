@@ -52,8 +52,9 @@ vi.mock('../../lib/spark-executor', async (importOriginal) => {
   }
 })
 
-const { CONNECT_TEST_OPEN, SPARK_APP_TOKEN_MESSAGE, SPARK_STARTING_MESSAGE, SPARK_STOPPED_MESSAGE, VERIFY_HEALTH } =
-  await import('../../lib/spark-executor')
+const { SPARK_APP_TOKEN_MESSAGE, SPARK_STARTING_MESSAGE, SPARK_STOPPED_MESSAGE, VERIFY_HEALTH } = await import(
+  '../../lib/spark-executor'
+)
 
 const HOST = 'spark-3f9a.publish.example.dev'
 const PAYLOAD = {
@@ -110,8 +111,8 @@ describe('query a SparkSQL target', () => {
     expect(spark.opened[0]!.url).toBe(PAYLOAD.url)
     expect(spark.opened[0]!.runs).toEqual([{ sql: 'SELECT 1 AS n', kind: 'read' }])
     expect(spark.opened[0]!.closed).toBe(true)
-    // A query gets the short budget, never the connection check's
-    expect(spark.opened[0]!.opts).toBeUndefined()
+    // A query gets the short budget, never the connection check's — and carries the caller's session
+    expect(spark.opened[0]!.opts).toStrictEqual({ session: 'u1' })
   })
 
   it('refuses the spark-forbidden statements before opening a session', async () => {
@@ -195,6 +196,9 @@ describe('query a SparkSQL target', () => {
     expect(body.results[1]!.error).toBe('boom')
     expect(body.results[1]!.code).toBeUndefined()
     expect(spark.opened).toHaveLength(1)
+    // One session for the whole batch, opened for the caller (here the admin)
+    expect(spark.opened[0]!.opts).toStrictEqual({ session: 'a1' })
+    expect(spark.opened[0]!.runs).toHaveLength(2)
   })
 
   it('refuses a spark row whose stored payload is missing', async () => {
@@ -216,9 +220,8 @@ describe('POST /api/query/probe', () => {
     const body = (await res.json()) as { ok: boolean; kind: string; latency_ms: number }
     expect(body).toMatchObject({ ok: true, kind: 'spark' })
     expect(typeof body.latency_ms).toBe('number')
-    // The probe opens with the patient budget: 20 s health, 120 s hard cap
-    expect(spark.opened[0]!.opts).toBe(CONNECT_TEST_OPEN)
-    expect(spark.opened[0]!.opts).toStrictEqual({ health: VERIFY_HEALTH, hardCapMs: 120_000 })
+    // The probe opens with the patient budget: 20 s health, 120 s hard cap — plus the caller's session
+    expect(spark.opened[0]!.opts).toStrictEqual({ health: VERIFY_HEALTH, hardCapMs: 120_000, session: 'u1' })
     expect(spark.opened[0]!.runs).toEqual([{ sql: 'select 1', kind: 'read' }])
     expect(spark.opened[0]!.closed).toBe(true)
   })

@@ -9,7 +9,7 @@ import type { SparkAccess } from './spark-access'
 //   GET  {url}/health  → {"ok":true,"sparkVersion":"3.5.3"}   (platform token only)
 //   POST {url}/query   → {"columns":[…],"rows":[[…]],"rowCount":n,"truncated":bool}
 //                        headers: Authorization: Bearer <platform token>, X-Auth-Token: <app token>
-//                        body:    {"sql":"…","maxRows":5000}
+//                        body:    {"sql":"…","maxRows":5000,"session":"<caller id>"}
 //
 // There is no driver to load: Workers cannot open a Spark Connect (gRPC) or Thrift (JDBC) session,
 // and the service's HTTP contract *is* the interface. So this module is a thin `fetch` client with
@@ -66,6 +66,26 @@ export const SPARK_PUBLISH_TOKEN_MESSAGE =
 // most 2000 characters, and nothing a user reads needs more than this.
 const MAX_ERROR_CHARS = 1500
 
+// The service's ceiling for the request's `session` field. Zeta sends the caller's user id, which is
+// a 36-character uuid; the check turns a wrong caller into a configuration error here instead of a
+// service 400, which would be classified as a rejected statement and shown as a SQL mistake.
+export const MAX_SESSION_CHARS = 128
+
+// The caller's session as the request should carry it: blank falls back to the service's default
+// session (the behaviour before the field existed), too long is a bug in this deployment.
+function readSession(value: string | undefined): string | undefined {
+  const session = value?.trim()
+  if (!session) return undefined
+  if (session.length > MAX_SESSION_CHARS) {
+    throw new SparkQueryError(
+      `The Spark session identifier must be at most ${MAX_SESSION_CHARS} characters.`,
+      'config',
+      'spark_config'
+    )
+  }
+  return session
+}
+
 const HEALTH_ATTEMPT_TIMEOUT_MS = 10_000
 
 /** A single statement's timeout. SPEC v2.6: 300 s, whatever the spike's earlier 60 s reading said. */
@@ -117,6 +137,13 @@ export interface SparkOpenOptions {
   /** A deadline for opening (the health probe) plus every statement that follows it. */
   hardCapMs?: number
   statementTimeoutMs?: number
+  /**
+   * The caller's own session — the Zeta user id: an identifier only, never a credential. The service
+   * keeps one SparkSession per value: a given session serialises its statements, different sessions
+   * run in parallel, temp views and the current database stay private, and the metastore is shared.
+   * Omitted → the service's default session.
+   */
+  session?: string
 }
 
 /** What a connection check runs with: the 20 s health budget and the 120 s hard cap, in one place. */
@@ -250,7 +277,8 @@ async function postQuery(
   access: SparkAccess,
   statement: string,
   maxRows: number,
-  timeoutMs: number
+  timeoutMs: number,
+  session?: string
 ): Promise<SparkResponse> {
   let res: Response
   try {
@@ -262,7 +290,9 @@ async function postQuery(
         'Content-Type': 'application/json',
         Accept: 'application/json',
       },
-      body: JSON.stringify({ sql: statement, maxRows }),
+      // The field is left out entirely when there is no session, so the service answers on its default
+      // session exactly as it did before the field existed.
+      body: JSON.stringify(session ? { sql: statement, maxRows, session } : { sql: statement, maxRows }),
       signal: AbortSignal.timeout(Math.max(1, timeoutMs)),
     })
   } catch (err) {
@@ -294,6 +324,9 @@ async function postQuery(
 // Opens one session: proves the machine is reachable, then hands out its `run`. `hardCapMs` bounds
 // everything that follows — the connection check needs that, a query does not.
 export async function openSparkSession(access: SparkAccess, opts: SparkOpenOptions = {}): Promise<SparkSession> {
+  // Read before the health probe: an unusable session is this deployment's problem, not a reason to
+  // spend a request on the machine.
+  const session = readSession(opts.session)
   const deadline = opts.hardCapMs ? Date.now() + opts.hardCapMs : Number.POSITIVE_INFINITY
   const health = await probeSparkHealth(access, opts.health ?? QUERY_HEALTH, deadline)
   const statementTimeout = opts.statementTimeoutMs ?? QUERY_TIMEOUT_MS
@@ -304,7 +337,7 @@ export async function openSparkSession(access: SparkAccess, opts: SparkOpenOptio
     async run(statement: string, kind: SqlClass, maxRows: number): Promise<SparkExecuted> {
       const remaining = deadline - Date.now()
       if (remaining <= 0) throw new SparkQueryError(SPARK_STARTING_MESSAGE, 'starting', 'spark_not_ready')
-      const response = await postQuery(access, statement, maxRows, Math.min(statementTimeout, remaining))
+      const response = await postQuery(access, statement, maxRows, Math.min(statementTimeout, remaining), session)
 
       // A write's result table is not returned, and the service's rowCount is 0 for DDL/DML — an
       // affected-row count is never invented here (same contract as the D1 and PostgreSQL paths).
@@ -329,12 +362,13 @@ export async function openSparkSession(access: SparkAccess, opts: SparkOpenOptio
 // Proves a registration works, for the admin "test connection" step and right before a Spark row is
 // written: /health for reachability and the platform token, then one statement for the app token and
 // the execution path. The reported version is the one /health gave.
-export async function testSparkConnection(access: SparkAccess): Promise<{ server_version: string }> {
-  const session = await openSparkSession(access, CONNECT_TEST_OPEN)
+export async function testSparkConnection(access: SparkAccess, session?: string): Promise<{ server_version: string }> {
+  // The admin's own session: the check runs the way that admin's queries will.
+  const opened = await openSparkSession(access, { ...CONNECT_TEST_OPEN, session })
   try {
-    await session.run('select 1', 'read', 1)
-    return { server_version: session.sparkVersion ?? '' }
+    await opened.run('select 1', 'read', 1)
+    return { server_version: opened.sparkVersion ?? '' }
   } finally {
-    await session.close()
+    await opened.close()
   }
 }
