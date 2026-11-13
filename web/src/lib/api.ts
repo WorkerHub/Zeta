@@ -329,13 +329,19 @@ export const adminApi = {
   listD1Databases: () => apiFetch<{ results: CfD1Database[] }>('/admin/d1/databases'),
   // One live connection to a connection-string target; stores nothing. The registration form
   // gates its save button on a passing result for the exact string it is about to submit.
-  testConnection: (body: { connection_url: string }) =>
-    apiFetch<{ ok: boolean; server_version?: string; latency_ms?: number }>('/admin/databases/test-connection', {
-      method: 'POST',
-      body: JSON.stringify(body),
-    }),
+  // `kind` picks the driver and the URL parser on the worker (`mysql` = TiDB Cloud Starter);
+  // omitting it keeps the PostgreSQL default.
+  testConnection: (body: { connection_url: string; kind?: DbKind }) =>
+    apiFetch<{ ok: boolean; kind?: DbKind; server_version?: string; latency_ms?: number }>(
+      '/admin/databases/test-connection',
+      {
+        method: 'POST',
+        body: JSON.stringify(body),
+      }
+    ),
   createDatabase: (body: {
     kind?: DbKind
+    /** A connection string for `postgres` / `mysql`; ignored by the D1 kinds. */
     connection_url?: string
     cf_database_id?: string
     name?: string

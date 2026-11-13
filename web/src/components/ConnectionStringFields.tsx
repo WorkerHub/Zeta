@@ -1,11 +1,25 @@
 import { useState } from 'react'
 import { Eye, EyeOff, Loader2, PlugZap } from 'lucide-react'
 import { useLocale } from '../hooks/useLocale'
-import type { PgTestState } from '../lib/pg-connection'
+import type { ConnectionStringKind, ConnectionTestState } from '../lib/pg-connection'
+
+/** The string each engine expects, and how to get one — the only thing the engine changes here. */
+const COPY: Record<ConnectionStringKind, { placeholder: string; hint: string }> = {
+  postgres: {
+    placeholder: 'admin_db.connection_url_placeholder',
+    hint: 'admin_db.connection_url_hint',
+  },
+  mysql: {
+    placeholder: 'admin_db.connection_url_placeholder_mysql',
+    hint: 'admin_db.connection_url_hint_mysql',
+  },
+}
 
 interface Props {
+  /** The engine the string targets. It only picks the copy; the field and the test are the same. */
+  kind: ConnectionStringKind
   url: string
-  testState: PgTestState
+  testState: ConnectionTestState
   /** Error text of a failed test, shown verbatim (the worker's message never includes the secret). */
   testError: string
   /** Detail of the last passing test, e.g. "PostgreSQL 18.6 · 320 ms". */
@@ -18,10 +32,19 @@ interface Props {
  * Connection-string block of the registration form: a masked field with a reveal toggle, the
  * test-connection button and its outcome. Pure presentation — the page owns the state machine.
  */
-export default function PostgresConnectionFields({ url, testState, testError, testInfo, onUrlChange, onTest }: Props) {
+export default function ConnectionStringFields({
+  kind,
+  url,
+  testState,
+  testError,
+  testInfo,
+  onUrlChange,
+  onTest,
+}: Props) {
   const { t } = useLocale()
   const [revealed, setRevealed] = useState(false)
   const testing = testState === 'testing'
+  const copy = COPY[kind]
 
   return (
     <div className="sm:col-span-2 space-y-2">
@@ -35,7 +58,7 @@ export default function PostgresConnectionFields({ url, testState, testError, te
           className="input pr-11 font-mono text-caption"
           value={url}
           onChange={(e) => onUrlChange(e.target.value)}
-          placeholder={t('admin_db.connection_url_placeholder')}
+          placeholder={t(copy.placeholder)}
           autoComplete="off"
           spellCheck={false}
           aria-describedby="db-connection-url-hint"
@@ -51,7 +74,7 @@ export default function PostgresConnectionFields({ url, testState, testError, te
         </button>
       </div>
       <p id="db-connection-url-hint" className="text-caption text-ink-500">
-        {t('admin_db.connection_url_hint')}
+        {t(copy.hint)}
       </p>
       <div className="flex flex-wrap items-center gap-3">
         <button

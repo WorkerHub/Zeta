@@ -3,10 +3,15 @@ import { Plus, Trash2, Power, Users, Link2, ChevronDown } from 'lucide-react'
 import { adminApi } from '../../lib/api'
 import { useLocale } from '../../hooks/useLocale'
 import ConfirmDialog from '../../components/ConfirmDialog'
-import PostgresConnectionFields from '../../components/PostgresConnectionFields'
-import { canSavePostgres, describeTestResult } from '../../lib/pg-connection'
-import type { PgTestState } from '../../lib/pg-connection'
+import ConnectionStringFields from '../../components/ConnectionStringFields'
+import { canSaveConnectionString, describeTestResult, registerCopyKeys } from '../../lib/pg-connection'
+import type { ConnectionStringKind, ConnectionTestState } from '../../lib/pg-connection'
 import type { AdminDatabase, CfD1Database, DatabaseGrant, DbKind } from '../../types'
+
+// Engines registered from a pasted connection string; every other kind goes through the D1 picker.
+function isConnectionKind(kind: DbKind): kind is ConnectionStringKind {
+  return kind === 'postgres' || kind === 'mysql'
+}
 
 export default function AdminDatabases() {
   const { t } = useLocale()
@@ -17,10 +22,10 @@ export default function AdminDatabases() {
   const [showAdd, setShowAdd] = useState(false)
   const [newDb, setNewDb] = useState({ name: '', description: '', cf_database_id: '' })
   const [addError, setAddError] = useState('')
-  // Connection-string targets (PostgreSQL): the string, and the last test connection's outcome
+  // Connection-string targets (PostgreSQL, MySQL/TiDB Cloud): the string, and the last test's outcome
   const [kind, setKind] = useState<DbKind>('sqlite')
   const [connectionUrl, setConnectionUrl] = useState('')
-  const [testState, setTestState] = useState<PgTestState>('idle')
+  const [testState, setTestState] = useState<ConnectionTestState>('idle')
   const [testedUrl, setTestedUrl] = useState<string | null>(null)
   const [testError, setTestError] = useState('')
   const [testInfo, setTestInfo] = useState('')
@@ -113,7 +118,8 @@ export default function AdminDatabases() {
     setTestError('')
     setTestInfo('')
     try {
-      const res = await adminApi.testConnection({ connection_url: url })
+      // The engine travels with the string: the worker picks the driver and the parser by it
+      const res = await adminApi.testConnection({ connection_url: url, kind })
       setTestInfo(describeTestResult(res))
       setTestedUrl(url)
       setTestState('passed')
@@ -126,9 +132,9 @@ export default function AdminDatabases() {
   async function addDatabase() {
     setAddError('')
     try {
-      if (kind === 'postgres') {
+      if (isConnectionKind(kind)) {
         await adminApi.createDatabase({
-          kind: 'postgres',
+          kind,
           connection_url: connectionUrl.trim(),
           name: newDb.name || undefined,
           description: newDb.description || undefined,
@@ -221,7 +227,9 @@ export default function AdminDatabases() {
 
   const availableOptions = available.filter((d) => !d.added)
   // A connection-string target is saved only after this exact string tested successfully
-  const canSave = kind === 'postgres' ? canSavePostgres(connectionUrl, testedUrl) : Boolean(newDb.cf_database_id)
+  const canSave = isConnectionKind(kind)
+    ? canSaveConnectionString(connectionUrl, testedUrl)
+    : Boolean(newDb.cf_database_id)
   // Rows written before the kind column exist are D1 registrations
   const isD1 = (db: AdminDatabase) => (db.kind ?? 'sqlite') === 'sqlite'
   // Every kind gets its own label: an unknown engine must never be shown as D1
@@ -242,6 +250,8 @@ export default function AdminDatabases() {
     ? available.some((d) => d.uuid === newDb.cf_database_id && d.is_app_db)
     : false
   const linkIsApp = linkCfId ? available.some((d) => d.uuid === linkCfId && d.is_app_db) : false
+  // The add card names the engine it registers (MySQL: TiDB Cloud Starter only)
+  const registerCopy = registerCopyKeys(kind)
 
   return (
     <div className="p-4 sm:p-6 max-w-5xl flex flex-col gap-6">
@@ -257,12 +267,8 @@ export default function AdminDatabases() {
       {/* Add form */}
       {showAdd && (
         <div className="card p-5 space-y-4">
-          <h2 className="text-heading text-ink-900">
-            {t(kind === 'postgres' ? 'admin_db.register_title_pg' : 'admin_db.register_title')}
-          </h2>
-          <p className="text-caption text-ink-500">
-            {t(kind === 'postgres' ? 'admin_db.register_desc_pg' : 'admin_db.register_desc')}
-          </p>
+          <h2 className="text-heading text-ink-900">{t(registerCopy.title)}</h2>
+          <p className="text-caption text-ink-500">{t(registerCopy.desc)}</p>
           <div className="grid sm:grid-cols-2 gap-4">
             <div className="sm:col-span-2">
               <label htmlFor="db-kind" className="label">
@@ -277,6 +283,7 @@ export default function AdminDatabases() {
                 >
                   <option value="sqlite">{t('admin_db.kind_sqlite')}</option>
                   <option value="postgres">{t('admin_db.kind_postgres')}</option>
+                  <option value="mysql">{t('admin_db.kind_mysql')}</option>
                 </select>
                 <ChevronDown
                   size={14}
@@ -285,8 +292,9 @@ export default function AdminDatabases() {
                 />
               </div>
             </div>
-            {kind === 'postgres' ? (
-              <PostgresConnectionFields
+            {isConnectionKind(kind) ? (
+              <ConnectionStringFields
+                kind={kind}
                 url={connectionUrl}
                 testState={testState}
                 testError={testError}
@@ -365,7 +373,7 @@ export default function AdminDatabases() {
             <button type="button" onClick={addDatabase} className="btn-primary" disabled={!canSave}>
               {t('admin_db.register')}
             </button>
-            {kind === 'postgres' && !canSave && (
+            {isConnectionKind(kind) && !canSave && (
               <p className="text-caption text-ink-500">{t('admin_db.test_before_save')}</p>
             )}
           </div>
