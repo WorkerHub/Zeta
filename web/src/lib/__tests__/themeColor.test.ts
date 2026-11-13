@@ -9,6 +9,8 @@ import {
   normalizeThemeColor,
   planThemeColorSync,
   readStoredThemeColor,
+  rollbackThemeColor,
+  themeSaveErrorMessage,
 } from '../theme-color'
 
 // The pre-paint script ships as a plain static file (it must run before the bundle), so its preset
@@ -68,5 +70,33 @@ describe('server sync decision', () => {
 
   it('reports no stored preset without a DOM', () => {
     expect(hasStoredThemeColor()).toBe(false)
+  })
+})
+
+describe('save failure copy', () => {
+  it('shows the server sentence verbatim for a 503 (database not upgraded)', () => {
+    expect(themeSaveErrorMessage(503, 'Please run the database upgrade first.', 'fallback')).toBe(
+      'Please run the database upgrade first.'
+    )
+  })
+
+  it('falls back to the generic copy for any other failure', () => {
+    expect(themeSaveErrorMessage(500, 'boom', 'fallback')).toBe('fallback')
+    expect(themeSaveErrorMessage(400, 'bad id', 'fallback')).toBe('fallback')
+    expect(themeSaveErrorMessage(undefined, undefined, 'fallback')).toBe('fallback')
+  })
+
+  it('does not show an empty 503 message', () => {
+    expect(themeSaveErrorMessage(503, '', 'fallback')).toBe('fallback')
+  })
+})
+
+describe('rollback target', () => {
+  it('returns to the last server-confirmed colour once the boot answered', () => {
+    expect(rollbackThemeColor('ocean', 'grape')).toBe('ocean')
+  })
+
+  it('returns to the pre-switch screen colour before the first boot answer', () => {
+    expect(rollbackThemeColor(null, 'grape')).toBe('grape')
   })
 })

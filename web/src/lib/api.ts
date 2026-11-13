@@ -200,7 +200,7 @@ export const profileApi = {
   me: () => apiFetch<User>('/profile/me'),
   update: (body: { name: string }) =>
     apiFetch<{ message: string }>('/profile/me', { method: 'PATCH', body: JSON.stringify(body) }),
-  themeColor: () => apiFetch<{ theme_color: string | null }>('/profile/theme-color'),
+  themeColor: (signal?: AbortSignal) => apiFetch<{ theme_color: string | null }>('/profile/theme-color', { signal }),
   updateThemeColor: (color: ThemeColor) =>
     apiFetch<{ theme_color: string }>('/profile/theme-color', {
       method: 'PUT',

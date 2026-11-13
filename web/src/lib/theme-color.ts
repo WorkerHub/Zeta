@@ -57,6 +57,28 @@ export function planThemeColorSync(
 }
 
 /**
+ * What to show when a user-initiated save failed. A 503 means the database upgrade has not run
+ * yet; the worker's own error sentence says what to do about it, so it is shown verbatim instead
+ * of the generic copy. Anything else uses the generic sentence.
+ */
+export function themeSaveErrorMessage(
+  status: number | undefined,
+  serverMessage: string | undefined,
+  fallback: string
+): string {
+  return status === 503 && serverMessage ? serverMessage : fallback
+}
+
+/**
+ * A failed switch returns to the last colour the server acknowledged. Before the first boot
+ * answer there is none, so it returns to whatever was on screen before the switch instead of a
+ * possibly stale cached colour.
+ */
+export function rollbackThemeColor(baseline: ThemeColor | null, previous: ThemeColor): ThemeColor {
+  return baseline ?? previous
+}
+
+/**
  * Paints the preset by toggling the attribute every preset block in index.css is keyed on.
  * Terracotta removes it — the `@theme` defaults are terracotta, so the attribute stays absent
  * for the default instead of appearing and disappearing around hydration.

@@ -13,7 +13,7 @@ export default function ThemeColorCard({
 }: {
   value: ThemeColor
   onChange: (color: ThemeColor) => void
-  syncError: boolean
+  syncError: string | null
 }) {
   const { t } = useLocale()
 
@@ -25,7 +25,7 @@ export default function ThemeColorCard({
       <ThemeColorPicker value={value} onChange={onChange} />
       {syncError && (
         <p role="alert" className="text-body text-danger-600 mt-3">
-          {t('errors.theme_color_save_failed')}
+          {syncError}
         </p>
       )}
       <p className="text-caption text-ink-500 mt-3">{t('profile.theme_color_desc')}</p>
