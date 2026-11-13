@@ -22,10 +22,18 @@ export const THEME_COLOR_UPGRADE_REQUIRED =
   'Theme colour is unavailable until the database upgrade runs. An admin can run it in Admin → Settings (Check & upgrade database).'
 
 // The column arrives with schema_v6, and only the setup/admin upgrade applies migrations — a deploy
-// does not. Until it runs, the users table has no theme_color and D1 answers with SQLite's two
-// wordings of "no such column" (one for reads, one for writes). Every other database error keeps
-// its own path, so a broken connection is never reported as "needs an upgrade".
-const MISSING_COLUMN = [/no such column: theme_color\b/, /has no column named theme_color\b/]
+// does not. Until it runs, the users table has no theme_color and SQLite names the missing column in
+// one of two ways, both reproduced against a real database:
+//
+//   SELECT theme_color …, UPDATE … SET theme_color = …   →  no such column: theme_color
+//   INSERT INTO users (theme_color) VALUES (…)            →  table users has no column named theme_color
+//
+// The paths here only ever issue the first form, so that is the one that must match; the second is
+// kept for the INSERT-shaped statements the same column would appear in. D1 prefixes its own code
+// (`D1_ERROR: <sqlite message>: SQLITE_ERROR`), which is why these are substrings of the message
+// and not the whole of it. Every other database error keeps its own path, so a broken connection is
+// never reported as "needs an upgrade".
+const MISSING_COLUMN = [/no such column: theme_color\b/i, /has no column named theme_color\b/i]
 
 export function isMissingThemeColorColumn(err: unknown): boolean {
   const message = err instanceof Error ? err.message : String(err)
