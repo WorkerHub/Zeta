@@ -10,6 +10,7 @@ interface Props {
   onSelectIndex: (i: number) => void
   running?: boolean // a run is in flight: the mask covers the panel
   runningLabel?: string // what it is executing, shown on the mask
+  runningHint?: string // a caveat about that run, under the label (Spark: cancel does not stop it)
 }
 
 export default function ResultsPanel({
@@ -18,6 +19,7 @@ export default function ResultsPanel({
   onSelectIndex,
   running = false,
   runningLabel = '',
+  runningHint = '',
 }: Props) {
   const { t } = useLocale()
   const active = results[activeIndex]
@@ -130,12 +132,15 @@ export default function ResultsPanel({
       {running && runningLabel && (
         <div
           role="status"
-          className="absolute inset-0 flex items-center justify-center gap-2 overflow-hidden px-4 bg-ink-0/90 backdrop-blur-[2px] cursor-progress"
+          className="absolute inset-0 flex flex-col items-center justify-center gap-1.5 overflow-hidden px-4 bg-ink-0/90 backdrop-blur-[2px] cursor-progress"
         >
-          <Loader2 size={18} className="animate-spin shrink-0 text-ink-500" aria-hidden="true" />
-          <span className="min-w-0 text-body text-ink-600 truncate" title={runningLabel}>
-            {runningLabel}
+          <span className="flex items-center gap-2 min-w-0">
+            <Loader2 size={18} className="animate-spin shrink-0 text-ink-500" aria-hidden="true" />
+            <span className="min-w-0 text-body text-ink-600 truncate" title={runningLabel}>
+              {runningLabel}
+            </span>
           </span>
+          {runningHint && <p className="max-w-[520px] text-center text-caption text-ink-500">{runningHint}</p>}
         </div>
       )}
     </div>

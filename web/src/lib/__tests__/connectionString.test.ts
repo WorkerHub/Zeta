@@ -1,34 +1,53 @@
 import { describe, it, expect } from 'vitest'
-import { canSaveConnectionString, describeTestResult } from '../connection-string'
+import { canSaveConnection, connectionSignature, describeTestResult } from '../connection-string'
 
-describe('canSaveConnectionString', () => {
-  const url = 'postgresql://u:' + 's3cr' + 'et' + '@ep-cool-pooler.eu-central-1.aws.neon.tech/db?sslmode=require'
-  const mysql = 'mysql://u:' + 's3cr' + 'et' + '@gateway01.us-east-1.prod.aws.tidbcloud.com:4000/test'
+const pg = 'postgresql://u:' + 's3cr' + 'et' + '@ep-cool-pooler.eu-central-1.aws.neon.tech/db?sslmode=require'
+const my = 'mysql://u:' + 's3cr' + 'et' + '@gateway01.us-east-1.prod.aws.tidbcloud.com:4000/test'
+const spark = { url: 'https://spark.example.com', platformToken: 'platform-token', appToken: 'app-token' }
 
-  it('allows the save when the tested string is unchanged', () => {
-    expect(canSaveConnectionString(url, url)).toBe(true)
-    expect(canSaveConnectionString(mysql, mysql)).toBe(true)
+describe('connectionSignature', () => {
+  it('covers the engine and the value pasted into it', () => {
+    expect(connectionSignature({ kind: 'postgres', url: pg })).toBe(
+      connectionSignature({ kind: 'postgres', url: `  ${pg}\n` })
+    )
+    expect(connectionSignature({ kind: 'postgres', url: pg })).not.toBe(connectionSignature({ kind: 'mysql', url: pg }))
+    expect(connectionSignature({ kind: 'mysql', url: my })).not.toBe(connectionSignature({ kind: 'mysql', url: pg }))
   })
 
-  it('ignores surrounding whitespace on both sides', () => {
-    expect(canSaveConnectionString(`  ${url}\n`, url)).toBe(true)
+  it('needs all three Spark values', () => {
+    expect(connectionSignature({ kind: 'spark', ...spark })).not.toBeNull()
+    expect(connectionSignature({ kind: 'spark', url: spark.url, appToken: spark.appToken })).toBeNull()
+    expect(connectionSignature({ kind: 'spark', ...spark, url: '' })).toBeNull()
+    expect(connectionSignature({ kind: 'spark', ...spark, platformToken: '   ' })).toBeNull()
   })
 
-  it('blocks the save once one character changed', () => {
-    expect(canSaveConnectionString(`${url}x`, url)).toBe(false)
+  it('changes when either Spark token changes', () => {
+    const tested = connectionSignature({ kind: 'spark', ...spark })
+    expect(connectionSignature({ kind: 'spark', ...spark, appToken: 'other' })).not.toBe(tested)
+    expect(connectionSignature({ kind: 'spark', ...spark, platformToken: 'other' })).not.toBe(tested)
+  })
+})
+
+describe('canSaveConnection', () => {
+  const tested = connectionSignature({ kind: 'postgres', url: pg })
+
+  it('allows the save when the form still holds the tested values', () => {
+    expect(canSaveConnection(tested, tested)).toBe(true)
   })
 
-  it('blocks the save without a passing test', () => {
-    expect(canSaveConnectionString(url, null)).toBe(false)
-  })
-
-  it('blocks the save for an empty string', () => {
-    expect(canSaveConnectionString('   ', '   ')).toBe(false)
+  it('blocks the save once one character changed or nothing was tested', () => {
+    expect(canSaveConnection(connectionSignature({ kind: 'postgres', url: `${pg}x` }), tested)).toBe(false)
+    expect(canSaveConnection(tested, null)).toBe(false)
   })
 
   it('does not let one engine vouch for another', () => {
-    // The engines share the gate but never the value: a tested postgres string cannot save a mysql one
-    expect(canSaveConnectionString(mysql, url)).toBe(false)
+    expect(canSaveConnection(connectionSignature({ kind: 'mysql', url: my }), tested)).toBe(false)
+  })
+
+  it('blocks the save while a required value is missing', () => {
+    const incomplete = connectionSignature({ kind: 'spark', url: spark.url, platformToken: 'p' })
+    expect(canSaveConnection(incomplete, incomplete)).toBe(false)
+    expect(canSaveConnection(null, null)).toBe(false)
   })
 })
 

@@ -13,10 +13,14 @@ function render(props: Partial<Parameters<typeof ConnectionStringFields>[0]>) {
     <ConnectionStringFields
       kind="postgres"
       url=""
+      platformToken=""
+      appToken=""
       testState={'idle' as ConnectionTestState}
       testError=""
       testInfo=""
       onUrlChange={noop}
+      onPlatformTokenChange={noop}
+      onAppTokenChange={noop}
       onTest={noop}
       {...props}
     />
@@ -43,10 +47,34 @@ describe('ConnectionStringFields', () => {
     expect(t('admin_db.connection_url_hint_mysql')).toMatch(/MySQL/)
   })
 
+  it('asks a Spark target for its publish address and the two tokens', () => {
+    const html = render({ kind: 'spark', url: 'https://spark.example.com' })
+    // The address is not a secret; both tokens are, each with its own reveal toggle
+    expect(html).toContain('id="db-connection-url" type="text"')
+    expect(html).toContain('id="db-platform-token" type="password"')
+    expect(html).toContain('id="db-app-token" type="password"')
+    expect(html).toContain(t('admin_db.spark_url'))
+    expect(html).toContain(t('admin_db.spark_platform_token'))
+    expect(html).toContain(t('admin_db.spark_app_token'))
+    expect(html).toContain(t('admin_db.spark_url_hint'))
+    expect(html).toContain(t('admin_db.spark_token_hint'))
+    // No SQL connection-string copy leaks into the Spark form
+    expect(html).not.toContain(t('admin_db.connection_url_hint'))
+    expect(html).not.toContain('type="password" data-reveal')
+  })
+
   it('disables the test button until something is typed', () => {
     expect(render({ url: '' })).toContain('disabled')
     expect(render({ url: '   ' })).toContain('disabled')
     expect(render({ url: 'postgresql://u:p@host/db' })).not.toContain('disabled')
+  })
+
+  it('needs all three Spark values before it can test', () => {
+    const address = 'https://spark.example.com'
+    expect(render({ kind: 'spark', url: address })).toContain('disabled')
+    expect(render({ kind: 'spark', url: address, platformToken: 'p' })).toContain('disabled')
+    expect(render({ kind: 'spark', url: address, platformToken: 'p', appToken: '  ' })).toContain('disabled')
+    expect(render({ kind: 'spark', url: address, platformToken: 'p', appToken: 'a' })).not.toContain('disabled')
   })
 
   it('shows a spinner and a busy label while testing', () => {
@@ -79,5 +107,14 @@ describe('ConnectionStringFields', () => {
 
   it('falls back to a generic failure line when the error text is empty', () => {
     expect(render({ url: 'postgresql://u:p@host/db', testState: 'failed' })).toContain(t('admin_db.test_failed'))
+  })
+
+  it('has the Spark copy in Chinese too', () => {
+    setLocale('zh')
+    const html = render({ kind: 'spark', url: 'https://spark.example.com' })
+    expect(html).toContain('发布地址')
+    expect(html).toContain('平台令牌')
+    expect(html).toContain('应用令牌')
+    expect(html).toContain(t('admin_db.show_secret'))
   })
 })

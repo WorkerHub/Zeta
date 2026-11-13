@@ -84,8 +84,8 @@ export const translations: Record<Locale, Record<string, string>> = {
     'query.cancel_run': 'Cancel query',
     'query.error': 'Query error',
     'query.no_results': 'Run a query to see results',
-    'query.select_db': 'Select database',
-    'query.no_databases': 'No databases available',
+    'query.select_db': 'Select data source',
+    'query.no_databases': 'No data sources available',
     'query.kind_sqlite': 'SQLite',
     'query.provider_d1': 'D1',
     'query.provider_neon': 'Neon',
@@ -95,6 +95,24 @@ export const translations: Record<Locale, Record<string, string>> = {
     'query.layout_horizontal': 'Left / Right',
     'query.autosave_failed': 'Autosave failed',
     'query.autosave_failed_desc': 'Your latest edits could not be saved. They will be retried on the next change.',
+
+    // Connection state of the current target
+    'query.connect': 'Connect',
+    'query.connected': 'Connected',
+    'query.disconnect': 'Disconnect',
+    'query.connect_first': 'Connect to this data source first',
+    'query.connect_failed': 'Could not connect',
+    'query.spark_cancel_hint':
+      'Cancelling only closes this request — Spark keeps running the statement and holds its global lock.',
+
+    // Spark failures the worker classifies with a code (report §2.6)
+    'spark_error.spark_stopped':
+      'The Spark machine is stopped — an administrator must start it in Instabox before you can query.',
+    'spark_error.spark_not_ready':
+      'The Spark machine is starting or temporarily unreachable. Please try again shortly.',
+    'spark_error.spark_app_token': 'The Spark app token was rejected. Ask an administrator to check the registration.',
+    'spark_error.spark_publish_token':
+      'The publish address rejected its access token. Ask an administrator to republish and update the registration.',
 
     // Notebooks
     'notebook.untitled': 'Untitled',
@@ -121,13 +139,13 @@ export const translations: Record<Locale, Record<string, string>> = {
       'A self-hosted SQL query interface for Cloudflare D1 databases. Runs entirely on Cloudflare - no servers to manage.',
     'about.features': 'Features',
     'about.tech_stack': 'Tech Stack',
-    'about.feature_1': 'SQL Notebooks - multiple named tabs, auto-saved, each bound to a database',
+    'about.feature_1': 'SQL Notebooks - multiple named tabs, auto-saved, each bound to a data source',
     'about.feature_2': 'SQL Editor - syntax highlighting, Cmd+Enter, partial selection execution',
     'about.feature_3': 'Multi-statement execution - run all statements, results in vertical tabs',
-    'about.feature_4': 'Query History - last 50 queries per database, click to re-run',
-    'about.feature_5': 'Multi-database - connect multiple D1 databases with per-user read/write access',
+    'about.feature_4': 'Query History - last 50 queries per data source, click to re-run',
+    'about.feature_5': 'Multi-source - connect multiple data sources with per-user read/write access',
     'about.feature_6': 'Auth - email/password, email verification, TOTP / Email OTP / Passkey (WebAuthn) 2FA',
-    'about.feature_7': 'Admin Panel - manage users, databases, permissions, and app settings',
+    'about.feature_7': 'Admin Panel - manage users, data sources, permissions, and app settings',
     'about.feature_8': 'i18n - English and Chinese (Simplified)',
     'about.feature_9': 'Dark / Light / Auto theme',
 
@@ -175,7 +193,7 @@ export const translations: Record<Locale, Record<string, string>> = {
     // Admin
     'admin.title': 'Admin Panel',
     'admin.users': 'Users',
-    'admin.databases': 'Databases',
+    'admin.databases': 'Data sources',
     'admin.settings': 'Settings',
     'admin.back_to_query': 'Back to Query Panel',
 
@@ -206,15 +224,26 @@ export const translations: Record<Locale, Record<string, string>> = {
     'admin_users.create': 'Create User',
 
     // Admin Databases
-    'admin_db.add_database': 'Add database',
-    'admin_db.register_title': 'Register a D1 database',
+    'admin_db.add_database': 'Add data source',
+    'admin_db.register_title': 'Register a D1 data source',
     'admin_db.register_desc': 'Pick a D1 database from your Cloudflare account. No binding or redeploy needed.',
-    'admin_db.register_title_pg': 'Register a PostgreSQL database',
+    'admin_db.register_title_pg': 'Register a PostgreSQL data source',
     'admin_db.register_desc_pg':
       'Paste the connection string of a cloud PostgreSQL with a public CA (Neon and the like). It is tested live before it is stored; a failed test saves nothing.',
-    'admin_db.register_title_mysql': 'Register a MySQL database',
+    'admin_db.register_title_mysql': 'Register a MySQL data source',
     'admin_db.register_desc_mysql':
       'TiDB Cloud Starter only (the TiDB Cloud free instance) — a plain MySQL/MariaDB server cannot be registered here. Paste its mysql:// connection string; it is tested live before it is stored, and a failed test saves nothing.',
+    'admin_db.spark_url': 'Publish address',
+    'admin_db.spark_url_placeholder': 'https://your-spark-service.example.com',
+    'admin_db.spark_url_hint':
+      'The private publish address of the service. Both tokens protect it; nothing is exposed beyond it.',
+    'admin_db.spark_platform_token': 'Platform token',
+    'admin_db.spark_app_token': 'App token',
+    'admin_db.spark_token_hint':
+      'Both tokens are used for the live test and then stored sealed — they are never shown again, so editing means pasting them again.',
+    'admin_db.register_title_spark': 'Register a SparkSQL data source',
+    'admin_db.register_desc_spark':
+      'The whole SparkSQL service is one data source. Paste its publish address and the two tokens; it is tested live before it is stored, and a failed test saves nothing.',
     'admin_db.kind': 'Engine',
     'admin_db.kind_sqlite': 'Cloudflare D1',
     'admin_db.kind_postgres': 'PostgreSQL',
@@ -228,6 +257,8 @@ export const translations: Record<Locale, Record<string, string>> = {
       'mysql://user:password@gateway01.<region>.prod.aws.tidbcloud.com:4000/test',
     'admin_db.connection_url_hint_mysql':
       'TiDB Cloud Starter (TiDB Cloud free instance) only — a plain MySQL/MariaDB server is not supported. The string is tested live before it is stored; the port is pinned to 4000 and extra parameters are dropped.',
+    'admin_db.show_secret': 'Show token',
+    'admin_db.hide_secret': 'Hide token',
     'admin_db.show_connection_url': 'Show connection string',
     'admin_db.hide_connection_url': 'Hide connection string',
     'admin_db.test_connection': 'Test connection',
@@ -238,7 +269,7 @@ export const translations: Record<Locale, Record<string, string>> = {
     'admin_db.display_name': 'Display name',
     'admin_db.binding_name': 'Binding name',
     'admin_db.description': 'Description (optional)',
-    'admin_db.description_placeholder': "What's in this database?",
+    'admin_db.description_placeholder': "What's in this data source?",
     'admin_db.cancel': 'Cancel',
     'admin_db.register': 'Register',
     'admin_db.name': 'Name',
@@ -254,12 +285,12 @@ export const translations: Record<Locale, Record<string, string>> = {
     'admin_db.perm_write_drop': 'Level 3 - Read, Write & Drop',
     'admin_db.select_user': 'Select user…',
     'admin_db.grant': 'Grant',
-    'admin_db.no_permissions': 'No member permissions set. Only admins can access this database.',
+    'admin_db.no_permissions': 'No member permissions set. Only admins can access this data source.',
     'admin_db.loading': 'Loading…',
-    'admin_db.no_databases': 'No databases registered yet',
-    'admin_db.confirm_delete': 'Delete database "{name}"?',
-    'admin_db.confirm_delete_desc': 'This removes it from the registry. The actual D1 database is not deleted.',
-    'admin_db.name_placeholder': 'My Database',
+    'admin_db.no_databases': 'No data sources registered yet',
+    'admin_db.confirm_delete': 'Delete data source "{name}"?',
+    'admin_db.confirm_delete_desc': 'This removes it from the registry. The actual database is not deleted.',
+    'admin_db.name_placeholder': 'My Data Source',
     'admin_db.toggle_active': 'Toggle active',
     'admin_db.cf_database': 'Cloudflare D1 database',
     'admin_db.select_database': 'Select a database…',
@@ -268,7 +299,7 @@ export const translations: Record<Locale, Record<string, string>> = {
     'admin_db.link': 'Link',
     'admin_db.link_title': 'Link database',
     'admin_db.link_desc':
-      'This database is not linked to a Cloudflare database yet, so it cannot be queried. Link it to switch it to the D1 HTTP API; permissions, history and saved runs are kept.',
+      'This data source is not linked to a Cloudflare database yet, so it cannot be queried. Link it to switch it to the D1 HTTP API; permissions, history and saved runs are kept.',
     'admin_db.no_available': 'No unregistered D1 databases found in this account.',
     'admin_db.app_db_badge': 'Application database',
     'admin_db.app_db_warning':
@@ -336,9 +367,9 @@ export const translations: Record<Locale, Record<string, string>> = {
     'errors.passkey_cancelled': 'Passkey authentication was cancelled.',
     'errors.passkey_failed': 'Passkey verification failed',
     'errors.delete_user_failed': 'Failed to delete user',
-    'errors.delete_db_failed': 'Failed to delete database',
+    'errors.delete_db_failed': 'Failed to delete data source',
     'errors.save_failed': 'Failed to save',
-    'errors.load_databases_failed': 'Failed to load databases',
+    'errors.load_databases_failed': 'Failed to load data sources',
     'errors.load_notebooks_failed': 'Failed to load notebooks',
     'errors.delete_notebook_failed': 'Failed to delete notebook',
     'errors.runs_failed': 'Failed to update saved runs',
@@ -363,7 +394,7 @@ export const translations: Record<Locale, Record<string, string>> = {
     'runs.tablist': 'Saved runs',
     'runs.succeeded': 'Succeeded',
     'runs.failed': 'Failed',
-    'runs.database': 'Database: {name}',
+    'runs.database': 'Data source: {name}',
     'runs.errors': '{n} error(s)',
     'runs.load_more': 'Load more',
     'runs.history': 'History',
@@ -385,7 +416,7 @@ export const translations: Record<Locale, Record<string, string>> = {
     'runs.storage_truncated':
       'These results were too large to save in full; only the first rows were kept. Run the query again to see all of them.',
     'runs.loading': 'Loading results…',
-    'runs.access_denied': 'You no longer have access to this database, so these results cannot be shown.',
+    'runs.access_denied': 'You no longer have access to this data source, so these results cannot be shown.',
     'runs.load_failed': 'Failed to load the results',
     'runs.list_failed': 'Failed to load saved runs',
 
@@ -483,8 +514,8 @@ export const translations: Record<Locale, Record<string, string>> = {
     'query.cancel_run': '取消查询',
     'query.error': '查询错误',
     'query.no_results': '运行查询以查看结果',
-    'query.select_db': '选择数据库',
-    'query.no_databases': '暂无可用数据库',
+    'query.select_db': '选择数据源',
+    'query.no_databases': '暂无可用数据源',
     'query.kind_sqlite': 'SQLite',
     'query.provider_d1': 'D1',
     'query.provider_neon': 'Neon',
@@ -494,6 +525,20 @@ export const translations: Record<Locale, Record<string, string>> = {
     'query.layout_horizontal': '左右布局',
     'query.autosave_failed': '自动保存失败',
     'query.autosave_failed_desc': '最近的修改未能保存，将在下次修改时重试。',
+
+    // 当前目标的连接态
+    'query.connect': '连接',
+    'query.connected': '已连接',
+    'query.disconnect': '取消连接',
+    'query.connect_first': '请先连接数据源',
+    'query.connect_failed': '连接失败',
+    'query.spark_cancel_hint': '取消只断开本页请求，Spark 仍在后台执行并占用全局锁。',
+
+    // 后端按 code 分类的 Spark 失败（报告 §2.6 定稿文案）
+    'spark_error.spark_stopped': 'Spark 机器已停止运行，需要管理员在 Instabox 启动后才能查询。',
+    'spark_error.spark_not_ready': 'Spark 机器正在启动或暂时不可达，请稍后重试。',
+    'spark_error.spark_app_token': 'Spark 应用令牌被拒，请管理员检查登记信息。',
+    'spark_error.spark_publish_token': '发布地址的访问令牌被拒，请管理员重新发布并更新登记信息。',
 
     // Notebooks
     'notebook.untitled': '未命名',
@@ -519,13 +564,13 @@ export const translations: Record<Locale, Record<string, string>> = {
     'about.description': '面向 Cloudflare D1 数据库的自托管 SQL 查询界面，完全运行在 Cloudflare 上，无需管理服务器。',
     'about.features': '功能特性',
     'about.tech_stack': '技术栈',
-    'about.feature_1': 'SQL 笔记本 - 多个命名标签页，自动保存，每个独立绑定一个数据库',
+    'about.feature_1': 'SQL 笔记本 - 多个命名标签页，自动保存，每个独立绑定一个数据源',
     'about.feature_2': 'SQL 编辑器 - 语法高亮，Cmd+Enter 运行，支持选中部分执行',
     'about.feature_3': '多语句执行 - 一次运行所有语句，结果以纵向标签页展示',
-    'about.feature_4': '查询历史 - 每个数据库最近 50 条记录，点击可重新运行',
-    'about.feature_5': '多数据库 - 连接多个 D1 数据库，支持按用户设置读写权限',
+    'about.feature_4': '查询历史 - 每个数据源最近 50 条记录，点击可重新运行',
+    'about.feature_5': '多数据源 - 连接多个数据源，支持按用户设置读写权限',
     'about.feature_6': '身份认证 - 邮箱密码、邮件验证、TOTP / 邮件 OTP / Passkey（WebAuthn）双因素认证',
-    'about.feature_7': '管理面板 - 管理用户、数据库连接、权限及应用设置',
+    'about.feature_7': '管理面板 - 管理用户、数据源连接、权限及应用设置',
     'about.feature_8': '国际化 - 支持英文和简体中文',
     'about.feature_9': '深色 / 浅色 / 自动主题',
 
@@ -573,7 +618,7 @@ export const translations: Record<Locale, Record<string, string>> = {
     // Admin
     'admin.title': '管理面板',
     'admin.users': '用户',
-    'admin.databases': '数据库',
+    'admin.databases': '数据源',
     'admin.settings': '设置',
     'admin.back_to_query': '返回查询面板',
 
@@ -604,15 +649,24 @@ export const translations: Record<Locale, Record<string, string>> = {
     'admin_users.create': '创建用户',
 
     // Admin Databases
-    'admin_db.add_database': '添加数据库',
-    'admin_db.register_title': '注册 D1 数据库',
+    'admin_db.add_database': '添加数据源',
+    'admin_db.register_title': '注册 D1 数据源',
     'admin_db.register_desc': '从 Cloudflare 账号中选择一个 D1 数据库，无需绑定或重新部署。',
-    'admin_db.register_title_pg': '登记 PostgreSQL 数据库',
+    'admin_db.register_title_pg': '登记 PostgreSQL 数据源',
     'admin_db.register_desc_pg':
       '粘贴公共 CA 的云 PostgreSQL 连接串（Neon 等）。保存前会实连测试一次，测试不通过不会落库。',
-    'admin_db.register_title_mysql': '登记 MySQL 数据库',
+    'admin_db.register_title_mysql': '登记 MySQL 数据源',
     'admin_db.register_desc_mysql':
       '仅支持 TiDB Cloud Starter（TiDB Cloud 免费实例）——普通 MySQL/MariaDB 无法在此登记。粘贴实例的 mysql:// 连接串，保存前会实连测试一次，测试不通过不会落库。',
+    'admin_db.spark_url': '发布地址',
+    'admin_db.spark_url_placeholder': 'https://你的-spark-服务地址',
+    'admin_db.spark_url_hint': '服务的私有发布地址，由两枚令牌共同保护，不再对外暴露其它入口。',
+    'admin_db.spark_platform_token': '平台令牌',
+    'admin_db.spark_app_token': '应用令牌',
+    'admin_db.spark_token_hint': '两枚令牌只用于实连测试，之后密封存储、不再回显；修改登记需重新粘贴。',
+    'admin_db.register_title_spark': '登记 SparkSQL 数据源',
+    'admin_db.register_desc_spark':
+      '整个 SparkSQL 服务就是一个数据源。粘贴发布地址与两枚令牌，保存前会实连测试一次，测试不通过不会落库。',
     'admin_db.kind': '引擎类型',
     'admin_db.kind_sqlite': 'Cloudflare D1',
     'admin_db.kind_postgres': 'PostgreSQL',
@@ -626,6 +680,8 @@ export const translations: Record<Locale, Record<string, string>> = {
       'mysql://用户:password@gateway01.<区域>.prod.aws.tidbcloud.com:4000/test',
     'admin_db.connection_url_hint_mysql':
       '仅支持 TiDB Cloud Starter（TiDB Cloud 免费实例），不支持普通 MySQL/MariaDB。保存前会实连测试；端口固定为 4000，多余参数会被剔除。',
+    'admin_db.show_secret': '显示令牌',
+    'admin_db.hide_secret': '隐藏令牌',
     'admin_db.show_connection_url': '显示连接串',
     'admin_db.hide_connection_url': '隐藏连接串',
     'admin_db.test_connection': '测试连接',
@@ -636,7 +692,7 @@ export const translations: Record<Locale, Record<string, string>> = {
     'admin_db.display_name': '显示名称',
     'admin_db.binding_name': '绑定名称',
     'admin_db.description': '描述（可选）',
-    'admin_db.description_placeholder': '这个数据库包含什么？',
+    'admin_db.description_placeholder': '这个数据源包含什么？',
     'admin_db.cancel': '取消',
     'admin_db.register': '注册',
     'admin_db.name': '名称',
@@ -652,12 +708,12 @@ export const translations: Record<Locale, Record<string, string>> = {
     'admin_db.perm_write_drop': 'Level 3 - 读、写及删除',
     'admin_db.select_user': '选择用户…',
     'admin_db.grant': '授权',
-    'admin_db.no_permissions': '未设置成员权限。仅管理员可访问此数据库。',
+    'admin_db.no_permissions': '未设置成员权限。仅管理员可访问此数据源。',
     'admin_db.loading': '加载中…',
-    'admin_db.no_databases': '暂无已注册的数据库',
-    'admin_db.confirm_delete': '删除数据库"{name}"？',
-    'admin_db.confirm_delete_desc': '这会将其从注册表中移除，不会删除实际的 D1 数据库。',
-    'admin_db.name_placeholder': '我的数据库',
+    'admin_db.no_databases': '暂无已注册的数据源',
+    'admin_db.confirm_delete': '删除数据源"{name}"？',
+    'admin_db.confirm_delete_desc': '这会将其从注册表中移除，不会删除实际的数据库。',
+    'admin_db.name_placeholder': '我的数据源',
     'admin_db.toggle_active': '切换启用状态',
     'admin_db.cf_database': 'Cloudflare D1 数据库',
     'admin_db.select_database': '选择数据库…',
@@ -666,7 +722,7 @@ export const translations: Record<Locale, Record<string, string>> = {
     'admin_db.link': '关联',
     'admin_db.link_title': '关联数据库',
     'admin_db.link_desc':
-      '该数据库尚未关联到 Cloudflare 数据库，因此暂时无法查询。将其关联到某个 Cloudflare 数据库即可切换为 D1 HTTP API；权限、历史与已保存的运行记录都会保留。',
+      '该数据源尚未关联到 Cloudflare 数据库，因此暂时无法查询。将其关联到某个 Cloudflare 数据库即可切换为 D1 HTTP API；权限、历史与已保存的运行记录都会保留。',
     'admin_db.no_available': '该账号中没有未注册的 D1 数据库。',
     'admin_db.app_db_badge': '应用数据库',
     'admin_db.app_db_warning': '该库为 Zeta 自身应用库：内部表只读，删除类操作已禁用。',
@@ -731,9 +787,9 @@ export const translations: Record<Locale, Record<string, string>> = {
     'errors.passkey_cancelled': '通行密钥验证已取消。',
     'errors.passkey_failed': '通行密钥验证失败',
     'errors.delete_user_failed': '删除用户失败',
-    'errors.delete_db_failed': '删除数据库失败',
+    'errors.delete_db_failed': '删除数据源失败',
     'errors.save_failed': '保存失败',
-    'errors.load_databases_failed': '数据库列表加载失败',
+    'errors.load_databases_failed': '数据源列表加载失败',
     'errors.load_notebooks_failed': '笔记本加载失败',
     'errors.delete_notebook_failed': '删除笔记本失败',
     'errors.runs_failed': '运行记录操作失败',
@@ -758,7 +814,7 @@ export const translations: Record<Locale, Record<string, string>> = {
     'runs.tablist': '运行记录',
     'runs.succeeded': '成功',
     'runs.failed': '失败',
-    'runs.database': '数据库：{name}',
+    'runs.database': '数据源：{name}',
     'runs.errors': '{n} 个错误',
     'runs.load_more': '加载更多',
     'runs.history': '历史记录',
@@ -779,7 +835,7 @@ export const translations: Record<Locale, Record<string, string>> = {
     'runs.delete_run': '删除运行记录 #{n}',
     'runs.storage_truncated': '结果过大，仅保存了前面的部分行。重新运行查询可查看完整结果。',
     'runs.loading': '正在加载结果…',
-    'runs.access_denied': '你已没有该数据库的访问权限，无法查看此结果。',
+    'runs.access_denied': '你已没有该数据源的访问权限，无法查看此结果。',
     'runs.load_failed': '结果加载失败',
     'runs.list_failed': '运行记录加载失败',
 

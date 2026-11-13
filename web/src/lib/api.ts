@@ -239,6 +239,15 @@ export const databasesApi = {
 // ApiError.body. The optional signal lets the caller cancel: it is a client-side fetch option and
 // does not change the request or response shape.
 export const queryApi = {
+  // Proves the target answers before the page lets a query run (the connect button). The worker runs
+  // a fixed `select 1` and records nothing — no history row, no saved run — and a D1 target answers
+  // without touching D1. Failures carry the worker's message and, for Spark, a `code` the UI
+  // translates (see lib/error-copy.ts).
+  probe: (databaseId: string) =>
+    apiFetch<{ ok: boolean; kind?: DbKind; latency_ms?: number }>('/query/probe', {
+      method: 'POST',
+      body: JSON.stringify({ databaseId }),
+    }),
   execute: (body: { databaseId: string; sql: string; notebookId?: string }, signal?: AbortSignal) =>
     apiFetch<{
       results?: Record<string, unknown>[]
@@ -327,17 +336,27 @@ export const adminApi = {
 
   databases: () => apiFetch<{ results: AdminDatabase[] }>('/admin/databases'),
   listD1Databases: () => apiFetch<{ results: CfD1Database[] }>('/admin/d1/databases'),
-  // One live connection to a connection-string target; stores nothing. The registration form
-  // gates its save button on a passing result for the exact string it is about to submit. `kind`
-  // defaults to postgres on the worker, which is what this endpoint served before MySQL existed.
-  testConnection: (body: { connection_url: string; kind?: 'postgres' | 'mysql' }) =>
-    apiFetch<{ ok: boolean; kind?: 'postgres' | 'mysql'; server_version?: string; latency_ms?: number }>(
-      '/admin/databases/test-connection',
-      { method: 'POST', body: JSON.stringify(body) }
-    ),
+  // One live connection to a pasted target; stores nothing. The registration form gates its save
+  // button on a passing result for the exact values it is about to submit. `kind` defaults to
+  // postgres on the worker, which is what this endpoint served before MySQL existed. Spark sends
+  // its publish address as `connection_url` plus the two tokens.
+  testConnection: (body: {
+    connection_url: string
+    kind?: 'postgres' | 'mysql' | 'spark'
+    platform_token?: string
+    app_token?: string
+  }) =>
+    apiFetch<{
+      ok: boolean
+      kind?: 'postgres' | 'mysql' | 'spark'
+      server_version?: string
+      latency_ms?: number
+    }>('/admin/databases/test-connection', { method: 'POST', body: JSON.stringify(body) }),
   createDatabase: (body: {
     kind?: DbKind
     connection_url?: string
+    platform_token?: string
+    app_token?: string
     cf_database_id?: string
     name?: string
     description?: string

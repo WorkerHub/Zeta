@@ -10,6 +10,8 @@ interface Props {
   runningDatabaseName: string
   runningSql: string
   runningStatementCount: number
+  /** A caveat about the run in flight (Spark: cancelling does not stop the statement). */
+  runningHint?: string
   runError: string
   transient: StatementResult[] | null
   selectedRun: NotebookRunSummary | null
@@ -40,6 +42,7 @@ export default function QueryResults({
   runningDatabaseName,
   runningSql,
   runningStatementCount,
+  runningHint = '',
   runError,
   transient,
   selectedRun,
@@ -106,16 +109,20 @@ export default function QueryResults({
               onSelectIndex={onSelectIndex}
               running={running}
               runningLabel={runningLabel}
+              runningHint={runningHint}
             />
           ) : running ? (
             <div
               role="status"
-              className="flex items-center justify-center h-full gap-2 overflow-hidden px-4 min-w-0 text-ink-500"
+              className="flex flex-col items-center justify-center h-full gap-1.5 overflow-hidden px-4 text-ink-500"
             >
-              <Loader2 size={18} className="animate-spin shrink-0" aria-hidden="true" />
-              <span className="min-w-0 text-body truncate" title={runningLabel}>
-                {runningLabel}
+              <span className="flex items-center gap-2 min-w-0">
+                <Loader2 size={18} className="animate-spin shrink-0" aria-hidden="true" />
+                <span className="min-w-0 text-body truncate" title={runningLabel}>
+                  {runningLabel}
+                </span>
               </span>
+              {runningHint && <p className="max-w-[520px] text-center text-caption text-ink-500">{runningHint}</p>}
             </div>
           ) : selectedResults && selectedResults.status !== 'ready' ? (
             <div className="flex items-center justify-center h-full gap-2 px-4 text-center text-body text-ink-400">
