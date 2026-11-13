@@ -1,32 +1,11 @@
 import { useState, useEffect, useCallback } from 'react'
-import { Plus, Trash2, Power, Users, Link2, ChevronDown } from 'lucide-react'
-import { adminApi, ApiError } from '../../lib/api'
+import { Plus, Trash2, Power, Users, Link2, Pencil } from 'lucide-react'
+import { adminApi } from '../../lib/api'
 import { useLocale } from '../../hooks/useLocale'
 import ConfirmDialog from '../../components/ConfirmDialog'
-import ConnectionStringFields from '../../components/ConnectionStringFields'
-import { canSaveConnection, connectionSignature, describeTestResult } from '../../lib/connection-string'
-import type { ConnectionKind, ConnectionTestState } from '../../lib/connection-string'
-import { errorCodeText } from '../../lib/error-copy'
-import type { AdminDatabase, CfD1Database, DatabaseGrant, DbKind } from '../../types'
-
-// The engines that are registered from pasted values rather than from a Cloudflare database.
-function isConnectionKind(kind: DbKind): kind is ConnectionKind {
-  return kind === 'postgres' || kind === 'mysql' || kind === 'spark'
-}
-
-// Title and description of the registration card, per engine.
-function registerCopy(kind: DbKind): { title: string; desc: string } {
-  switch (kind) {
-    case 'postgres':
-      return { title: 'admin_db.register_title_pg', desc: 'admin_db.register_desc_pg' }
-    case 'mysql':
-      return { title: 'admin_db.register_title_mysql', desc: 'admin_db.register_desc_mysql' }
-    case 'spark':
-      return { title: 'admin_db.register_title_spark', desc: 'admin_db.register_desc_spark' }
-    default:
-      return { title: 'admin_db.register_title', desc: 'admin_db.register_desc' }
-  }
-}
+import DatabaseForm from '../../components/DatabaseForm'
+import { effectiveProvider, engineLabelKey } from '../../lib/db-provider'
+import type { AdminDatabase, CfD1Database, DatabaseGrant } from '../../types'
 
 export default function AdminDatabases() {
   const { t } = useLocale()
@@ -35,18 +14,8 @@ export default function AdminDatabases() {
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(true)
   const [showAdd, setShowAdd] = useState(false)
-  const [newDb, setNewDb] = useState({ name: '', description: '', cf_database_id: '' })
-  const [addError, setAddError] = useState('')
-  // Pasted-value targets (PostgreSQL, MySQL/TiDB Cloud Starter, SparkSQL): what goes into the live
-  // test, and that test's outcome
-  const [kind, setKind] = useState<DbKind>('sqlite')
-  const [connectionUrl, setConnectionUrl] = useState('')
-  const [platformToken, setPlatformToken] = useState('')
-  const [appToken, setAppToken] = useState('')
-  const [testState, setTestState] = useState<ConnectionTestState>('idle')
-  const [testedSignature, setTestedSignature] = useState<string | null>(null)
-  const [testError, setTestError] = useState('')
-  const [testInfo, setTestInfo] = useState('')
+  // The row the registration form is editing, if any (the same form as adding)
+  const [editing, setEditing] = useState<AdminDatabase | null>(null)
   const [linking, setLinking] = useState<AdminDatabase | null>(null)
   const [linkCfId, setLinkCfId] = useState('')
   const [linkError, setLinkError] = useState('')
@@ -92,113 +61,29 @@ export default function AdminDatabases() {
   function toggleAdd() {
     const opening = !showAdd
     setShowAdd(opening)
-    setAddError('')
+    setEditing(null)
+    setError('')
     if (opening) {
-      setNewDb({ name: '', description: '', cf_database_id: '' })
-      setKind('sqlite')
-      resetConnection()
-      loadAvailable().catch((err) => setAddError(err instanceof Error ? err.message : t('errors.generic')))
+      loadAvailable().catch((err) => setError(err instanceof Error ? err.message : t('errors.generic')))
     }
   }
 
-  // A passing test only vouches for the values it ran against: editing any field or switching
-  // engine drops it, so the save button cannot outlive what was actually verified.
-  function resetConnection() {
-    setConnectionUrl('')
-    setPlatformToken('')
-    setAppToken('')
-    setTestState('idle')
-    setTestedSignature(null)
-    setTestError('')
-    setTestInfo('')
+  function startEdit(db: AdminDatabase) {
+    setShowAdd(false)
+    setEditing(db)
+    setError('')
   }
 
-  function changeKind(next: DbKind) {
-    if (next === kind) return
-    setKind(next)
-    // Never carry the other engine's input into a submission
-    setNewDb((db) => ({ ...db, cf_database_id: '' }))
-    resetConnection()
-    setAddError('')
+  // The form owns its own state and closes itself; the list re-reads what was saved
+  function handleSaved() {
+    setShowAdd(false)
+    setEditing(null)
+    load()
   }
 
-  // Any edit invalidates the last test, whatever the field
-  function invalidateTest() {
-    setTestState('idle')
-    setTestedSignature(null)
-    setTestError('')
-    setTestInfo('')
-  }
-
-  function changeConnectionUrl(next: string) {
-    setConnectionUrl(next)
-    invalidateTest()
-  }
-
-  function changePlatformToken(next: string) {
-    setPlatformToken(next)
-    invalidateTest()
-  }
-
-  function changeAppToken(next: string) {
-    setAppToken(next)
-    invalidateTest()
-  }
-
-  async function testConnection() {
-    if (testState === 'testing' || !isConnectionKind(kind)) return
-    const signature = connectionSignature({ kind, url: connectionUrl, platformToken, appToken })
-    if (!signature) return
-    setTestState('testing')
-    setTestedSignature(null)
-    setTestError('')
-    setTestInfo('')
-    try {
-      const res = await adminApi.testConnection({
-        connection_url: connectionUrl.trim(),
-        kind,
-        ...(kind === 'spark' ? { platform_token: platformToken.trim(), app_token: appToken.trim() } : {}),
-      })
-      setTestInfo(describeTestResult(res))
-      setTestedSignature(signature)
-      setTestState('passed')
-    } catch (err) {
-      // A classified Spark failure arrives with a code, and the UI has the copy for it; anything
-      // else shows the worker's own message (which never contains the pasted secret).
-      const message =
-        errorCodeText(t, err instanceof ApiError ? err.body : null) ??
-        (err instanceof Error ? err.message : t('admin_db.test_failed'))
-      setTestError(message)
-      setTestState('failed')
-    }
-  }
-
-  async function addDatabase() {
-    setAddError('')
-    try {
-      if (isConnectionKind(kind)) {
-        await adminApi.createDatabase({
-          kind,
-          connection_url: connectionUrl.trim(),
-          ...(kind === 'spark' ? { platform_token: platformToken.trim(), app_token: appToken.trim() } : {}),
-          name: newDb.name || undefined,
-          description: newDb.description || undefined,
-        })
-      } else {
-        await adminApi.createDatabase({
-          kind: 'sqlite',
-          cf_database_id: newDb.cf_database_id,
-          name: newDb.name || undefined,
-          description: newDb.description || undefined,
-        })
-      }
-      setShowAdd(false)
-      setNewDb({ name: '', description: '', cf_database_id: '' })
-      resetConnection()
-      load()
-    } catch (err) {
-      setAddError(err instanceof Error ? err.message : t('errors.generic'))
-    }
+  function closeForm() {
+    setShowAdd(false)
+    setEditing(null)
   }
 
   async function startLink(db: AdminDatabase) {
@@ -236,6 +121,7 @@ export default function AdminDatabases() {
     try {
       await adminApi.deleteDatabase(id)
       if (selectedDb?.id === id) setSelectedDb(null)
+      if (editing?.id === id) setEditing(null)
       load()
     } catch (err) {
       setError(err instanceof Error ? err.message : t('errors.delete_db_failed'))
@@ -271,30 +157,9 @@ export default function AdminDatabases() {
   }
 
   const availableOptions = available.filter((d) => !d.added)
-  // A pasted-value target is saved only after exactly these values tested successfully
-  const signature = isConnectionKind(kind)
-    ? connectionSignature({ kind, url: connectionUrl, platformToken, appToken })
-    : null
-  const canSave = isConnectionKind(kind) ? canSaveConnection(signature, testedSignature) : Boolean(newDb.cf_database_id)
   // Rows written before the kind column exist are D1 registrations
   const isD1 = (db: AdminDatabase) => (db.kind ?? 'sqlite') === 'sqlite'
-  // Every kind gets its own label: an unknown engine must never be shown as D1
-  const kindLabel = (k: DbKind | undefined) => {
-    switch (k) {
-      case 'postgres':
-        return t('admin_db.kind_postgres')
-      case 'mysql':
-        return t('admin_db.kind_mysql')
-      case 'spark':
-        return t('admin_db.kind_spark')
-      default:
-        return t('admin_db.kind_sqlite')
-    }
-  }
-  // Whether the currently picked add/link target is Zeta's own application database.
-  const newDbIsApp = newDb.cf_database_id
-    ? available.some((d) => d.uuid === newDb.cf_database_id && d.is_app_db)
-    : false
+  // Whether the currently picked link target is Zeta's own application database.
   const linkIsApp = linkCfId ? available.some((d) => d.uuid === linkCfId && d.is_app_db) : false
 
   return (
@@ -308,125 +173,17 @@ export default function AdminDatabases() {
 
       {error && <p className="-mt-3 text-body text-danger-600">{error}</p>}
 
-      {/* Add form */}
-      {showAdd && (
-        <div className="card p-5 space-y-4">
-          <h2 className="text-heading text-ink-900">{t(registerCopy(kind).title)}</h2>
-          <p className="text-caption text-ink-500">{t(registerCopy(kind).desc)}</p>
-          <div className="grid sm:grid-cols-2 gap-4">
-            <div className="sm:col-span-2">
-              <label htmlFor="db-kind" className="label">
-                {t('admin_db.kind')}
-              </label>
-              <div className="relative">
-                <select
-                  id="db-kind"
-                  className="input appearance-none pr-9"
-                  value={kind}
-                  onChange={(e) => changeKind(e.target.value as DbKind)}
-                >
-                  <option value="sqlite">{t('admin_db.kind_sqlite')}</option>
-                  <option value="postgres">{t('admin_db.kind_postgres')}</option>
-                  <option value="mysql">{t('admin_db.kind_mysql')}</option>
-                  <option value="spark">{t('admin_db.kind_spark')}</option>
-                </select>
-                <ChevronDown
-                  size={14}
-                  aria-hidden="true"
-                  className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-ink-400"
-                />
-              </div>
-            </div>
-            {isConnectionKind(kind) ? (
-              <ConnectionStringFields
-                kind={kind}
-                url={connectionUrl}
-                platformToken={platformToken}
-                appToken={appToken}
-                testState={testState}
-                testError={testError}
-                testInfo={testInfo}
-                onUrlChange={changeConnectionUrl}
-                onPlatformTokenChange={changePlatformToken}
-                onAppTokenChange={changeAppToken}
-                onTest={testConnection}
-              />
-            ) : (
-              <div className="sm:col-span-2">
-                <label htmlFor="db-cf" className="label">
-                  {t('admin_db.cf_database')}
-                </label>
-                <div className="relative">
-                  <select
-                    id="db-cf"
-                    className="input appearance-none pr-9"
-                    value={newDb.cf_database_id}
-                    onChange={(e) => setNewDb({ ...newDb, cf_database_id: e.target.value })}
-                  >
-                    <option value="">{t('admin_db.select_database')}</option>
-                    {availableOptions.map((d) => (
-                      <option key={d.uuid} value={d.uuid}>
-                        {d.name} ({d.uuid}){d.is_app_db ? ` — ${t('admin_db.app_db_badge')}` : ''}
-                      </option>
-                    ))}
-                  </select>
-                  <ChevronDown
-                    size={14}
-                    aria-hidden="true"
-                    className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-ink-400"
-                  />
-                </div>
-                {availableOptions.length === 0 && (
-                  <p className="mt-1 text-caption text-ink-500">{t('admin_db.no_available')}</p>
-                )}
-                {newDbIsApp && (
-                  <p className="mt-2 flex items-center gap-2 text-caption text-warning-600">
-                    <span className="badge badge-brand">{t('admin_db.app_db_badge')}</span>
-                    <span>{t('admin_db.app_db_warning')}</span>
-                  </p>
-                )}
-              </div>
-            )}
-            <div>
-              <label htmlFor="db-display-name" className="label">
-                {t('admin_db.display_name')}
-              </label>
-              <input
-                id="db-display-name"
-                type="text"
-                className="input"
-                value={newDb.name}
-                onChange={(e) => setNewDb({ ...newDb, name: e.target.value })}
-                placeholder={t('admin_db.name_placeholder')}
-              />
-            </div>
-            <div>
-              <label htmlFor="db-description" className="label">
-                {t('admin_db.description')}
-              </label>
-              <input
-                id="db-description"
-                type="text"
-                className="input"
-                value={newDb.description}
-                onChange={(e) => setNewDb({ ...newDb, description: e.target.value })}
-                placeholder={t('admin_db.description_placeholder')}
-              />
-            </div>
-          </div>
-          {addError && <p className="text-body text-danger-600">{addError}</p>}
-          <div className="flex flex-wrap items-center gap-3">
-            <button type="button" onClick={() => setShowAdd(false)} className="btn-secondary">
-              {t('admin_db.cancel')}
-            </button>
-            <button type="button" onClick={addDatabase} className="btn-primary" disabled={!canSave}>
-              {t('admin_db.register')}
-            </button>
-            {isConnectionKind(kind) && !canSave && (
-              <p className="text-caption text-ink-500">{t('admin_db.test_before_save')}</p>
-            )}
-          </div>
-        </div>
+      {/* Add / edit form — one component, prefilled with the row being edited */}
+      {(showAdd || editing) && (
+        <DatabaseForm
+          // A different target needs a different form state, so switching rows remounts it
+          key={editing?.id ?? 'add'}
+          mode={editing ? 'edit' : 'add'}
+          database={editing ?? undefined}
+          available={available}
+          onSaved={handleSaved}
+          onCancel={closeForm}
+        />
       )}
 
       {/* Link (migration) form */}
@@ -473,6 +230,8 @@ export default function AdminDatabases() {
             <thead>
               <tr className="border-b border-ink-200 bg-ink-50">
                 <th className="text-left px-4 py-3 text-label text-ink-500">{t('admin_db.name')}</th>
+                <th className="text-left px-4 py-3 text-label text-ink-500">{t('admin_db.engine')}</th>
+                <th className="text-left px-4 py-3 text-label text-ink-500">{t('admin_db.provider')}</th>
                 <th className="text-left px-4 py-3 text-label text-ink-500 hidden md:table-cell">
                   {t('admin_db.cf_database_id')}
                 </th>
@@ -490,10 +249,11 @@ export default function AdminDatabases() {
                     <p className="flex items-center gap-2 text-body-strong text-ink-900">
                       {db.name}
                       {db.is_app_db && <span className="badge badge-brand">{t('admin_db.app_db_badge')}</span>}
-                      <span className="badge badge-neutral">{kindLabel(db.kind)}</span>
                     </p>
                     {db.description && <p className="text-caption text-ink-500">{db.description}</p>}
                   </td>
+                  <td className="px-4 py-3 text-ink-700">{t(engineLabelKey(db.kind))}</td>
+                  <td className="px-4 py-3 text-ink-700">{effectiveProvider(db.kind, db.provider) ?? '—'}</td>
                   <td className="px-4 py-3 hidden md:table-cell">
                     {!isD1(db) ? (
                       <span className="text-caption text-ink-400">—</span>
@@ -514,6 +274,9 @@ export default function AdminDatabases() {
                   </td>
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-1 justify-end">
+                      <button type="button" onClick={() => startEdit(db)} className="btn-ghost btn-sm gap-1">
+                        <Pencil size={13} /> {t('admin_db.edit')}
+                      </button>
                       {isD1(db) && !db.cf_database_id && (
                         <button
                           type="button"

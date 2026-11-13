@@ -1,5 +1,15 @@
 import { describe, it, expect } from 'vitest'
-import { addConnected, knocksBack, parseConnected, removeConnected, serializeConnected } from '../connection-state'
+import {
+  addConnected,
+  knocksBack,
+  parseConnected,
+  parseSessionDatabases,
+  removeConnected,
+  serializeConnected,
+  serializeSessionDatabases,
+  setSessionDatabase,
+  withoutSessionDatabase,
+} from '../connection-state'
 
 describe('parseConnected', () => {
   it('reads back what serializeConnected wrote', () => {
@@ -49,5 +59,34 @@ describe('knocksBack', () => {
     expect(knocksBack(403)).toBe(false)
     expect(knocksBack(429)).toBe(false)
     expect(knocksBack(undefined)).toBe(false)
+  })
+})
+
+describe('session databases', () => {
+  it('reads back what serializeSessionDatabases wrote', () => {
+    expect(parseSessionDatabases(serializeSessionDatabases({ a: 'shop', b: 'logs' }))).toEqual({
+      a: 'shop',
+      b: 'logs',
+    })
+  })
+
+  it('treats a missing or unreadable value as empty', () => {
+    expect(parseSessionDatabases(null)).toEqual({})
+    expect(parseSessionDatabases('not json')).toEqual({})
+    expect(parseSessionDatabases('["a"]')).toEqual({})
+    expect(parseSessionDatabases('null')).toEqual({})
+  })
+
+  it('drops anything that is not a non-empty pair', () => {
+    expect(parseSessionDatabases('{"a":"shop","b":"","c":1,"":"x"}')).toEqual({ a: 'shop' })
+  })
+
+  it('sets and removes one target without mutating the map', () => {
+    const map = { a: 'shop' }
+    expect(setSessionDatabase(map, 'a', 'shop')).toBe(map)
+    expect(setSessionDatabase(map, 'b', 'logs')).toEqual({ a: 'shop', b: 'logs' })
+    expect(withoutSessionDatabase(map, 'a')).toEqual({})
+    expect(withoutSessionDatabase(map, 'zz')).toBe(map)
+    expect(map).toEqual({ a: 'shop' })
   })
 })

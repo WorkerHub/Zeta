@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { splitSqlStatements } from '../sql'
+import { splitSqlStatements, usedDatabaseOf } from '../sql'
 
 describe('splitSqlStatements', () => {
   it('returns empty array for empty string', () => {
@@ -57,5 +57,36 @@ describe('splitSqlStatements', () => {
     expect(result[0]).toBe('SELECT * FROM users')
     expect(result[1]).toBe("INSERT INTO logs (msg) VALUES ('hello')")
     expect(result[2]).toBe('SELECT count(*) FROM logs')
+  })
+})
+
+describe('usedDatabaseOf', () => {
+  it('reads the database a USE points the session at', () => {
+    expect(usedDatabaseOf('USE app')).toBe('app')
+    expect(usedDatabaseOf('use app')).toBe('app')
+    expect(usedDatabaseOf('  USE   reporting  ')).toBe('reporting')
+    expect(usedDatabaseOf('USE app;')).toBe('app')
+  })
+
+  it('unquotes the identifier the way MySQL quotes it', () => {
+    expect(usedDatabaseOf('USE `my db`')).toBe('my db')
+    expect(usedDatabaseOf('USE "MyDb"')).toBe('MyDb')
+    expect(usedDatabaseOf('USE `a``b`')).toBe('a`b')
+  })
+
+  it('ignores leading comments', () => {
+    expect(usedDatabaseOf('-- where to\nUSE app')).toBe('app')
+    expect(usedDatabaseOf('/* switch */ USE app')).toBe('app')
+    expect(usedDatabaseOf('/* unterminated USE app')).toBe(null)
+  })
+
+  it('is not fooled by anything that merely starts with those letters', () => {
+    expect(usedDatabaseOf('USERS')).toBe(null)
+    expect(usedDatabaseOf('SELECT 1')).toBe(null)
+    expect(usedDatabaseOf("SELECT 'use x'")).toBe(null)
+    expect(usedDatabaseOf('USE')).toBe(null)
+    expect(usedDatabaseOf('USE app extra')).toBe(null)
+    expect(usedDatabaseOf('USE `app` extra')).toBe(null)
+    expect(usedDatabaseOf('')).toBe(null)
   })
 })

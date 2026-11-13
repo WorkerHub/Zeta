@@ -39,7 +39,7 @@ import Logo from '../components/Logo'
 import { useConnections } from '../hooks/useConnections'
 import { knocksBack } from '../lib/connection-state'
 import { errorCodeText } from '../lib/error-copy'
-import { splitSqlStatements } from '../lib/sql'
+import { splitSqlStatements, usedDatabaseOf } from '../lib/sql'
 import type { Database as DbType, DbKind, NotebookRunSummary, StatementResult } from '../types'
 
 const THEME_ICONS = { auto: Monitor, light: Sun, dark: Moon }
@@ -70,7 +70,8 @@ export default function QueryPage() {
   // Connection state of the current target (see hooks/useConnections): per target, this browser
   // session only. A target that has not answered a probe cannot be queried.
   const knownDbIds = useMemo(() => databases.map((d) => d.id), [databases])
-  const { isConnected, busyId, connect, disconnect, knockBack } = useConnections(knownDbIds)
+  const { isConnected, busyId, connect, disconnect, knockBack, sessionDatabaseOf, rememberSessionDatabase } =
+    useConnections(knownDbIds)
   const connected = selectedDb ? isConnected(selectedDb.id) : false
   // The engine the run in flight targets: the Spark cancellation caveat is engine-specific
   const [runningKind, setRunningKind] = useState<DbKind>('sqlite')
@@ -174,6 +175,21 @@ export default function QueryPage() {
 
     const statements = splitSqlStatements(sqlToRun)
     if (statements.length === 0) return
+    // MySQL's endpoint reuses one server-side session per credentials: the request has to say which
+    // database that session is on, or the worker pins the registered one (lib/connection-state.ts)
+    const sessionDatabase = db.kind === 'mysql' ? sessionDatabaseOf(db.id) : null
+    // The database this run leaves the session on: the last USE that actually ran. A rejected
+    // statement changed nothing, so only the successful entries count.
+    const rememberSessionUse = (entries: Array<{ sql: string; error?: string }>) => {
+      if (db.kind !== 'mysql') return
+      let last: string | null = null
+      for (const entry of entries) {
+        if (entry.error) continue
+        const switched = usedDatabaseOf(entry.sql)
+        if (switched) last = switched
+      }
+      if (last) rememberSessionDatabase(db.id, last)
+    }
 
     // The run belongs to the notebook it started in, even if the user switches tabs meanwhile.
     // Its controller lets the temporary tab's X abort this request. The SQL it submitted is kept
@@ -214,7 +230,10 @@ export default function QueryPage() {
         // Single statement — use existing endpoint
         const stmt = statements[0]!
         try {
-          const res = await queryApi.execute({ databaseId: db.id, sql: stmt, notebookId: nbId }, controller.signal)
+          const res = await queryApi.execute(
+            { databaseId: db.id, sql: stmt, notebookId: nbId, ...(sessionDatabase ? { sessionDatabase } : {}) },
+            controller.signal
+          )
           const entry: StatementResult = {
             sql: stmt,
             results: res.results ?? [],
@@ -223,6 +242,7 @@ export default function QueryPage() {
             truncated: res.truncated,
           }
           finishRun(nbId, { run: summary(res, [entry]), results: [entry] })
+          rememberSessionUse([{ sql: stmt }])
         } catch (err) {
           // Cancelled: the panel keeps what it showed, this response is not an error to report
           if (controller.signal.aborted) return
@@ -234,8 +254,12 @@ export default function QueryPage() {
         }
       } else {
         // Multiple statements — use batch endpoint
-        const res = await queryApi.executeBatch({ databaseId: db.id, statements, notebookId: nbId }, controller.signal)
+        const res = await queryApi.executeBatch(
+          { databaseId: db.id, statements, notebookId: nbId, ...(sessionDatabase ? { sessionDatabase } : {}) },
+          controller.signal
+        )
         finishRun(nbId, { run: summary(res, res.results), results: res.results })
+        rememberSessionUse(res.results)
       }
     } catch (err) {
       if (controller.signal.aborted) return
@@ -244,7 +268,18 @@ export default function QueryPage() {
     } finally {
       if (runControllers.current.get(nbId) === controller) runControllers.current.delete(nbId)
     }
-  }, [activeId, selectedDb, sqlText, describeError, isConnected, startRun, finishRun, knockBack])
+  }, [
+    activeId,
+    selectedDb,
+    sqlText,
+    describeError,
+    isConnected,
+    startRun,
+    finishRun,
+    knockBack,
+    sessionDatabaseOf,
+    rememberSessionDatabase,
+  ])
 
   // The temporary run tab's X: abort the request, ahead of its response, and drop the run
   const cancelRun = useCallback(() => {
@@ -377,14 +412,28 @@ export default function QueryPage() {
         {/* Target switcher and its connect button — hidden on mobile (shown in the bottom bar) */}
         <div className="hidden sm:flex items-center gap-1.5">
           <div className="relative" ref={dbMenuDesktopRef}>
+            {/* Fixed width on desktop, two lines inside: the name, then the engine and provider.
+                Exactly as tall as the connect button beside it (h-10). */}
             <button
               type="button"
               onClick={() => setShowDbMenu(!showDbMenu)}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-ink-100 hover:bg-ink-200 border border-ink-200 text-body-strong text-ink-700 transition-colors duration-(--duration-base) max-w-[280px]"
+              className="flex h-10 w-[240px] items-center gap-2 rounded-md border border-ink-200 bg-ink-100 px-3 text-left transition-colors duration-(--duration-base) hover:bg-ink-200"
             >
-              <span className="truncate min-w-0">{selectedDb?.name ?? t('query.select_db')}</span>
-              {selectedDb && <DbKindMeta kind={selectedDb.kind} className="shrink-0" />}
-              <ChevronDown size={13} className="text-ink-400 shrink-0 ml-0.5" />
+              <span className="flex min-w-0 flex-1 flex-col justify-center gap-0.5">
+                <span className="flex min-w-0 items-center gap-1.5">
+                  <span
+                    className="truncate text-body-strong leading-tight text-ink-900"
+                    title={selectedDb?.name ?? t('query.select_db')}
+                  >
+                    {selectedDb?.name ?? t('query.select_db')}
+                  </span>
+                  {selectedDb?.is_app_db && (
+                    <span className="badge badge-brand shrink-0">{t('admin_db.app_db_badge')}</span>
+                  )}
+                </span>
+                {selectedDb && <DbKindMeta kind={selectedDb.kind} provider={selectedDb.provider} tone="muted" />}
+              </span>
+              <ChevronDown size={13} className="text-ink-400 shrink-0" />
             </button>
             {showDbMenu && (
               <div className="absolute left-0 top-full mt-1 w-80 bg-ink-0 border border-ink-200 rounded-lg shadow-md z-(--z-dropdown) overflow-hidden animate-overlay-enter">
@@ -408,7 +457,7 @@ export default function QueryPage() {
                         {db.is_app_db && (
                           <span className="badge badge-brand shrink-0">{t('admin_db.app_db_badge')}</span>
                         )}
-                        <DbKindMeta kind={db.kind} className="shrink-0" />
+                        <DbKindMeta kind={db.kind} provider={db.provider} className="shrink-0" />
                       </span>
                     </button>
                   ))
@@ -743,15 +792,28 @@ export default function QueryPage() {
       <div className="sm:hidden fixed bottom-0 left-0 right-0 z-(--z-sticky-bar) safe-b flex items-center gap-2 px-3 py-2 bg-ink-0 border-t border-ink-200">
         {/* DB selector */}
         <div className="relative flex-1 min-w-0" ref={dbMenuRef}>
+          {/* The same two-line button, filling the bar's available width */}
           <button
             type="button"
             onClick={() => {
               setShowDbMenu(!showDbMenu)
             }}
-            className="w-full flex items-center gap-1.5 px-3 py-2 rounded-md bg-ink-100 border border-ink-200 text-body-strong text-ink-700 transition-colors duration-(--duration-base)"
+            className="flex h-10 w-full min-w-0 items-center gap-2 rounded-md border border-ink-200 bg-ink-100 px-3 text-left transition-colors duration-(--duration-base)"
           >
-            <span className="truncate flex-1 min-w-0 text-left">{selectedDb?.name ?? t('query.select_db')}</span>
-            {selectedDb && <DbKindMeta kind={selectedDb.kind} className="shrink-0" />}
+            <span className="flex min-w-0 flex-1 flex-col justify-center gap-0.5">
+              <span className="flex min-w-0 items-center gap-1.5">
+                <span
+                  className="truncate text-body-strong leading-tight text-ink-900"
+                  title={selectedDb?.name ?? t('query.select_db')}
+                >
+                  {selectedDb?.name ?? t('query.select_db')}
+                </span>
+                {selectedDb?.is_app_db && (
+                  <span className="badge badge-brand shrink-0">{t('admin_db.app_db_badge')}</span>
+                )}
+              </span>
+              {selectedDb && <DbKindMeta kind={selectedDb.kind} provider={selectedDb.provider} tone="muted" />}
+            </span>
             <ChevronDown size={13} className="text-ink-400 shrink-0" />
           </button>
           {showDbMenu && (
@@ -769,7 +831,7 @@ export default function QueryPage() {
                   <span className="flex items-center gap-2 min-w-0">
                     <span className="truncate">{db.name}</span>
                     {db.is_app_db && <span className="badge badge-brand shrink-0">{t('admin_db.app_db_badge')}</span>}
-                    <DbKindMeta kind={db.kind} className="shrink-0" />
+                    <DbKindMeta kind={db.kind} provider={db.provider} className="shrink-0" />
                   </span>
                 </button>
               ))}
@@ -793,7 +855,7 @@ export default function QueryPage() {
           onClick={runQuery}
           disabled={running || !selectedDb || !connected}
           title={selectedDb && !connected ? t('query.connect_first') : undefined}
-          className="btn-primary gap-1.5 px-4 py-2"
+          className="btn-primary h-10 gap-1.5 px-4"
         >
           {running ? <Loader2 size={14} className="animate-spin" /> : <Play size={14} />}
           {selectedSql.trim() ? t('query.run_selection') : t('query.run')}

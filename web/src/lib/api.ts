@@ -248,7 +248,10 @@ export const queryApi = {
       method: 'POST',
       body: JSON.stringify({ databaseId }),
     }),
-  execute: (body: { databaseId: string; sql: string; notebookId?: string }, signal?: AbortSignal) =>
+  execute: (
+    body: { databaseId: string; sql: string; notebookId?: string; sessionDatabase?: string },
+    signal?: AbortSignal
+  ) =>
     apiFetch<{
       results?: Record<string, unknown>[]
       meta?: { changes?: number }
@@ -259,7 +262,10 @@ export const queryApi = {
       seq?: number
       executed_at?: number
     }>('/query', { method: 'POST', body: JSON.stringify(body), signal }),
-  executeBatch: (body: { databaseId: string; statements: string[]; notebookId?: string }, signal?: AbortSignal) =>
+  executeBatch: (
+    body: { databaseId: string; statements: string[]; notebookId?: string; sessionDatabase?: string },
+    signal?: AbortSignal
+  ) =>
     apiFetch<{ results: StatementResult[]; run_id?: string; seq?: number; executed_at?: number }>('/query/batch', {
       method: 'POST',
       body: JSON.stringify(body),
@@ -360,10 +366,20 @@ export const adminApi = {
     cf_database_id?: string
     name?: string
     description?: string
+    provider?: string
   }) => apiFetch<{ id: string }>('/admin/databases', { method: 'POST', body: JSON.stringify(body) }),
   updateDatabase: (
     id: string,
-    body: { name?: string; description?: string; is_active?: boolean; cf_database_id?: string }
+    body: {
+      name?: string
+      description?: string
+      is_active?: boolean
+      cf_database_id?: string
+      provider?: string
+      connection_url?: string
+      platform_token?: string
+      app_token?: string
+    }
   ) => apiFetch<{ message: string }>(`/admin/databases/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
   deleteDatabase: (id: string) => apiFetch<{ message: string }>(`/admin/databases/${id}`, { method: 'DELETE' }),
 
