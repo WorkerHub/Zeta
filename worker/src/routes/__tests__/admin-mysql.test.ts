@@ -200,6 +200,40 @@ describe('POST /api/admin/databases (kind=mysql)', () => {
     expect(res.status).toBe(400)
     expect(my.calls).toEqual([])
   })
+
+  it('stores the provider label the registration names, trimmed', async () => {
+    const e = env()
+    my.queue.push({ kind: 'ok' })
+    const res = await callWorker(
+      e,
+      '/api/admin/databases',
+      postJson(
+        { kind: 'mysql', connection_url: RAW_URL, provider: '  PlanetScale  ' },
+        { headers: await adminHeaders(e) }
+      )
+    )
+    expect(res.status).toBe(201)
+    expect((await listRows(e))[0]!.provider).toBe('PlanetScale')
+
+    // Read back through the list: the effective label and the stored text it came from
+    const list = (await (await callWorker(e, '/api/admin/databases', { headers: await adminHeaders(e) })).json()) as {
+      results: Array<Record<string, unknown>>
+    }
+    expect(list.results[0]).toMatchObject({ provider: 'PlanetScale', provider_custom: 'PlanetScale' })
+  })
+
+  it('refuses a provider longer than 40 characters before testing the connection', async () => {
+    const e = env()
+    const res = await callWorker(
+      e,
+      '/api/admin/databases',
+      postJson({ kind: 'mysql', connection_url: RAW_URL, provider: 'p'.repeat(41) }, { headers: await adminHeaders(e) })
+    )
+    expect(res.status).toBe(400)
+    expect(((await res.json()) as { error: string }).error).toBe('provider must be 40 characters or fewer')
+    expect(await listRows(e)).toEqual([])
+    expect(my.calls).toEqual([])
+  })
 })
 
 describe('GET /api/admin/databases', () => {
@@ -271,5 +305,57 @@ describe('PATCH /api/admin/databases/:id (kind=mysql)', () => {
     })
     expect(res.status).toBe(400)
     expect(((await res.json()) as { error: string }).error).toContain('not linked to a Cloudflare database')
+  })
+
+  it('edits the provider, answers with the stored row and never echoes the connection', async () => {
+    const e = env()
+    const id = await seed(e)
+    const res = await callWorker(e, `/api/admin/databases/${id}`, {
+      ...postJson({ name: 'warehouse', provider: 'Aiven' }, { headers: await adminHeaders(e) }),
+      method: 'PATCH',
+    })
+    expect(res.status).toBe(200)
+    const text = await res.text()
+    expect(text).not.toContain('enc:v1:')
+    expect(text).not.toContain(PASSWORD)
+    expect(text).not.toContain('connection_secret')
+    const body = JSON.parse(text) as { message: string; database: Record<string, unknown> }
+    expect(body.message).toBe('Updated')
+    expect(body.database).toMatchObject({
+      id,
+      name: 'warehouse',
+      kind: 'mysql',
+      provider: 'Aiven',
+      provider_custom: 'Aiven',
+      has_connection: true,
+    })
+
+    // The write reached the registry, and a later list agrees with the response
+    expect((await listRows(e))[0]!.provider).toBe('Aiven')
+    const list = (await (await callWorker(e, '/api/admin/databases', { headers: await adminHeaders(e) })).json()) as {
+      results: Array<Record<string, unknown>>
+    }
+    expect(list.results[0]).toMatchObject({ provider: 'Aiven', provider_custom: 'Aiven' })
+
+    // Clearing it puts the engine's own provider back
+    const cleared = await callWorker(e, `/api/admin/databases/${id}`, {
+      ...postJson({ provider: '' }, { headers: await adminHeaders(e) }),
+      method: 'PATCH',
+    })
+    expect(cleared.status).toBe(200)
+    const clearedBody = (await cleared.json()) as { database: Record<string, unknown> }
+    expect(clearedBody.database).toMatchObject({ provider: 'TiDB', provider_custom: null })
+    expect((await listRows(e))[0]!.provider).toBeNull()
+  })
+
+  it('refuses an over-long provider on edit and keeps the stored one', async () => {
+    const e = env()
+    const id = await seed(e)
+    const res = await callWorker(e, `/api/admin/databases/${id}`, {
+      ...postJson({ provider: 'p'.repeat(41) }, { headers: await adminHeaders(e) }),
+      method: 'PATCH',
+    })
+    expect(res.status).toBe(400)
+    expect((await listRows(e))[0]!.provider).toBeNull()
   })
 })

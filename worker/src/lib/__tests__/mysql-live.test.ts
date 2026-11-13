@@ -263,6 +263,76 @@ describe.skipIf(!LIVE_URL)('mysql executor against a live TiDB Cloud Starter', (
     }
   })
 
+  it('pins the database the request chose for its session, in every later request too', {
+    timeout: 180_000,
+  }, async () => {
+    const normalized = normalizeMySqlUrl(LIVE_URL)
+    if (!normalized.ok) throw new Error(normalized.error)
+    const registered = normalized.database
+
+    // The session can only be pinned to a schema this instance actually has, so the candidates are
+    // read from the server rather than guessed, and the registered one is skipped to keep the check
+    // meaningful (a fresh instance may expose no other schema — then there is nothing to prove here).
+    const system = new Set(['information_schema', 'mysql', 'performance_schema', 'sys', 'metrics_schema'])
+    const listing = await openMySqlSession(normalized.url)
+    let candidates: string[] = []
+    try {
+      const rows = await listing.run('SELECT schema_name AS db FROM information_schema.schemata', 'read', 5000)
+      candidates = rows.results
+        .map((row) => String(row.db ?? ''))
+        // `schemata` reports a system schema in upper case
+        .filter((db) => db && db !== registered && !system.has(db.toLowerCase()))
+    } finally {
+      await listing.close()
+    }
+
+    let chosen: string | null = null
+    for (const db of candidates) {
+      const probe = await openMySqlSession(normalized.url, db).catch(() => null)
+      if (!probe) continue
+      await probe.run(`USE \`${registered}\``, 'read', 5000).catch(() => {})
+      await probe.close()
+      chosen = db
+      break
+    }
+    if (!chosen) {
+      log('this instance exposes no second schema to pin', candidates)
+      return
+    }
+
+    // Request 1: pins the chosen schema instead of the registered one
+    const first = await openMySqlSession(normalized.url, chosen)
+    try {
+      const read = await first.run('SELECT database() AS db', 'read', 5000)
+      log('session database chosen by the request', read.results[0])
+      expect(read.results[0]?.db).toBe(chosen)
+    } finally {
+      await first.run(`USE \`${registered}\``, 'read', 5000).catch(() => {})
+      await first.close()
+    }
+
+    // Request 2, in a new session: the same choice still decides where it starts
+    const second = await openMySqlSession(normalized.url, chosen)
+    try {
+      const again = await second.run('SELECT database() AS db', 'read', 5000)
+      log('session database of a later request that chose it', again.results[0])
+      expect(again.results[0]?.db).toBe(chosen)
+    } finally {
+      await second.run(`USE \`${registered}\``, 'read', 5000).catch(() => {})
+      await second.close()
+    }
+
+    // A request without the field starts on the registered database again
+    const third = await openMySqlSession(normalized.url)
+    try {
+      const pinned = await third.run('SELECT database() AS db', 'read', 5000)
+      log('session database without the field', pinned.results[0])
+      expect(pinned.results[0]?.db).toBe(registered)
+    } finally {
+      await third.close()
+    }
+  })
+
   it('sends exactly one HTTP call per batch statement', { timeout: 120_000 }, async () => {
     const normalized = normalizeMySqlUrl(LIVE_URL)
     if (!normalized.ok) throw new Error(normalized.error)

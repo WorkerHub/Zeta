@@ -235,6 +235,28 @@ describe('database registry over the D1 HTTP API', () => {
     expect(insert!.args[4]).toBe(DB_1) // cf_database_id
   })
 
+  it('stores the provider label a D1 registration names', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        cfList([
+          { uuid: APP_DB, name: 'zeta' },
+          { uuid: DB_1, name: 'analytics' },
+        ])
+      )
+    )
+    const { db, calls } = fakeD1()
+    const env = fakeEnv({ DB: db, CF_ACCOUNT_ID: 'acct', CLOUDFLARE_API_TOKEN: 'tok', ZETA_APP_DB_ID: APP_DB })
+    const res = await callWorker(
+      env,
+      '/api/admin/databases',
+      postJson({ cf_database_id: DB_1, provider: ' Turso ' }, { headers: await bearer(env, 'a1', 'admin') })
+    )
+    expect(res.status).toBe(201)
+    const insert = calls.find((c) => c.sql.startsWith('INSERT INTO d1_databases'))
+    expect(insert!.args[5]).toBe('Turso') // provider, trimmed
+  })
+
   it('refuses to register the application database', async () => {
     vi.stubGlobal(
       'fetch',
@@ -285,9 +307,25 @@ describe('database registry over the D1 HTTP API', () => {
         ])
       )
     )
-    const { db, calls } = fakeD1((sql) =>
-      sql.startsWith('SELECT id, kind, cf_database_id') ? { id: 'r1', kind: 'sqlite', cf_database_id: null } : null
-    )
+    const { db, calls } = fakeD1((sql) => {
+      if (sql.startsWith('SELECT id, kind, cf_database_id')) return { id: 'r1', kind: 'sqlite', cf_database_id: null }
+      // The readback a PATCH response is built from
+      if (sql.startsWith('SELECT * FROM d1_databases WHERE id')) {
+        return {
+          id: 'r1',
+          name: 'legacy',
+          description: null,
+          binding_name: 'cf:old',
+          cf_database_id: DB_1,
+          kind: 'sqlite',
+          provider: null,
+          is_active: 1,
+          created_at: 0,
+          created_by: null,
+        }
+      }
+      return null
+    })
     const env = fakeEnv({ DB: db, CF_ACCOUNT_ID: 'acct', CLOUDFLARE_API_TOKEN: 'tok', ZETA_APP_DB_ID: APP_DB })
     const res = await callWorker(
       env,
@@ -295,6 +333,11 @@ describe('database registry over the D1 HTTP API', () => {
       postJson({ cf_database_id: DB_1 }, { method: 'PATCH', headers: await bearer(env, 'a1', 'admin') })
     )
     expect(res.status).toBe(200)
+    // The response carries the row as stored, with the provider resolved for display
+    const body = (await res.json()) as { database: Record<string, unknown> }
+    expect(body.database.cf_database_id).toBe(DB_1)
+    expect(body.database.provider).toBe('D1')
+    expect(body.database).not.toHaveProperty('connection_secret')
     const update = calls.find((c) => c.sql.startsWith('UPDATE d1_databases'))
     expect(update).toBeTruthy()
     expect(update!.args[0]).toBe(DB_1)
@@ -456,9 +499,24 @@ describe('application database as a query target (ALLOW_APP_DB_AS_TARGET)', () =
         ])
       )
     )
-    const { db, calls } = fakeD1((sql) =>
-      sql.startsWith('SELECT id, kind, cf_database_id') ? { id: 'r1', kind: 'sqlite', cf_database_id: null } : null
-    )
+    const { db, calls } = fakeD1((sql) => {
+      if (sql.startsWith('SELECT id, kind, cf_database_id')) return { id: 'r1', kind: 'sqlite', cf_database_id: null }
+      if (sql.startsWith('SELECT * FROM d1_databases WHERE id')) {
+        return {
+          id: 'r1',
+          name: 'legacy',
+          description: null,
+          binding_name: 'cf:old',
+          cf_database_id: APP_DB,
+          kind: 'sqlite',
+          provider: null,
+          is_active: 1,
+          created_at: 0,
+          created_by: null,
+        }
+      }
+      return null
+    })
     const env = fakeEnv({
       DB: db,
       CF_ACCOUNT_ID: 'acct',
@@ -590,8 +648,9 @@ describe('POST /api/admin/setup', () => {
       migrations: [
         { name: 'schema_v1', status: 'applied' },
         { name: 'schema_v2', status: 'applied' },
+        { name: 'schema_v3', status: 'applied' },
       ],
-      upgraded: ['schema_v1: applied', 'schema_v2: applied'],
+      upgraded: ['schema_v1: applied', 'schema_v2: applied', 'schema_v3: applied'],
     })
     expect(calls.some((c) => c.sql.includes('CREATE TABLE IF NOT EXISTS users'))).toBe(true)
     expect(calls.some((c) => c.sql.includes('INSERT OR IGNORE INTO settings'))).toBe(true)
@@ -629,6 +688,7 @@ describe('POST /api/admin/setup', () => {
       migrations: [
         { name: 'schema_v1', status: 'skipped' },
         { name: 'schema_v2', status: 'skipped' },
+        { name: 'schema_v3', status: 'skipped' },
       ],
     })
     expect(body).not.toHaveProperty('upgraded')
