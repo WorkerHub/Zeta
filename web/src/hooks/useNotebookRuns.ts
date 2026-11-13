@@ -4,15 +4,17 @@ import {
   RUN_PAGE_SIZE,
   addRun,
   cacheResults,
-  cancelPending,
   clearRunsState,
   emptyRunsState,
   idlePending,
   receivePage,
   removeRun,
+  runCancelNotice,
   runHaltNotice,
   runningPending,
   settleRun,
+  withCancelling,
+  type CancelNotice,
   type HaltNotice,
   type NotebookRunsState,
   type PendingRun,
@@ -21,11 +23,12 @@ import {
 import type { StatementResult } from '../types'
 
 // Results of one saved run: being fetched, ready, hidden (the user lost access to its database)
-// or failed to load. `halted` is the notice the run's own record earns (it is stored with the run),
-// so a run opened from history announces the same halt as the response that created it.
+// or failed to load. `halted` and `cancelled` are the notices the run's own record earns (they are
+// stored with the run), so a run opened from history announces the same halt or cancellation as the
+// response that created it.
 export type RunResults =
   | { status: 'loading' }
-  | { status: 'ready'; results: StatementResult[]; halted?: HaltNotice | null }
+  | { status: 'ready'; results: StatementResult[]; halted?: HaltNotice | null; cancelled?: CancelNotice | null }
   | { status: 'denied' }
   | { status: 'failed' }
 
@@ -115,6 +118,7 @@ export function useNotebookRuns(activeId: string | null) {
             status: 'ready',
             results: run.results,
             halted: runHaltNotice(run, run.results),
+            cancelled: runCancelNotice(run),
           })
         )
       )
@@ -189,9 +193,12 @@ export function useNotebookRuns(activeId: string | null) {
       if (!settled.accepted) return
       const run = settled.run
       if (run) {
-        // The notice rides with this run's results, so selecting it again shows it too
+        // The notices ride with this run's results, so selecting it again shows them too
         const halted = 'error' in outcome ? null : (outcome.halted ?? null)
-        setResults((prev) => cacheResults(prev, run.id, { status: 'ready', results: settled.results, halted }))
+        const cancelled = 'error' in outcome ? null : (outcome.cancelled ?? null)
+        setResults((prev) =>
+          cacheResults(prev, run.id, { status: 'ready', results: settled.results, halted, cancelled })
+        )
         patchNotebook(nbId, (s) => addRun(s, run))
       }
       commitPending(nbId, settled.pending)
@@ -199,11 +206,13 @@ export function useNotebookRuns(activeId: string | null) {
     [commitPending, patchNotebook]
   )
 
-  // Cancelling returns the panel to the run selected before the request started (it was never
-  // deselected); any response still on its way is dropped by finishRun
-  const cancelRun = useCallback(
-    (nbId: string) => {
-      commitPending(nbId, cancelPending(pendingRef.current[nbId] ?? idlePending))
+  // The cancel signal is on its way (see pages/Query.tsx): the run keeps running, the button says
+  // 正在取消… until its response lands and finishRun clears the flag with the rest of the pending run
+  const setCancelling = useCallback(
+    (nbId: string, cancelling: boolean) => {
+      const current = pendingRef.current[nbId] ?? idlePending
+      const next = withCancelling(current, cancelling)
+      if (next !== current) commitPending(nbId, next)
     },
     [commitPending]
   )
@@ -233,19 +242,21 @@ export function useNotebookRuns(activeId: string | null) {
     selectedRun,
     selectedResults,
     running: activePending.running,
+    cancelling: activePending.cancelling,
     runningDatabaseName: activePending.databaseName,
     runningSql: activePending.sql,
     runningStatementCount: activePending.statementCount,
     runError: activePending.error,
     transient: activePending.transient,
     transientHalted: activePending.halted,
+    transientCancelled: activePending.cancelled,
     selectRun,
     loadMore,
     deleteRun,
     clearRuns,
     startRun,
     finishRun,
-    cancelRun,
+    setCancelling,
     forgetNotebook,
   }
 }

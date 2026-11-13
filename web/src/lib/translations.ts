@@ -81,7 +81,8 @@ export const translations: Record<Locale, Record<string, string>> = {
     'query.run_all': 'Run All',
     'query.shortcut': '⌘+Enter to run',
     'query.running': 'Running query…',
-    'query.cancel_run': 'Cancel query',
+    'query.cancel_run': 'Cancel execution',
+    'query.cancelling': 'Cancelling…',
     'query.error': 'Query error',
     'query.no_results': 'Run a query to see results',
     'query.select_db': 'Select data source',
@@ -99,8 +100,6 @@ export const translations: Record<Locale, Record<string, string>> = {
     'query.disconnect': 'Disconnect',
     'query.connect_first': 'Connect to this data source first',
     'query.connect_failed': 'Could not connect',
-    'query.spark_cancel_hint':
-      'Cancelling only closes this request — Spark keeps running the statement and holds its global lock.',
 
     // Spark failures the worker classifies with a code (report §2.6)
     'spark_error.spark_stopped':
@@ -388,6 +387,7 @@ export const translations: Record<Locale, Record<string, string>> = {
     'errors.load_notebooks_failed': 'Failed to load notebooks',
     'errors.delete_notebook_failed': 'Failed to delete notebook',
     'errors.runs_failed': 'Failed to update saved runs',
+    'errors.cancel_failed': 'Could not cancel — try again',
     'errors.load_run_settings_failed': 'Failed to load the saved-run settings',
 
     // Query results
@@ -404,6 +404,11 @@ export const translations: Record<Locale, Record<string, string>> = {
     'results.running_sql_statements': 'Running SQL: {sql} ({n} statements)',
     'results.stored_rows': '(only the first {n} rows were saved — run again to see all)',
     'results.halted': 'Statement {n} failed — the batch stopped, so {m} statement(s) did not run',
+    // A run the user cancelled (the caveat is only for D1 and TiDB, which cannot kill a statement)
+    'results.cancelled': 'Execution cancelled',
+    'results.cancelled_caveat':
+      'The statement in flight still finishes on the server — the statements after it will not run.',
+    'results.cancelled_short': 'Cancelled',
 
     // Saved runs
     'runs.ran_at': 'Ran {time}',
@@ -527,7 +532,8 @@ export const translations: Record<Locale, Record<string, string>> = {
     'query.run_all': '运行全部',
     'query.shortcut': '⌘+Enter 运行',
     'query.running': '查询运行中…',
-    'query.cancel_run': '取消查询',
+    'query.cancel_run': '取消执行',
+    'query.cancelling': '正在取消…',
     'query.error': '查询错误',
     'query.no_results': '运行查询以查看结果',
     'query.select_db': '选择数据源',
@@ -545,7 +551,6 @@ export const translations: Record<Locale, Record<string, string>> = {
     'query.disconnect': '取消连接',
     'query.connect_first': '请先连接数据源',
     'query.connect_failed': '连接失败',
-    'query.spark_cancel_hint': '取消只断开本页请求，Spark 仍在后台执行并占用全局锁。',
 
     // 后端按 code 分类的 Spark 失败（报告 §2.6 定稿文案）
     'spark_error.spark_stopped': 'Spark 机器已停止运行，需要管理员在 Instabox 启动后才能查询。',
@@ -821,6 +826,7 @@ export const translations: Record<Locale, Record<string, string>> = {
     'errors.delete_db_failed': '删除数据源失败',
     'errors.save_failed': '保存失败',
     'errors.load_databases_failed': '数据源列表加载失败',
+    'errors.cancel_failed': '取消失败，请重试',
     'errors.load_notebooks_failed': '笔记本加载失败',
     'errors.delete_notebook_failed': '删除笔记本失败',
     'errors.runs_failed': '运行记录操作失败',
@@ -840,6 +846,10 @@ export const translations: Record<Locale, Record<string, string>> = {
     'results.running_sql_statements': '正在执行 SQL：{sql}（共 {n} 条）',
     'results.stored_rows': '（仅保存了前 {n} 行 — 重新运行可查看全部）',
     'results.halted': '第 {n} 条语句出错，已停止，其余 {m} 条未执行',
+    // 取消呈现（副提示仅 D1 与 TiDB：这两个引擎杀不掉在跑的那条语句）
+    'results.cancelled': '已取消执行',
+    'results.cancelled_caveat': '本条语句仍在服务端跑完，其余语句不再执行',
+    'results.cancelled_short': '已取消',
 
     // Saved runs
     'runs.ran_at': '运行于 {time}',

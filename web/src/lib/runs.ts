@@ -1,4 +1,4 @@
-import type { NotebookRunSummary, StatementResult } from '../types'
+import type { DbKind, NotebookRunSummary, StatementResult } from '../types'
 
 // ── Per-notebook state of the saved runs and of the run in flight ────────────
 // (see hooks/useNotebookRuns.ts)
@@ -66,6 +66,27 @@ export function removeRun(s: NotebookRunsState, runId: string): NotebookRunsStat
 
 // ── The run in flight ────────────────────────────────────────────────────────
 
+// A run the user cancelled, as the results area announces it. `caveat` is the one thing the
+// cancellation of a flag-only engine owes the reader: D1 and TiDB have no way to kill a statement,
+// so the one in flight still finishes on the server while the statements after it never run.
+// PostgreSQL and Spark really kill it, so they carry no caveat.
+export interface CancelNotice {
+  caveat: boolean
+}
+
+// The notice a cancelled execution earns, by the engine it targeted. Every engine announces the
+// cancellation; only the flag-only engines add the caveat — D1 and TiDB cannot kill the statement
+// in flight, PostgreSQL and Spark do.
+export function cancelNotice(kind: DbKind): CancelNotice {
+  return { caveat: kind === 'sqlite' || kind === 'mysql' }
+}
+
+// The notice a run opened from history earns. Its record keeps the `cancelled` flag but not the
+// engine that ran it, so it announces the cancellation without claiming a caveat.
+export function runCancelNotice(run: { cancelled?: boolean }): CancelNotice | null {
+  return run.cancelled ? { caveat: false } : null
+}
+
 // A batch that stopped at its first failing statement (the worker's `halted`): the failing
 // statement's position (from 1) and how many submitted statements never ran.
 export interface HaltNotice {
@@ -110,13 +131,16 @@ export function runHaltNotice(
 // or results that were not stored as a run (transient). `databaseName` is the database the run
 // was started on, shown in the history strip while it runs. `sql` is the statement the run is
 // executing (the first one when several were submitted) and `statementCount` how many there are,
-// which the results panel names while it runs. `halted` rides with the transient results (a saved
-// run carries its own notice with its cached results).
+// which the results panel names while it runs. `halted` and `cancelled` ride with the transient
+// results (a saved run carries its own notices with its cached results). `cancelling` is set while
+// the cancel signal is on its way — the run itself is still in flight until its response lands.
 export interface PendingRun {
   running: boolean
+  cancelling: boolean
   error: string
   transient: StatementResult[] | null
   halted: HaltNotice | null
+  cancelled: CancelNotice | null
   databaseName: string
   sql: string
   statementCount: number
@@ -124,9 +148,11 @@ export interface PendingRun {
 
 export const idlePending: PendingRun = {
   running: false,
+  cancelling: false,
   error: '',
   transient: null,
   halted: null,
+  cancelled: null,
   databaseName: '',
   sql: '',
   statementCount: 0,
@@ -134,21 +160,35 @@ export const idlePending: PendingRun = {
 
 export const runningPending = (databaseName: string, sql: string, statementCount: number): PendingRun => ({
   running: true,
+  cancelling: false,
   error: '',
   transient: null,
   halted: null,
+  cancelled: null,
   databaseName,
   sql,
   statementCount,
 })
 
+// The cancel signal is in flight: the button says so, the run keeps running. A run that is not in
+// flight is returned untouched, so a late write cannot make an idle notebook look like it is
+// cancelling something.
+export function withCancelling(pending: PendingRun, cancelling: boolean): PendingRun {
+  return pending.running && pending.cancelling !== cancelling ? { ...pending, cancelling } : pending
+}
+
 export type RunOutcome =
-  | { run: NotebookRunSummary | null; results: StatementResult[]; halted?: HaltNotice | null }
+  | {
+      run: NotebookRunSummary | null
+      results: StatementResult[]
+      halted?: HaltNotice | null
+      cancelled?: CancelNotice | null
+    }
   | { error: string }
 
 // Applies a run's outcome only while that notebook's run is still in flight: a response arriving
-// after the user cancelled is rejected, so it can neither replace what the panel shows nor turn
-// the temporary tab into a saved one.
+// after the page dropped the request (a notebook deleted, the page left) is rejected. A cancelled
+// execution is an outcome like any other — its `cancelled: true` response is expected and lands.
 export type SettledRun =
   | { accepted: false; pending: PendingRun }
   | { accepted: true; pending: PendingRun; run: NotebookRunSummary | null; results: StatementResult[] }
@@ -160,17 +200,16 @@ export function settleRun(pending: PendingRun, outcome: RunOutcome): SettledRun 
   if (!outcome.run)
     return {
       accepted: true,
-      pending: { ...idlePending, transient: outcome.results, halted: outcome.halted ?? null },
+      pending: {
+        ...idlePending,
+        transient: outcome.results,
+        halted: outcome.halted ?? null,
+        cancelled: outcome.cancelled ?? null,
+      },
       run: null,
       results: outcome.results,
     }
   return { accepted: true, pending: idlePending, run: outcome.run, results: outcome.results }
-}
-
-// Cancelling clears the run in flight. The selected saved run and its results were never touched,
-// so the results panel falls back to them by itself.
-export function cancelPending(pending: PendingRun): PendingRun {
-  return pending.running ? idlePending : pending
 }
 
 export function clearRunsState(s: NotebookRunsState): NotebookRunsState {
