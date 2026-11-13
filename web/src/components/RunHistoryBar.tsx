@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef } from 'react'
 import type { KeyboardEvent } from 'react'
-import { AlertCircle, CheckCircle2, History, Loader2, X } from 'lucide-react'
+import { AlertCircle, CheckCircle2, CircleSlash, History, Loader2, X } from 'lucide-react'
 import { useLocale } from '../hooks/useLocale'
 import { timeAgo } from '../lib/time'
 import type { NotebookRunSummary } from '../types'
@@ -16,7 +16,7 @@ interface Props {
   onSelect: (runId: string) => void
   onLoadMore: () => void
   onDelete: (runId: string) => void
-  onCancelRun: () => void // the temporary tab's X aborts the run in flight
+  onCancelRun: () => void // the temporary tab's X asks the worker to cancel the run in flight
 }
 
 // How close (px) to the oldest end of the strip the next page of older runs is loaded
@@ -94,10 +94,13 @@ export default function RunHistoryBar({
   }, [])
 
   const ago = (run: NotebookRunSummary) => timeAgo(Math.floor(run.executed_at / 1000), locale)
+  // A cancelled run says so; an error still wins, since a halt is what stopped the batch
   const outcome = (run: NotebookRunSummary) =>
     run.error_count > 0
       ? t('runs.errors', { n: run.error_count })
-      : t(run.row_count === 1 ? 'results.row' : 'results.rows', { n: run.row_count })
+      : run.cancelled
+        ? t('results.cancelled_short')
+        : t(run.row_count === 1 ? 'results.row' : 'results.rows', { n: run.row_count })
   const tooltip = (run: NotebookRunSummary) =>
     [
       `#${run.seq} · ${new Date(run.executed_at).toLocaleString()}`,
@@ -195,6 +198,8 @@ export default function RunHistoryBar({
               {runs.map((run, index) => {
                 const active = run.id === selected?.id
                 const failed = run.error_count > 0
+                // Neither a failure nor a success: a run the user cancelled
+                const cancelled = !failed && !!run.cancelled
                 return (
                   <div
                     key={run.id}
@@ -221,10 +226,15 @@ export default function RunHistoryBar({
                     >
                       {failed ? (
                         <AlertCircle size={11} className="text-danger-600 shrink-0" aria-hidden="true" />
+                      ) : cancelled ? (
+                        <CircleSlash size={11} className="text-ink-400 shrink-0" aria-hidden="true" />
                       ) : (
                         <CheckCircle2 size={11} className="text-success-600 shrink-0" aria-hidden="true" />
                       )}
-                      <span className="sr-only">{t(failed ? 'runs.failed' : 'runs.succeeded')}</span>#{run.seq}
+                      <span className="sr-only">
+                        {t(cancelled ? 'results.cancelled_short' : failed ? 'runs.failed' : 'runs.succeeded')}
+                      </span>
+                      #{run.seq}
                     </button>
                     {/* Keyboard users delete the focused tab with Delete / Backspace */}
                     <button

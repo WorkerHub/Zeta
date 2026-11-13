@@ -249,7 +249,13 @@ export const queryApi = {
       body: JSON.stringify({ databaseId }),
     }),
   execute: (
-    body: { databaseId: string; sql: string; notebookId?: string; sessionDatabase?: string },
+    body: {
+      databaseId: string
+      sql: string
+      notebookId?: string
+      sessionDatabase?: string
+      executionId?: string
+    },
     signal?: AbortSignal
   ) =>
     apiFetch<{
@@ -258,6 +264,9 @@ export const queryApi = {
       duration_ms?: number
       truncated?: boolean
       error?: string
+      // The user cancelled this execution before/while it ran: `results` is empty and the saved
+      // run's statement carries `cancelled` instead of an error. left out or false = it ran.
+      cancelled?: boolean
       run_id?: string
       seq?: number
       executed_at?: number
@@ -267,12 +276,21 @@ export const queryApi = {
   // `halted` is true — the run reports how many never ran. Every statement ran when it is false
   // or left out.
   executeBatch: (
-    body: { databaseId: string; statements: string[]; notebookId?: string; sessionDatabase?: string },
+    body: {
+      databaseId: string
+      statements: string[]
+      notebookId?: string
+      sessionDatabase?: string
+      executionId?: string
+    },
     signal?: AbortSignal
   ) =>
     apiFetch<{
       results: StatementResult[]
       halted?: boolean
+      // The user cancelled the batch: the statement in flight is returned with `cancelled: true`
+      // (no error) and the statements after it never ran. left out or false = it ran to the end.
+      cancelled?: boolean
       run_id?: string
       seq?: number
       executed_at?: number
@@ -280,6 +298,15 @@ export const queryApi = {
       method: 'POST',
       body: JSON.stringify(body),
       signal,
+    }),
+  // Cancels an execution addressable by the id its request carried (`executionId`). The request
+  // that is running is not aborted: it returns on its own, with `cancelled: true` once the worker
+  // stops it. `cancelled: false` means the execution had already finished. 404 = unknown id, or
+  // another user's execution (an ApiError with status 404).
+  cancel: (executionId: string) =>
+    apiFetch<{ ok: boolean; cancelled: boolean }>('/query/cancel', {
+      method: 'POST',
+      body: JSON.stringify({ executionId }),
     }),
 }
 

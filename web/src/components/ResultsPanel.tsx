@@ -1,4 +1,4 @@
-import { AlertCircle, CheckCircle2, Loader2 } from 'lucide-react'
+import { AlertCircle, CheckCircle2, CircleSlash, Loader2 } from 'lucide-react'
 import type { StatementResult } from '../types'
 import ResultTable from './ResultTable'
 import { useLocale } from '../hooks/useLocale'
@@ -10,7 +10,6 @@ interface Props {
   onSelectIndex: (i: number) => void
   running?: boolean // a run is in flight: the mask covers the panel
   runningLabel?: string // what it is executing, shown on the mask
-  runningHint?: string // a caveat about that run, under the label (Spark: cancel does not stop it)
 }
 
 export default function ResultsPanel({
@@ -19,7 +18,6 @@ export default function ResultsPanel({
   onSelectIndex,
   running = false,
   runningLabel = '',
-  runningHint = '',
 }: Props) {
   const { t } = useLocale()
   const active = results[activeIndex]
@@ -36,13 +34,17 @@ export default function ResultsPanel({
           {results.map((r, i) => {
             const isActive = i === activeIndex
             const hasError = !!r.error
+            // A statement the user cancelled: neither a failure nor a success, so it gets neither mark
+            const isCancelled = !hasError && !!r.cancelled
             const meta = hasError
               ? t('results.error_short')
-              : r.results.length > 0
-                ? `${r.results.length}r`
-                : r.changes !== undefined
-                  ? `${r.changes}c`
-                  : '0r'
+              : isCancelled
+                ? t('results.cancelled_short')
+                : r.results.length > 0
+                  ? `${r.results.length}r`
+                  : r.changes !== undefined
+                    ? `${r.changes}c`
+                    : '0r'
             return (
               <button
                 type="button"
@@ -56,6 +58,8 @@ export default function ResultsPanel({
                 <div className="flex items-center gap-1 mb-0.5">
                   {hasError ? (
                     <AlertCircle size={10} className="text-danger-600 shrink-0" />
+                  ) : isCancelled ? (
+                    <CircleSlash size={10} className="text-ink-400 shrink-0" />
                   ) : (
                     <CheckCircle2 size={10} className="text-success-600 shrink-0" />
                   )}
@@ -84,6 +88,13 @@ export default function ResultsPanel({
             <>
               <AlertCircle size={12} className="text-danger-600 shrink-0" />
               <span className="text-caption text-danger-600">{t('results.error')}</span>
+              <span className="text-ink-300 text-caption">·</span>
+              <span className="text-caption text-ink-500 tnum">{active.duration_ms}ms</span>
+            </>
+          ) : active.cancelled ? (
+            <>
+              <CircleSlash size={12} className="shrink-0 text-ink-400" />
+              <span className="text-caption text-ink-500">{t('results.cancelled_short')}</span>
               <span className="text-ink-300 text-caption">·</span>
               <span className="text-caption text-ink-500 tnum">{active.duration_ms}ms</span>
             </>
@@ -120,6 +131,8 @@ export default function ResultsPanel({
               <AlertCircle size={16} className="text-danger-600 shrink-0 mt-0.5" />
               <pre className="text-caption text-danger-600 whitespace-pre-wrap font-mono">{active.error}</pre>
             </div>
+          ) : active.cancelled ? (
+            <p className="py-4 text-center text-body text-ink-500">{t('results.cancelled')}</p>
           ) : (
             <ResultTable rows={active.results} />
           )}
@@ -140,7 +153,6 @@ export default function ResultsPanel({
               {runningLabel}
             </span>
           </span>
-          {runningHint && <p className="max-w-[520px] text-center text-caption text-ink-500">{runningHint}</p>}
         </div>
       )}
     </div>

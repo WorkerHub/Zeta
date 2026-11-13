@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { CSSProperties, KeyboardEvent, PointerEvent } from 'react'
-import { AlertCircle, CheckCircle2, History, Loader2, Trash2, X } from 'lucide-react'
+import { AlertCircle, CheckCircle2, CircleSlash, History, Loader2, Trash2, X } from 'lucide-react'
 import { useLocale } from '../hooks/useLocale'
 import {
   HISTORY_DRAWER_KEY_STEP,
@@ -180,10 +180,13 @@ export default function RunHistoryDrawer({
   }, [selectedRunId])
 
   const ago = (run: NotebookRunSummary) => timeAgo(Math.floor(run.executed_at / 1000), locale)
+  // A cancelled run says so; an error still wins, since a halt is what stopped the batch
   const outcome = (run: NotebookRunSummary) =>
     run.error_count > 0
       ? t('runs.errors', { n: run.error_count })
-      : t(run.row_count === 1 ? 'results.row' : 'results.rows', { n: run.row_count })
+      : run.cancelled
+        ? t('results.cancelled_short')
+        : t(run.row_count === 1 ? 'results.row' : 'results.rows', { n: run.row_count })
 
   // Older runs load on reaching the end of the list; the button below is the keyboard fallback
   const loadMoreAtEnd = () => {
@@ -344,6 +347,8 @@ export default function RunHistoryDrawer({
                   {runs.map((run) => {
                     const active = run.id === selectedRunId
                     const failed = run.error_count > 0
+                    // Neither a failure nor a success: a run the user cancelled
+                    const cancelled = !failed && !!run.cancelled
                     return (
                       <li key={run.id}>
                         <div className={`flex items-stretch pr-1.5 ${active ? 'bg-brand-50' : 'hover:bg-ink-50'}`}>
@@ -363,12 +368,16 @@ export default function RunHistoryDrawer({
                             <span className="flex items-center gap-1.5">
                               {failed ? (
                                 <AlertCircle size={11} className="shrink-0 text-danger-600" aria-hidden="true" />
+                              ) : cancelled ? (
+                                <CircleSlash size={11} className="shrink-0 text-ink-400" aria-hidden="true" />
                               ) : (
                                 <CheckCircle2 size={11} className="shrink-0 text-success-600" aria-hidden="true" />
                               )}
                               <span className="font-mono text-caption tnum text-ink-700">#{run.seq}</span>
                               <span className="truncate text-micro text-ink-500">{ago(run)}</span>
-                              <span className="sr-only">{t(failed ? 'runs.failed' : 'runs.succeeded')}</span>
+                              <span className="sr-only">
+                                {t(cancelled ? 'results.cancelled_short' : failed ? 'runs.failed' : 'runs.succeeded')}
+                              </span>
                             </span>
                             <span className="mt-0.5 block truncate text-micro text-ink-500">
                               {outcome(run)} · {run.duration_ms}ms
@@ -427,6 +436,8 @@ export default function RunHistoryDrawer({
                     <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-caption">
                       {selectedRun.error_count > 0 ? (
                         <AlertCircle size={12} className="shrink-0 text-danger-600" aria-hidden="true" />
+                      ) : selectedRun.cancelled ? (
+                        <CircleSlash size={12} className="shrink-0 text-ink-400" aria-hidden="true" />
                       ) : (
                         <CheckCircle2 size={12} className="shrink-0 text-success-600" aria-hidden="true" />
                       )}
