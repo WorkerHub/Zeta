@@ -163,7 +163,7 @@ export default function AdminDatabases() {
   const linkIsApp = linkCfId ? available.some((d) => d.uuid === linkCfId && d.is_app_db) : false
 
   return (
-    <div className="p-4 sm:p-6 max-w-5xl flex flex-col gap-6">
+    <div className="p-4 sm:p-6 max-w-7xl flex flex-col gap-6">
       <div className="flex items-center justify-between">
         <h1 className="text-title text-ink-950">{t('admin.databases')}</h1>
         <button type="button" onClick={toggleAdd} className="btn-primary btn-sm gap-1.5">
@@ -230,12 +230,18 @@ export default function AdminDatabases() {
             <thead>
               <tr className="border-b border-ink-200 bg-ink-50">
                 <th className="text-left px-4 py-3 text-label text-ink-500">{t('admin_db.name')}</th>
-                <th className="text-left px-4 py-3 text-label text-ink-500">{t('admin_db.engine')}</th>
-                <th className="text-left px-4 py-3 text-label text-ink-500">{t('admin_db.provider')}</th>
-                <th className="text-left px-4 py-3 text-label text-ink-500 hidden md:table-cell">
+                <th className="text-left px-4 py-3 text-label text-ink-500 whitespace-nowrap">
+                  {t('admin_db.engine')}
+                </th>
+                <th className="text-left px-4 py-3 text-label text-ink-500 whitespace-nowrap">
+                  {t('admin_db.provider')}
+                </th>
+                <th className="text-left px-4 py-3 text-label text-ink-500 hidden md:table-cell whitespace-nowrap">
                   {t('admin_db.cf_database_id')}
                 </th>
-                <th className="text-left px-4 py-3 text-label text-ink-500">{t('admin_db.status')}</th>
+                <th className="text-left px-4 py-3 text-label text-ink-500 whitespace-nowrap">
+                  {t('admin_db.status')}
+                </th>
                 <th className="px-4 py-3" />
               </tr>
             </thead>
@@ -252,9 +258,11 @@ export default function AdminDatabases() {
                     </p>
                     {db.description && <p className="text-caption text-ink-500">{db.description}</p>}
                   </td>
-                  <td className="px-4 py-3 text-ink-700">{t(engineLabelKey(db.kind))}</td>
-                  <td className="px-4 py-3 text-ink-700">{effectiveProvider(db.kind, db.provider) ?? '—'}</td>
-                  <td className="px-4 py-3 hidden md:table-cell">
+                  <td className="px-4 py-3 text-ink-700 whitespace-nowrap">{t(engineLabelKey(db.kind))}</td>
+                  <td className="px-4 py-3 text-ink-700 whitespace-nowrap">
+                    {effectiveProvider(db.kind, db.provider) ?? '—'}
+                  </td>
+                  <td className="px-4 py-3 hidden md:table-cell whitespace-nowrap">
                     {!isD1(db) ? (
                       <span className="text-caption text-ink-400">—</span>
                     ) : db.cf_database_id ? (
@@ -267,12 +275,12 @@ export default function AdminDatabases() {
                       </span>
                     )}
                   </td>
-                  <td className="px-4 py-3">
+                  <td className="px-4 py-3 whitespace-nowrap">
                     <span className={`badge ${db.is_active ? 'badge-green' : 'badge-neutral'}`}>
                       {db.is_active ? t('admin_db.active') : t('admin_db.inactive')}
                     </span>
                   </td>
-                  <td className="px-4 py-3">
+                  <td className="px-4 py-3 whitespace-nowrap">
                     <div className="flex items-center gap-1 justify-end">
                       <button type="button" onClick={() => startEdit(db)} className="btn-ghost btn-sm gap-1">
                         <Pencil size={13} /> {t('admin_db.edit')}
