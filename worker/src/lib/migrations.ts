@@ -206,5 +206,12 @@ export function getMigrations(env: Pick<Env, 'TABLE_PREFIX'>): Migration[] {
       name: 'schema_v3',
       sql: `ALTER TABLE ${T.d1_databases} ADD COLUMN provider TEXT`,
     },
+    {
+      // Saved runs: whether the batch stopped early because a statement failed (see
+      // POST /api/query/batch). A run saved before this migration had no such record and reads as 0
+      // (not halted) through the column default — nothing is backfilled or rewritten.
+      name: 'schema_v4',
+      sql: `ALTER TABLE ${T.notebook_runs} ADD COLUMN halted INTEGER NOT NULL DEFAULT 0`,
+    },
   ]
 }

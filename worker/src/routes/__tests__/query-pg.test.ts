@@ -126,26 +126,36 @@ describe('query a PostgreSQL target', () => {
       await bearer(env, 'a1', 'admin')
     )
     expect(res.status).toBe(200)
-    const body = (await res.json()) as { results: Array<{ results: unknown[] }> }
+    const body = (await res.json()) as { results: Array<{ results: unknown[] }>; halted?: boolean }
     expect(body.results.map((r) => r.results)).toEqual([[{ n: 1 }], [{ n: 2 }], [{ n: 3 }]])
+    expect(body.halted).toBe(false)
     expect(pg.opened).toHaveLength(1)
     expect(pg.opened[0]!.runs).toHaveLength(3)
     expect(pg.opened[0]!.closed).toBe(true)
   })
 
-  it('records a failing statement in the batch and keeps going', async () => {
+  it('stops the batch at the failing statement, keeping its error', async () => {
     const env = await pgEnv()
-    pg.queue.push({ error: { message: 'relation "t" does not exist', kind: 'sql' } }, { results: [{ n: 1 }] })
+    pg.queue.push(
+      { results: [{ n: 1 }] },
+      { error: { message: 'relation "t" does not exist', kind: 'sql' } },
+      { results: [{ n: 3 }] }
+    )
     const res = await post(
       env,
       '/api/query/batch',
-      { databaseId: 'pg1', statements: ['SELECT * FROM t', 'SELECT 1'] },
+      { databaseId: 'pg1', statements: ['SELECT 1', 'SELECT * FROM t', 'SELECT 3'] },
       await bearer(env, 'a1', 'admin')
     )
     expect(res.status).toBe(200)
-    const body = (await res.json()) as { results: Array<{ error?: string; results: unknown[] }> }
-    expect(body.results[0]!.error).toBe('relation "t" does not exist')
-    expect(body.results[1]!.results).toEqual([{ n: 1 }])
+    const body = (await res.json()) as { results: Array<{ error?: string; results: unknown[] }>; halted?: boolean }
+    expect(body.results).toHaveLength(2)
+    expect(body.results[0]!.results).toEqual([{ n: 1 }])
+    expect(body.results[1]!.error).toBe('relation "t" does not exist')
+    expect(body.halted).toBe(true)
+    // The third statement never reached the session
+    expect(pg.opened[0]!.runs).toHaveLength(2)
+    expect(pg.opened[0]!.closed).toBe(true)
   })
 
   it('marks a truncated result', async () => {

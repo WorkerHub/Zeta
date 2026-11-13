@@ -29,9 +29,9 @@ const statements = (prefix: string | undefined) =>
   (getMigrations(env(prefix)).find((m) => m.name === 'schema_v1')!.sql as string).split(';\n')
 
 describe('getMigrations', () => {
-  it('appends the registry migrations to the collapsed schema_v1, with no PRAGMA probing', () => {
+  it('appends the registry and saved-run migrations to the collapsed schema_v1, with no PRAGMA probing', () => {
     const migrations = getMigrations(env('ZETA'))
-    expect(migrations.map((m) => m.name)).toEqual(['schema_v1', 'schema_v2', 'schema_v3'])
+    expect(migrations.map((m) => m.name)).toEqual(['schema_v1', 'schema_v2', 'schema_v3', 'schema_v4'])
     expect(migrations[0]!.sql).not.toMatch(/PRAGMA/)
     expect(migrations[0]!.sql).not.toMatch(/\bALTER TABLE\b/)
     // No SQL line comments: exec() collapses the SQL onto one line (see migrations-runner.ts)
@@ -55,6 +55,17 @@ describe('getMigrations', () => {
     expect(sql).not.toMatch(/UPDATE |DELETE /i)
     expect(getMigrations(env('')).find((m) => m.name === 'schema_v3')!.sql).toBe(
       'ALTER TABLE d1_databases ADD COLUMN provider TEXT'
+    )
+  })
+
+  it('adds the saved-run halted flag with a default that leaves every existing run unhalted', () => {
+    const sql = getMigrations(env('ZETA')).find((m) => m.name === 'schema_v4')!.sql
+    expect(sql).toBe('ALTER TABLE ZETA_notebook_runs ADD COLUMN halted INTEGER NOT NULL DEFAULT 0')
+    // Additive only, and prefix-aware like every other statement
+    expect(sql).not.toMatch(/\b(DROP|RENAME)\b/i)
+    expect(sql).not.toMatch(/UPDATE |DELETE /i)
+    expect(getMigrations(env('')).find((m) => m.name === 'schema_v4')!.sql).toBe(
+      'ALTER TABLE notebook_runs ADD COLUMN halted INTEGER NOT NULL DEFAULT 0'
     )
   })
 
@@ -163,14 +174,12 @@ describe('schema_v3 applied after schema_v2', () => {
     const { db, sqlite } = sqliteD1()
     const env = fakeEnv({ DB: db, TABLE_PREFIX: '' })
     const migrations = getMigrations({ TABLE_PREFIX: '' })
-    const v3 = migrations[migrations.length - 1]!
-    expect(v3.name).toBe('schema_v3')
+    // The release that introduced v3: everything up to and including it
+    const upToV3 = migrations.slice(0, migrations.findIndex((m) => m.name === 'schema_v3') + 1)
+    expect(upToV3[upToV3.length - 1]!.name).toBe('schema_v3')
 
     // The state of a deployment that ran setup before this release: v1 + v2 recorded, rows present.
-    const applied = await runMigrations(
-      env,
-      migrations.filter((m) => m.name !== 'schema_v3')
-    )
+    const applied = await runMigrations(env, upToV3.slice(0, -1))
     expect(applied.migrations.map((m) => m.name)).toEqual(['schema_v1', 'schema_v2'])
     sqlite.exec(`
       INSERT INTO d1_databases (id, name, binding_name, kind, created_at)
@@ -178,7 +187,7 @@ describe('schema_v3 applied after schema_v2', () => {
     `)
 
     // The admin panel's "check & upgrade" run: only the new entry is applied, and only then.
-    const upgrade = await runMigrations(env, migrations)
+    const upgrade = await runMigrations(env, upToV3)
     expect(upgrade.migrations).toEqual([
       { name: 'schema_v1', status: 'skipped' },
       { name: 'schema_v2', status: 'skipped' },
@@ -193,5 +202,38 @@ describe('schema_v3 applied after schema_v2', () => {
     expect(sqlite.prepare('SELECT provider FROM d1_databases').all()).toEqual([{ provider: 'Aiven' }])
     sqlite.exec(`UPDATE d1_databases SET provider = NULL WHERE id = 'my'`)
     expect(sqlite.prepare('SELECT provider FROM d1_databases').all()).toEqual([{ provider: null }])
+  })
+})
+
+describe('schema_v4 applied after schema_v3', () => {
+  it('adds the halted flag to a runs table that already holds runs, rewriting none of them', async () => {
+    const { db, sqlite } = sqliteD1()
+    const env = fakeEnv({ DB: db, TABLE_PREFIX: '' })
+    const migrations = getMigrations({ TABLE_PREFIX: '' })
+    const upToV4 = migrations.slice(0, migrations.findIndex((m) => m.name === 'schema_v4') + 1)
+    expect(upToV4[upToV4.length - 1]!.name).toBe('schema_v4')
+
+    // A deployment whose saved runs predate the flag
+    await runMigrations(env, upToV4.slice(0, -1))
+    sqlite.exec(`
+      INSERT INTO users (id, email, name, role, created_at, updated_at)
+      VALUES ('u1', 'u@example.com', 'U', 'member', 0, 0);
+      INSERT INTO d1_databases (id, name, binding_name, kind, created_at)
+      VALUES ('db1', 'one', 'cf:db1', 'sqlite', 0);
+      INSERT INTO notebooks (id, user_id, name, created_at, updated_at) VALUES ('nb1', 'u1', 'One', 0, 0);
+      INSERT INTO notebook_runs (id, notebook_id, user_id, database_id, sql, statement_count, row_count,
+        error_count, duration_ms, storage_truncated, results_bytes, executed_at, seq, results)
+      VALUES ('r1', 'nb1', 'u1', 'db1', 'SELECT 1', 1, 1, 0, 1, 0, 10, 0, 1, '[]');
+    `)
+
+    const upgrade = await runMigrations(env, upToV4)
+    expect(upgrade.migrations).toEqual([
+      { name: 'schema_v1', status: 'skipped' },
+      { name: 'schema_v2', status: 'skipped' },
+      { name: 'schema_v3', status: 'skipped' },
+      { name: 'schema_v4', status: 'applied' },
+    ])
+    // The run that existed before the upgrade reads as "ran to the end": nothing was backfilled
+    expect(sqlite.prepare('SELECT id, halted FROM notebook_runs').all()).toEqual([{ id: 'r1', halted: 0 }])
   })
 })

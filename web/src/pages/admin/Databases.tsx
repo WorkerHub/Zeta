@@ -7,13 +7,42 @@ import DatabaseForm from '../../components/DatabaseForm'
 import { effectiveProvider, engineLabelKey } from '../../lib/db-provider'
 import type { AdminDatabase, CfD1Database, DatabaseGrant } from '../../types'
 
-// Desktop column widths for the data-source list only: everything but the database ID is fixed, so
-// that one column stays flexible and absorbs the width the others leave over. Below `md` the table
-// keeps its natural, content-sized columns and scrolls horizontally inside its card, as before.
-const COL_NAME = 'md:w-[200px] md:max-w-[200px]'
-const COL_ENGINE = 'md:w-[140px] md:max-w-[140px]'
-const COL_PROVIDER = 'md:w-[120px]'
-const COL_STATUS = 'md:w-[112px] md:max-w-[112px]'
+// The desktop data-source list is a fixed-width table: every column but the actions one is pinned,
+// the table is exactly as wide as their sum (it is neither stretched to the card nor stretched by
+// its content), and the spare width of a wide window stays to the right of the table instead of
+// being handed to a column.
+//
+// The width lives on a block inside each cell rather than on the `<td>` or a `<col>`: a table cell
+// in an automatic layout lets a long value overrule its own width, and `table-layout: fixed` only
+// honours column widths when the table itself has a definite width — with `width: auto` the browser
+// still sizes the table from its content (measured: a 200px column came out 427px wide). A block
+// with a fixed width and its own padding cannot be overruled, so a column measures exactly its
+// width. The padding lives on that block for the same reason.
+//
+// The actions column keeps no width: it is as wide as its buttons, and the extra "Link" button of a
+// legacy row simply widens it. Below `md` nothing is pinned — the table keeps its natural columns
+// and scrolls horizontally inside its card, as before. Every number is a class literal because
+// Tailwind only emits the utilities it can see in the source.
+export const COL_WIDTH = {
+  // A name plus its badge wraps inside 200px; longer names truncate, full text on hover
+  name: 'md:w-[200px]',
+  engine: 'md:w-[140px]',
+  provider: 'md:w-[120px]',
+  // 268px of content after the 32px padding: a 36-character UUID measures 263.5px in this font, so
+  // it shows whole (300 rather than the 320 upper bound this column could have taken)
+  databaseId: 'md:w-[300px]',
+  // The badge sits against the right edge of this column, which keeps it 32px from the first action
+  // button: left-aligned, the air after the badge would be 58px and the 40px budget unreachable
+  // without narrowing the column below what the widest badge ("Inactive", 60.8px) needs.
+  status: 'md:w-[112px]',
+  actions: '',
+} as const
+
+// The table's one cell box: the column's width, and the cell padding that belongs with it
+export function cellClass(col: keyof typeof COL_WIDTH, extra?: string): string {
+  const width = COL_WIDTH[col]
+  return ['px-4 py-3', width, extra].filter(Boolean).join(' ')
+}
 
 // The database-ID header hint. The project has no tooltip component and no floating-layer
 // dependency, so this is the lightweight fallback: a focusable icon whose accessible name and
@@ -28,6 +57,25 @@ export function DatabaseIdHint({ text }: { text: string }) {
     >
       <Info size={14} aria-hidden="true" />
     </button>
+  )
+}
+
+// Rows written before the kind column exist are D1 registrations
+const isD1 = (db: AdminDatabase) => (db.kind ?? 'sqlite') === 'sqlite'
+
+// The database-ID cell of one row: the UUID as plain monospaced text (the full ID in its title, no
+// tinted code block that painted the rest of the column), a dash for engines that have no database
+// ID, or the binding badge of an old registration that still has to be linked.
+export function DatabaseIdCell({ db }: { db: AdminDatabase }) {
+  const { t } = useLocale()
+  if (!isD1(db)) return <span className="text-caption text-ink-400">—</span>
+  if (!db.cf_database_id) {
+    return <span className="badge badge-neutral">{t('admin_db.legacy_binding', { name: db.binding_name })}</span>
+  }
+  return (
+    <code className="block max-w-full truncate text-caption text-ink-700 font-mono tnum" title={db.cf_database_id}>
+      {db.cf_database_id}
+    </code>
   )
 }
 
@@ -181,8 +229,6 @@ export default function AdminDatabases() {
   }
 
   const availableOptions = available.filter((d) => !d.added)
-  // Rows written before the kind column exist are D1 registrations
-  const isD1 = (db: AdminDatabase) => (db.kind ?? 'sqlite') === 'sqlite'
   // Whether the currently picked link target is Zeta's own application database.
   const linkIsApp = linkCfId ? available.some((d) => d.uuid === linkCfId && d.is_app_db) : false
 
@@ -250,26 +296,32 @@ export default function AdminDatabases() {
         ) : databases.length === 0 ? (
           <p className="px-4 py-8 text-center text-body text-ink-500">{t('admin_db.no_databases')}</p>
         ) : (
-          <table className="w-full text-body">
+          <table className="w-full md:w-auto text-body">
             <thead>
               <tr className="border-b border-ink-200 bg-ink-50">
-                <th className={`text-left px-4 py-3 text-label text-ink-500 ${COL_NAME}`}>{t('admin_db.name')}</th>
-                <th className={`text-left px-4 py-3 text-label text-ink-500 whitespace-nowrap ${COL_ENGINE}`}>
-                  {t('admin_db.engine')}
+                <th className="text-left text-label text-ink-500">
+                  <div className={cellClass('name')}>{t('admin_db.name')}</div>
                 </th>
-                <th className={`text-left px-4 py-3 text-label text-ink-500 whitespace-nowrap ${COL_PROVIDER}`}>
-                  {t('admin_db.provider')}
+                <th className="text-left text-label text-ink-500">
+                  <div className={cellClass('engine', 'whitespace-nowrap')}>{t('admin_db.engine')}</div>
                 </th>
-                <th className="text-left px-4 py-3 text-label text-ink-500 hidden md:table-cell whitespace-nowrap">
-                  <span className="inline-flex items-center gap-1.5">
-                    {t('admin_db.cf_database_id')}
-                    <DatabaseIdHint text={t('admin_db.cf_database_id_hint')} />
-                  </span>
+                <th className="text-left text-label text-ink-500">
+                  <div className={cellClass('provider', 'whitespace-nowrap')}>{t('admin_db.provider')}</div>
                 </th>
-                <th className={`text-left px-4 py-3 text-label text-ink-500 whitespace-nowrap ${COL_STATUS}`}>
-                  {t('admin_db.status')}
+                <th className="text-left text-label text-ink-500 hidden md:table-cell">
+                  <div className={cellClass('databaseId', 'whitespace-nowrap')}>
+                    <span className="inline-flex items-center gap-1.5">
+                      {t('admin_db.cf_database_id')}
+                      <DatabaseIdHint text={t('admin_db.cf_database_id_hint')} />
+                    </span>
+                  </div>
                 </th>
-                <th className="px-4 py-3" />
+                <th className="text-left text-label text-ink-500">
+                  <div className={cellClass('status', 'whitespace-nowrap text-right')}>{t('admin_db.status')}</div>
+                </th>
+                <th>
+                  <div className={cellClass('actions', 'pr-2')} />
+                </th>
               </tr>
             </thead>
             <tbody>
@@ -278,83 +330,85 @@ export default function AdminDatabases() {
                   key={db.id}
                   className="border-b border-ink-100 hover:bg-ink-50 transition-colors duration-(--duration-base)"
                 >
-                  <td className={`px-4 py-3 ${COL_NAME}`}>
-                    <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-body-strong text-ink-900">
-                      <span className="min-w-0 truncate" title={db.name}>
-                        {db.name}
-                      </span>
-                      {db.is_app_db && <span className="badge badge-brand shrink-0">{t('admin_db.app_db_badge')}</span>}
-                    </p>
-                    {db.description && (
-                      <p className="line-clamp-2 text-caption text-ink-500" title={db.description}>
-                        {db.description}
-                      </p>
-                    )}
-                  </td>
-                  <td className={`px-4 py-3 text-ink-700 whitespace-nowrap ${COL_ENGINE}`}>
-                    {t(engineLabelKey(db.kind))}
-                  </td>
-                  <td className={`px-4 py-3 text-ink-700 whitespace-nowrap ${COL_PROVIDER}`}>
-                    {effectiveProvider(db.kind, db.provider) ?? '—'}
-                  </td>
-                  <td className="px-4 py-3 hidden md:table-cell whitespace-nowrap">
-                    {/* The ID column is the only flexible one. Its inner block keeps 288px, so the
-                        column never drops below 320px once the cell's 32px padding is added. */}
-                    <div className="min-w-[288px]">
-                      {!isD1(db) ? (
-                        <span className="text-caption text-ink-400">—</span>
-                      ) : db.cf_database_id ? (
-                        <code
-                          className="block max-w-full truncate text-caption text-ink-700 font-mono bg-ink-100 px-1.5 py-0.5 rounded tnum"
-                          title={db.cf_database_id}
-                        >
-                          {db.cf_database_id}
-                        </code>
-                      ) : (
-                        <span className="badge badge-neutral">
-                          {t('admin_db.legacy_binding', { name: db.binding_name })}
+                  <td>
+                    <div className={cellClass('name')}>
+                      <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-body-strong text-ink-900">
+                        <span className="min-w-0 truncate" title={db.name}>
+                          {db.name}
                         </span>
+                        {db.is_app_db && (
+                          <span className="badge badge-brand shrink-0">{t('admin_db.app_db_badge')}</span>
+                        )}
+                      </p>
+                      {db.description && (
+                        <p className="line-clamp-2 text-caption text-ink-500" title={db.description}>
+                          {db.description}
+                        </p>
                       )}
                     </div>
                   </td>
-                  <td className={`px-4 py-3 whitespace-nowrap ${COL_STATUS}`}>
-                    <span className={`badge ${db.is_active ? 'badge-green' : 'badge-neutral'}`}>
-                      {db.is_active ? t('admin_db.active') : t('admin_db.inactive')}
-                    </span>
+                  <td>
+                    <div className={cellClass('engine', 'whitespace-nowrap text-ink-700')}>
+                      {t(engineLabelKey(db.kind))}
+                    </div>
                   </td>
-                  <td className="px-4 py-3 whitespace-nowrap">
-                    <div className="flex items-center gap-1 justify-end">
-                      <button type="button" onClick={() => startEdit(db)} className="btn-ghost btn-sm gap-1">
-                        <Pencil size={13} /> {t('admin_db.edit')}
-                      </button>
-                      {isD1(db) && !db.cf_database_id && (
+                  <td>
+                    <div
+                      className={cellClass('provider', 'whitespace-nowrap text-ink-700 truncate')}
+                      title={effectiveProvider(db.kind, db.provider) ?? undefined}
+                    >
+                      {effectiveProvider(db.kind, db.provider) ?? '—'}
+                    </div>
+                  </td>
+                  <td className="hidden md:table-cell">
+                    <div className={cellClass('databaseId', 'whitespace-nowrap')}>
+                      <DatabaseIdCell db={db} />
+                    </div>
+                  </td>
+                  <td>
+                    <div className={cellClass('status', 'whitespace-nowrap text-right')}>
+                      <span className={`badge ${db.is_active ? 'badge-green' : 'badge-neutral'}`}>
+                        {db.is_active ? t('admin_db.active') : t('admin_db.inactive')}
+                      </span>
+                    </div>
+                  </td>
+                  <td>
+                    {/* 8px on the right, not 16: the delete button carries its own, and the
+                        whole table then stays inside the card at 1440 in Chinese */}
+                    <div className={cellClass('actions', 'whitespace-nowrap pr-2')}>
+                      <div className="flex items-center gap-1">
+                        <button type="button" onClick={() => startEdit(db)} className="btn-ghost btn-sm gap-1">
+                          <Pencil size={13} /> {t('admin_db.edit')}
+                        </button>
+                        {isD1(db) && !db.cf_database_id && (
+                          <button
+                            type="button"
+                            onClick={() => startLink(db)}
+                            className="btn-ghost btn-sm gap-1"
+                            title={t('admin_db.link')}
+                          >
+                            <Link2 size={13} /> {t('admin_db.link')}
+                          </button>
+                        )}
+                        <button type="button" onClick={() => loadPermissions(db)} className="btn-ghost btn-sm gap-1">
+                          <Users size={13} /> {t('admin_db.permissions')}
+                        </button>
                         <button
                           type="button"
-                          onClick={() => startLink(db)}
-                          className="btn-ghost btn-sm gap-1"
-                          title={t('admin_db.link')}
+                          onClick={() => toggleActive(db)}
+                          className="btn-ghost btn-sm p-1.5"
+                          title={t('admin_db.toggle_active')}
                         >
-                          <Link2 size={13} /> {t('admin_db.link')}
+                          <Power size={13} className={db.is_active ? 'text-success-600' : 'text-ink-400'} />
                         </button>
-                      )}
-                      <button type="button" onClick={() => loadPermissions(db)} className="btn-ghost btn-sm gap-1">
-                        <Users size={13} /> {t('admin_db.permissions')}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => toggleActive(db)}
-                        className="btn-ghost btn-sm p-1.5"
-                        title={t('admin_db.toggle_active')}
-                      >
-                        <Power size={13} className={db.is_active ? 'text-success-600' : 'text-ink-400'} />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setDeletingDb({ id: db.id, name: db.name })}
-                        className="btn-ghost btn-sm p-1.5 text-danger-600"
-                      >
-                        <Trash2 size={13} />
-                      </button>
+                        <button
+                          type="button"
+                          onClick={() => setDeletingDb({ id: db.id, name: db.name })}
+                          className="btn-ghost btn-sm p-1.5 text-danger-600"
+                        >
+                          <Trash2 size={13} />
+                        </button>
+                      </div>
                     </div>
                   </td>
                 </tr>
