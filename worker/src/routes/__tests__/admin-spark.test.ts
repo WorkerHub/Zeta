@@ -11,15 +11,18 @@ import { sqliteD1 } from './sqlite-d1'
 
 const spark = vi.hoisted(() => ({
   queue: [] as Array<{ kind: 'ok' | 'fail'; version?: string; message?: string; code?: string; errorKind?: string }>,
-  calls: [] as Array<{ url: string; platform: string; app: string }>,
+  calls: [] as Array<{ url: string; platform: string; app: string; session?: string }>,
 }))
 
 vi.mock('../../lib/spark-executor', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../../lib/spark-executor')>()
   return {
     ...actual,
-    testSparkConnection: async (access: { url: string; platform_token: string; app_token: string }) => {
-      spark.calls.push({ url: access.url, platform: access.platform_token, app: access.app_token })
+    testSparkConnection: async (
+      access: { url: string; platform_token: string; app_token: string },
+      session?: string
+    ) => {
+      spark.calls.push({ url: access.url, platform: access.platform_token, app: access.app_token, session })
       const next = spark.queue.shift()
       if (!next || next.kind === 'ok') return { server_version: next?.version ?? '3.5.3' }
       throw new actual.SparkQueryError(
@@ -79,8 +82,9 @@ describe('POST /api/admin/databases/test-connection (kind=spark)', () => {
     const json = (await res.json()) as { ok: boolean; kind: string; server_version: string; latency_ms: number }
     expect(json).toMatchObject({ ok: true, kind: 'spark', server_version: '3.5.3' })
     expect(typeof json.latency_ms).toBe('number')
-    // The address is normalised before the executor sees it: no trailing slash, no query string
-    expect(spark.calls).toEqual([{ url: URL, platform: PLATFORM, app: APP }])
+    // The address is normalised before the executor sees it: no trailing slash, no query string, and
+    // the admin's own id rides along as the session
+    expect(spark.calls).toEqual([{ url: URL, platform: PLATFORM, app: APP, session: 'a1' }])
   })
 
   it('requires both tokens and an https address, without calling the executor', async () => {
@@ -228,7 +232,9 @@ describe('PATCH /api/admin/databases/:id (kind=spark)', () => {
       method: 'PATCH',
     })
     expect(res.status).toBe(200)
-    expect(spark.calls).toEqual([{ url: `${URL}/spark`, platform: 'new-platform', app: 'new-app' }])
+    // Re-saving re-proves the connection in the admin's own session, and the session stays out of the
+    // sealed payload (it belongs to the request, not to the registration)
+    expect(spark.calls).toEqual([{ url: `${URL}/spark`, platform: 'new-platform', app: 'new-app', session: 'a1' }])
     const sealed = (await listRows(e))[0]!.connection_secret as string
     expect(JSON.parse(await openSecret(e, sealed))).toEqual({
       url: `${URL}/spark`,

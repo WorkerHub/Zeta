@@ -321,7 +321,8 @@ async function verifyConnection(
     })
     if (!access.ok) return c.json({ error: access.error }, 400)
     try {
-      const { server_version } = await testSparkConnection(access.access)
+      // The admin's own session, so the test proves the session their queries will use.
+      const { server_version } = await testSparkConnection(access.access, c.get('userId'))
       return { stored: { ...access.access }, database: access.host, serverVersion: server_version }
     } catch (err) {
       return connectionError(c, err)

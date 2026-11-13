@@ -17,6 +17,7 @@ import {
   openSparkSession,
   SparkQueryError,
   type SparkErrorCode,
+  type SparkOpenOptions,
   type SparkSession,
 } from '../lib/spark-executor'
 import {
@@ -191,10 +192,18 @@ function payloadUrl(payload: Record<string, unknown>, fail: (message: string) =>
   return url
 }
 
+// The open options for a Spark target: the connection check's patient budget when the caller asked for
+// it, always carrying the caller's session.
+function sparkOpenOptions(connectTest: boolean | undefined, session: string | undefined): SparkOpenOptions {
+  return connectTest ? { ...CONNECT_TEST_OPEN, session } : { session }
+}
+
 // Opens the executor for one request. A connection-string target decrypts its stored payload here (the
 // only place it is unwrapped), normalises it again, and proves the connection before any statement
 // runs. `connectTest` asks a Spark target for the longer connection-check budget (20 s health probe,
 // 120 s hard cap): the admin's test step and POST /api/query/probe use it, a query does not.
+// `session` is the caller's own Spark session (their user id): the machine keeps one session per
+// value, so two people querying it share neither temp views nor a lock.
 // `sessionDatabase` is the database a MySQL request chose for its session (see
 // resolveSessionDatabase); it overrides the registered default as the pin target of that one session
 // and means nothing to the other engines, which never open a stateful session of their own.
@@ -203,7 +212,7 @@ async function openExecutor(
   env: Env,
   db: DatabaseRow,
   target: QueryTarget,
-  opts: { connectTest?: boolean; sessionDatabase?: string | null } = {}
+  opts: { connectTest?: boolean; session?: string; sessionDatabase?: string | null } = {}
 ): Promise<Executor> {
   if (target.kind === 'http') {
     return {
@@ -218,7 +227,7 @@ async function openExecutor(
     if (!access.ok) throw new SparkQueryError(access.error, 'config', 'spark_config')
     const session: SparkSession = await openSparkSession(
       access.access,
-      opts.connectTest ? CONNECT_TEST_OPEN : undefined
+      sparkOpenOptions(opts.connectTest, opts.session)
     )
     return {
       run: (sql, kind) => session.run(sql, kind, MAX_RESULT_ROWS),
@@ -367,7 +376,10 @@ query.post('/', async (c) => {
   const executedAt = Date.now()
   let executor: Executor
   try {
-    executor = await openExecutor(c.env, db, resolved.target, { sessionDatabase: session.value })
+    executor = await openExecutor(c.env, db, resolved.target, {
+      session: userId,
+      sessionDatabase: session.value,
+    })
   } catch (err) {
     return openExecutorError(c, err)
   }
@@ -517,7 +529,10 @@ query.post('/batch', async (c) => {
 
   let executor: Executor
   try {
-    executor = await openExecutor(c.env, db, resolved.target, { sessionDatabase: session.value })
+    executor = await openExecutor(c.env, db, resolved.target, {
+      session: userId,
+      sessionDatabase: session.value,
+    })
   } catch (err) {
     return openExecutorError(c, err)
   }
@@ -648,8 +663,9 @@ query.post('/probe', async (c) => {
   let executor: Executor
   try {
     // The connection-check budget: a Spark machine that is still booting (~17 s) still tests green,
-    // which is exactly what the query path must not wait for.
-    executor = await openExecutor(c.env, db, resolved.target, { connectTest: true })
+    // which is exactly what the query path must not wait for. The caller's session rides along, so the
+    // probe proves the session that caller's queries will use.
+    executor = await openExecutor(c.env, db, resolved.target, { connectTest: true, session: userId })
   } catch (err) {
     return openExecutorError(c, err)
   }
