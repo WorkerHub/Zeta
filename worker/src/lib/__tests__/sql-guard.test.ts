@@ -262,6 +262,9 @@ describe('classifySql (spark dialect)', () => {
     // `transform` is also a higher-order function: without USING there is no script
     ['higher-order transform', 'SELECT transform(a, x -> x + 1) FROM t', 'read'],
     ['join using columns', 'SELECT * FROM a JOIN b USING (id)', 'read'],
+    // Only `<source>.<quoted path>` opens a file source: a column that happens to be named like one
+    // stays an ordinary read.
+    ['a column named like a file source stays a read', 'SELECT text, csv FROM t', 'read'],
     // Spark escapes a quote with a backslash (`escapedStringLiterals` defaults to false since 2.0)
     ['escaped quote keeps the statement in its string', "SELECT 'it\\'s; DROP TABLE x' FROM t", 'read'],
 
@@ -304,6 +307,14 @@ describe('classifySql (spark dialect)', () => {
       "INSERT OVERWRITE DIRECTORY '/x' USING parquet SELECT 1",
       'forbidden',
     ],
+    // LOCAL DIRECTORY writes the executor's own disk — `local` sits between the words a pair check
+    // would require, so the whole sequence is what gets matched
+    ['insert overwrite local directory', "INSERT OVERWRITE LOCAL DIRECTORY '/x' SELECT 1", 'forbidden'],
+    [
+      'insert overwrite local directory using a source',
+      "INSERT OVERWRITE LOCAL DIRECTORY '/x' USING parquet SELECT 1",
+      'forbidden',
+    ],
     // TRANSFORM … USING runs the script on the worker itself
     ['transform using', "SELECT TRANSFORM(a, b) USING 'bash -c id' FROM t", 'forbidden'],
     ['transform using, lowercase', "select transform(a) using 'bash -c id' from t", 'forbidden'],
@@ -319,6 +330,13 @@ describe('classifySql (spark dialect)', () => {
     ['delta path', 'SELECT * FROM delta.`/data/x`', 'forbidden'],
     ['file path', 'SELECT * FROM file.`/data/x`', 'forbidden'],
     ['file source in a cte body', 'WITH a AS (SELECT * FROM parquet.`/x`) SELECT * FROM a', 'forbidden'],
+    // The source word decides, not what precedes it: a bare `SELECT text.`/x`` reads the cluster's
+    // files just as well as one after FROM, and a qualified name still opens a file source.
+    ['bare file source without a FROM', 'SELECT text.`/data/x`', 'forbidden'],
+    ['bare file source reading a csv path', "SELECT csv.'/x.csv'", 'forbidden'],
+    ['file source in an insert', "INSERT INTO t SELECT csv.'/x.csv'", 'forbidden'],
+    ['file source after a qualified name', 'SELECT * FROM a.parquet.`/x`', 'forbidden'],
+    ['file source after a qualified name in a join', 'SELECT * FROM t JOIN db.delta.`/x` ON true', 'forbidden'],
     ['location path', "CREATE TABLE t USING delta LOCATION '/data/x'", 'forbidden'],
     ['quoted path in from position', "SELECT * FROM '/data/x'", 'forbidden'],
 

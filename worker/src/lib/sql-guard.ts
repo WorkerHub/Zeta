@@ -306,16 +306,17 @@ const SPARK_FORBIDDEN_KEYWORDS = new Set([
   'call', // reserved from Spark 4 on; refused before it can matter
 ])
 
-// Spark names a file on the cluster in table position — the docs' parquet.`/data/x` form, or
-// csv.'/data/x.csv' — and a bare quoted path after FROM or LOCATION does the same: all of them read
-// the cluster's filesystem.
+// Spark names a file on the cluster as `<source>.<quoted path>` — the docs' parquet.`/data/x` form,
+// csv.'/data/x.csv', and the same after a qualified table name (a.parquet.`/x`) — and a quoted path
+// after FROM or LOCATION does the same. All of them read the cluster's filesystem.
 const SPARK_FILE_SOURCES = new Set(['parquet', 'csv', 'json', 'orc', 'text', 'avro', 'binaryfile', 'delta', 'file'])
 
-// True when two words sit next to each other at parenthesis depth 0. Quoted tokens and nested
-// parentheses are skipped, so `INSERT OVERWRITE DIRECTORY` is a pair while
-// `INSERT OVERWRITE TABLE t … WHERE directory = 1` is not.
-function hasTopLevelPair(tokens: Token[], first: string, second: string): boolean {
-  let prev = ''
+// True when these words appear in order, next to each other, at parenthesis depth 0. Quoted tokens and
+// nested parentheses are skipped, so `INSERT OVERWRITE [LOCAL] DIRECTORY` matches while
+// `INSERT OVERWRITE TABLE t … WHERE directory = 1` does not. A repeated first word restarts the run,
+// so `overwrite overwrite directory` still matches.
+function hasTopLevelSequence(tokens: Token[], words: string[]): boolean {
+  let matched = 0
   let depth = 0
   for (const t of tokens) {
     if (t.type === 'punct') {
@@ -324,8 +325,12 @@ function hasTopLevelPair(tokens: Token[], first: string, second: string): boolea
       continue
     }
     if (depth !== 0 || t.type !== 'word') continue
-    if (prev === first && t.value === second) return true
-    prev = t.value
+    if (t.value === words[matched]) {
+      matched++
+      if (matched === words.length) return true
+    } else {
+      matched = t.value === words[0] ? 1 : 0
+    }
   }
   return false
 }
@@ -343,19 +348,13 @@ function sparkForbiddenPattern(sql: string, tokens: Token[]): boolean {
     const t = tokens[i]!
     if (t.type !== 'word') continue
     const next = tokens[i + 1]
-    const prev = tokens[i - 1]
     // `FROM '/path'`, `LOCATION 's3://…'`: a quoted path where a relation belongs.
     if ((t.value === 'from' || t.value === 'location') && isStringLiteral(sql, next)) return true
     if (SPARK_FILE_SOURCES.has(t.value)) {
-      // A file source in table position: the documented parquet.`/data/x` form, or csv.'/data/x.csv'.
-      // Either quote names a path here, so both are refused.
-      const tablePosition =
-        prev === undefined ||
-        (prev.type === 'word' && (prev.value === 'from' || prev.value === 'join')) ||
-        (prev.type === 'punct' && prev.value === ',')
-      if (tablePosition && next?.type === 'punct' && next.value === '.' && tokens[i + 2]?.type === 'quoted') {
-        return true
-      }
+      // A file source with a quoted path: `parquet.`/data/x``, `csv.'/data/x.csv'`. Any position counts
+      // — a bare `SELECT text.`/x`` reads the cluster's files too, and so does the qualified
+      // `a.parquet.`/x`` — so the source word itself is the whole test, whatever precedes it.
+      if (next?.type === 'punct' && next.value === '.' && tokens[i + 2]?.type === 'quoted') return true
     }
     // `SELECT TRANSFORM(a, b) USING 'script'`: the script runs on the worker itself.
     if (
@@ -452,10 +451,11 @@ function classifyStatement(tokens: Token[], dialect: SqlDialect): SqlClass {
       return dialect === 'mysql' ? 'read' : 'write'
 
     case 'insert':
-      // Spark's INSERT OVERWRITE replaces the target's data; its DIRECTORY form writes the cluster's
-      // filesystem instead of a table.
+      // Spark's INSERT OVERWRITE replaces the target's data; both DIRECTORY forms write a filesystem
+      // instead of a table — the LOCAL one the executor's own disk — so neither is a data write at all.
       if (dialect === 'spark') {
-        if (hasTopLevelPair(tokens, 'overwrite', 'directory')) return 'forbidden'
+        if (hasTopLevelSequence(tokens, ['overwrite', 'directory'])) return 'forbidden'
+        if (hasTopLevelSequence(tokens, ['overwrite', 'local', 'directory'])) return 'forbidden'
         if (hasTopLevelWord(tokens, 1, 'overwrite')) return 'destructive'
       }
       return 'write'
