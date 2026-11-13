@@ -37,6 +37,20 @@ function keepPrefixHint(prefix: string): string {
     : `set TABLE_PREFIX=${prefix.slice(0, -1)} to keep using these tables`
 }
 
+// The number of distinct tables the given (recorded) migrations create. Read from their own SQL, so
+// the count follows what this database has actually applied. An applied set this version does not
+// know falls back to the full registry: the guard stays conservative instead of silently passing.
+function tablesCreatedBy(env: Pick<Env, 'TABLE_PREFIX'>, appliedNames: ReadonlySet<string>): number {
+  const created = new Set<string>()
+  for (const migration of getMigrations(env)) {
+    if (!appliedNames.has(migration.name)) continue
+    for (const match of migration.sql.matchAll(/CREATE TABLE IF NOT EXISTS\s+([A-Za-z0-9_]+)/gi)) {
+      created.add(match[1]!)
+    }
+  }
+  return created.size > 0 ? created.size : Object.values(tables(env)).length
+}
+
 // Returns a human-readable description of a conflicting already-initialised schema, or null when
 // the database is safe to migrate under the resolved prefix. Read-only: never writes.
 async function detectSchemaConflict(
@@ -71,22 +85,28 @@ async function detectSchemaConflict(
   //    ledger therefore never blocks a first install; only the resolved prefix's own ledger is
   //    interpreted, and only once it actually records a migration.
   const resolvedLedger = ledgerFor(prefix)
-  const expectedTables = Object.values(tables(env)).length
-  const incompleteSchema = family === null || family.tableCount < expectedTables
-  if (checkConsistency && resolvedLedger !== undefined && incompleteSchema) {
-    const recorded = await env.DB.prepare(`SELECT COUNT(*) AS n FROM ${resolvedLedger.table}`).first<{ n: number }>()
+  if (checkConsistency && resolvedLedger !== undefined) {
+    const recorded = await env.DB.prepare(`SELECT name FROM ${resolvedLedger.table}`).all<{ name: string }>()
+    const appliedNames = new Set(recorded.results.map((row) => row.name))
     // An empty ledger is harmless (e.g. left behind by a run whose DDL failed): the migrations are
     // simply applied again, and every statement is IF NOT EXISTS.
-    if ((recorded?.n ?? 0) > 0) {
-      const found =
-        family === null ? 'none of its tables are' : `only ${family.tableCount} of ${expectedTables} tables are`
-      return (
-        `Refusing to initialise: the migration ledger ${resolvedLedger.table} records that the Zeta ` +
-        `schema migrations were already applied, but ${found} present. Running setup again would skip ` +
-        `every recorded migration and leave an incomplete schema. If the tables were dropped on ` +
-        `purpose, drop ${resolvedLedger.table} as well and run setup again to re-initialise from ` +
-        `scratch; otherwise restore the missing tables.`
-      )
+    if (appliedNames.size > 0) {
+      // Count the tables the *recorded* migrations create, not the size of the current registry:
+      // the registry also names tables of migrations this database has not applied yet, and
+      // comparing against it would refuse the very upgrade that creates them (schema_v5).
+      const expectedTables = tablesCreatedBy(env, appliedNames)
+      const incompleteSchema = family === null || family.tableCount < expectedTables
+      if (incompleteSchema) {
+        const found =
+          family === null ? 'none of its tables are' : `only ${family.tableCount} of ${expectedTables} tables are`
+        return (
+          `Refusing to initialise: the migration ledger ${resolvedLedger.table} records that the Zeta ` +
+          `schema migrations were already applied, but ${found} present. Running setup again would skip ` +
+          `every recorded migration and leave an incomplete schema. If the tables were dropped on ` +
+          `purpose, drop ${resolvedLedger.table} as well and run setup again to re-initialise from ` +
+          `scratch; otherwise restore the missing tables.`
+        )
+      }
     }
   }
 

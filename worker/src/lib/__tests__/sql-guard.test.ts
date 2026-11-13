@@ -116,6 +116,16 @@ describe('classifySql (postgres dialect)', () => {
     ['show', 'SHOW server_version', 'read'],
     ['locking read', 'SELECT * FROM t FOR UPDATE', 'read'],
     ['destructive', 'DROP TABLE t', 'destructive'],
+    // Ending another session's work is never a query target's business: Zeta uses these two itself,
+    // from its own cancel connection (see lib/pg-executor.ts)
+    ['cancel backend', 'SELECT pg_cancel_backend(123)', 'forbidden'],
+    ['terminate backend', 'SELECT pg_terminate_backend(123)', 'forbidden'],
+    ['schema-qualified cancel backend', 'SELECT pg_catalog.pg_cancel_backend(123)', 'forbidden'],
+    ['cancel backend inside a subquery', 'SELECT * FROM (SELECT pg_cancel_backend(1)) x', 'forbidden'],
+    ['cancel backend in a cte body', 'WITH c AS (SELECT pg_terminate_backend(1) ok) SELECT * FROM c', 'forbidden'],
+    ['cancel backend in a write', 'DELETE FROM t WHERE pg_cancel_backend(1)', 'forbidden'],
+    ['the name alone is not a call', 'SELECT pg_cancel_backend FROM t', 'read'],
+    ['pg_stat_activity stays an ordinary read', 'SELECT pid, state FROM pg_stat_activity', 'read'],
   ]
 
   for (const [name, sql, expected] of cases) {
@@ -388,6 +398,13 @@ describe('checkSqlAccess', () => {
   it('rejects multiple statements and empty SQL for everyone', () => {
     expect(checkSqlAccess('multiple', 'write_drop')).not.toBeNull()
     expect(checkSqlAccess('empty', 'write_drop')).not.toBeNull()
+  })
+  it("rejects a read user's pg_cancel_backend / pg_terminate_backend attempt", () => {
+    for (const sql of ['SELECT pg_cancel_backend(123)', 'SELECT pg_terminate_backend(123)']) {
+      const kind = classifySql(sql, 'postgres')
+      expect(kind).toBe('forbidden')
+      expect(checkSqlAccess(kind, 'read')).toBe('This SQL statement is not allowed.')
+    }
   })
 })
 

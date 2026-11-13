@@ -51,7 +51,7 @@ describe('tables', () => {
 
 describe('detectExistingTableFamily', () => {
   const names = (...list: string[]) => fakeD1(() => list.map((name) => ({ name }))).db
-  // The full 11-table family as it exists under a TABLE_PREFIX value ('ZETA', 'kp', or '' for none)
+  // The full 12-table family as it exists under a TABLE_PREFIX value ('ZETA', 'kp', or '' for none)
   const family = (value: string) => Object.values(tables({ TABLE_PREFIX: value }))
 
   it('finds nothing in an empty database', async () => {
@@ -61,15 +61,15 @@ describe('detectExistingTableFamily', () => {
   it('finds a complete family under a custom prefix', async () => {
     expect(await detectExistingTableFamily(names(...family('ZETA')))).toEqual({
       prefix: 'ZETA_',
-      tableCount: 11,
+      tableCount: 12,
     })
   })
 
   it('finds an unprefixed family (prefix is the empty string)', async () => {
-    expect(await detectExistingTableFamily(names(...family('')))).toEqual({ prefix: '', tableCount: 11 })
+    expect(await detectExistingTableFamily(names(...family('')))).toEqual({ prefix: '', tableCount: 12 })
   })
 
-  it('still detects a family that predates the newest two tables (9 of 11)', async () => {
+  it('still detects a family that predates the newest three tables (9 of 12)', async () => {
     expect(await detectExistingTableFamily(names(...family('kp').slice(0, 9)))).toEqual({
       prefix: 'kp_',
       tableCount: 9,
@@ -95,7 +95,7 @@ describe('detectExistingTableFamily', () => {
   it('detects the real family even when other projects share the database', async () => {
     expect(await detectExistingTableFamily(names('SL_perm', 'eNotify_users', ...family('ZETA')))).toEqual({
       prefix: 'ZETA_',
-      tableCount: 11,
+      tableCount: 12,
     })
   })
 })
