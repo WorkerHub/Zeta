@@ -56,6 +56,7 @@ databases.get('/', async (c) => {
         id: db.id,
         name: db.name,
         description: db.description,
+        kind: db.kind ?? 'sqlite',
         ...(role === 'admin' ? { binding_name: db.binding_name, cf_database_id: db.cf_database_id } : {}),
         is_app_db: appDb,
         permission: appDb ? capAppDbPermission(base) : base,

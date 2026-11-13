@@ -27,13 +27,22 @@ const statements = (prefix: string | undefined) =>
   (getMigrations(env(prefix)).find((m) => m.name === 'schema_v1')!.sql as string).split(';\n')
 
 describe('getMigrations', () => {
-  it('is the single source of truth: one collapsed schema_v1, no PRAGMA probing', () => {
+  it('appends schema_v2 to the collapsed schema_v1, with no PRAGMA probing', () => {
     const migrations = getMigrations(env('ZETA'))
-    expect(migrations.map((m) => m.name)).toEqual(['schema_v1'])
+    expect(migrations.map((m) => m.name)).toEqual(['schema_v1', 'schema_v2'])
     expect(migrations[0]!.sql).not.toMatch(/PRAGMA/)
     expect(migrations[0]!.sql).not.toMatch(/\bALTER TABLE\b/)
     // No SQL line comments: exec() collapses the SQL onto one line (see migrations-runner.ts)
-    expect(migrations[0]!.sql).not.toMatch(/--/)
+    for (const migration of migrations) expect(migration.sql).not.toMatch(/--/)
+  })
+
+  it('adds the registry columns with a default that keeps every existing row a sqlite target', () => {
+    const sql = getMigrations(env('ZETA')).find((m) => m.name === 'schema_v2')!.sql
+    expect(sql).toContain("ALTER TABLE ZETA_d1_databases ADD COLUMN kind TEXT NOT NULL DEFAULT 'sqlite'")
+    expect(sql).toContain('ALTER TABLE ZETA_d1_databases ADD COLUMN connection_secret TEXT')
+    // Additive only: nothing is dropped, renamed or rewritten
+    expect(sql).not.toMatch(/\b(DROP|RENAME)\b/i)
+    expect(sql).not.toMatch(/UPDATE |DELETE /i)
   })
 
   it('parameterises every table and index name by the effective prefix', () => {
@@ -111,5 +120,27 @@ describe('schema_v1 applied to a real database', () => {
     const { sqlite } = sqliteD1()
     sqlite.exec(getMigrations(env('')).find((m) => m.name === 'schema_v1')!.sql)
     expect(sqlite.prepare('SELECT COUNT(*) AS n FROM settings').all()).toEqual([{ n: 0 }])
+  })
+})
+
+describe('schema_v2 applied after schema_v1', () => {
+  it('backfills existing registrations as sqlite targets with no stored connection', () => {
+    const { sqlite } = sqliteD1()
+    for (const migration of getMigrations(env(''))) sqlite.exec(migration.sql)
+    sqlite.exec(`
+      INSERT INTO d1_databases (id, name, binding_name, cf_database_id, created_at)
+      VALUES ('legacy', 'legacy', 'cf:uuid', 'uuid', 0);
+      INSERT INTO d1_databases (id, name, binding_name, kind, connection_secret, created_at)
+      VALUES ('pg', 'neon', 'pg:pg', 'postgres', 'enc:v1:sealed', 0);
+    `)
+    const rows = sqlite.prepare('SELECT id, kind, connection_secret FROM d1_databases ORDER BY id').all() as Array<{
+      id: string
+      kind: string
+      connection_secret: string | null
+    }>
+    expect(rows).toEqual([
+      { id: 'legacy', kind: 'sqlite', connection_secret: null },
+      { id: 'pg', kind: 'postgres', connection_secret: 'enc:v1:sealed' },
+    ])
   })
 })

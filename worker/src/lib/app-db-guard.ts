@@ -1,6 +1,6 @@
 import type { Env } from '../types'
 import { migrationsTable, tables } from './db'
-import { type Permission, type Token, tokenize } from './sql-guard'
+import { type Permission, stripCte, type Token, tokenize } from './sql-guard'
 
 // ── Guardrails for the application database as a query target ──────────────────
 // These checks apply ONLY when the resolved target is the application's own D1
@@ -54,45 +54,8 @@ function identAt(tokens: Token[], i: number): TargetResult {
   return { ok: true, table: t.value }
 }
 
-// Index just past the balanced parenthesis group that starts at tokens[open]
-// (a `(`), or tokens.length when it never closes.
-function skipBalanced(tokens: Token[], open: number): number {
-  let depth = 0
-  for (let i = open; i < tokens.length; i++) {
-    const t = tokens[i]!
-    if (t.type !== 'punct') continue
-    if (t.value === '(') depth++
-    else if (t.value === ')') {
-      depth--
-      if (depth === 0) return i + 1
-    }
-  }
-  return tokens.length
-}
-
-// Strips a WITH [RECURSIVE] cte [(cols)] AS (body), … prefix and returns the
-// tokens of the main statement. `fail` covers everything unparseable, including
-// a WITH that ends after its CTE list (no main statement at all).
-function stripCte(tokens: Token[]): { main: Token[] } | { fail: true } {
-  let i = 1
-  const second = tokens[1]
-  if (second?.type === 'word' && second.value === 'recursive') i = 2
-  for (;;) {
-    if (!tokens[i]) return { fail: true } // missing CTE name
-    i++ // CTE name (one token; its form is irrelevant here)
-    if (tokens[i]?.type === 'punct' && tokens[i]!.value === '(') i = skipBalanced(tokens, i) // column list
-    const as = tokens[i]
-    if (as?.type !== 'word' || as.value !== 'as') return { fail: true }
-    i++
-    if (tokens[i]?.type !== 'punct' || tokens[i]!.value !== '(') return { fail: true }
-    i = skipBalanced(tokens, i) // CTE body
-    if (tokens[i]?.type === 'punct' && tokens[i]!.value === ',') {
-      i++
-      continue // another CTE follows
-    }
-    return { main: tokens.slice(i) }
-  }
-}
+// The WITH prefix is stripped by stripCte() from lib/sql-guard.ts (shared with the
+// statement classifier, so the two can never disagree about where a CTE list ends).
 
 // Skips an `IF [NOT] EXISTS` clause starting at tokens[i]; `not` is optional only
 // for CREATE … IF NOT EXISTS grammar — here both words are required together, so

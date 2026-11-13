@@ -285,7 +285,9 @@ describe('database registry over the D1 HTTP API', () => {
         ])
       )
     )
-    const { db, calls } = fakeD1()
+    const { db, calls } = fakeD1((sql) =>
+      sql.startsWith('SELECT id, kind, cf_database_id') ? { id: 'r1', kind: 'sqlite', cf_database_id: null } : null
+    )
     const env = fakeEnv({ DB: db, CF_ACCOUNT_ID: 'acct', CLOUDFLARE_API_TOKEN: 'tok', ZETA_APP_DB_ID: APP_DB })
     const res = await callWorker(
       env,
@@ -335,7 +337,10 @@ describe('database registry over the D1 HTTP API', () => {
         ])
       )
     )
-    const { db } = fakeD1((sql) => (sql.includes('WHERE cf_database_id = ?1 AND id != ?2') ? { id: 'other' } : null))
+    const { db } = fakeD1((sql) => {
+      if (sql.startsWith('SELECT id, kind, cf_database_id')) return { id: 'r1', kind: 'sqlite', cf_database_id: null }
+      return sql.includes('WHERE cf_database_id = ?1 AND id != ?2') ? { id: 'other' } : null
+    })
     const env = fakeEnv({ DB: db, CF_ACCOUNT_ID: 'acct', CLOUDFLARE_API_TOKEN: 'tok', ZETA_APP_DB_ID: APP_DB })
     const res = await callWorker(
       env,
@@ -419,7 +424,9 @@ describe('application database as a query target (ALLOW_APP_DB_AS_TARGET)', () =
         ])
       )
     )
-    const { db, calls } = fakeD1()
+    const { db, calls } = fakeD1((sql) =>
+      sql.startsWith('SELECT id, kind, cf_database_id') ? { id: 'r1', kind: 'sqlite', cf_database_id: null } : null
+    )
     const env = fakeEnv({
       DB: db,
       CF_ACCOUNT_ID: 'acct',
@@ -449,7 +456,9 @@ describe('application database as a query target (ALLOW_APP_DB_AS_TARGET)', () =
         ])
       )
     )
-    const { db, calls } = fakeD1()
+    const { db, calls } = fakeD1((sql) =>
+      sql.startsWith('SELECT id, kind, cf_database_id') ? { id: 'r1', kind: 'sqlite', cf_database_id: null } : null
+    )
     const env = fakeEnv({
       DB: db,
       CF_ACCOUNT_ID: 'acct',
@@ -578,8 +587,11 @@ describe('POST /api/admin/setup', () => {
     expect(res.status).toBe(200)
     expect(await res.json()).toMatchObject({
       ok: true,
-      migrations: [{ name: 'schema_v1', status: 'applied' }],
-      upgraded: ['schema_v1: applied'],
+      migrations: [
+        { name: 'schema_v1', status: 'applied' },
+        { name: 'schema_v2', status: 'applied' },
+      ],
+      upgraded: ['schema_v1: applied', 'schema_v2: applied'],
     })
     expect(calls.some((c) => c.sql.includes('CREATE TABLE IF NOT EXISTS users'))).toBe(true)
     expect(calls.some((c) => c.sql.includes('INSERT OR IGNORE INTO settings'))).toBe(true)
@@ -612,7 +624,13 @@ describe('POST /api/admin/setup', () => {
     })
     expect(res.status).toBe(200)
     const body = (await res.json()) as Record<string, unknown>
-    expect(body).toMatchObject({ ok: true, migrations: [{ name: 'schema_v1', status: 'skipped' }] })
+    expect(body).toMatchObject({
+      ok: true,
+      migrations: [
+        { name: 'schema_v1', status: 'skipped' },
+        { name: 'schema_v2', status: 'skipped' },
+      ],
+    })
     expect(body).not.toHaveProperty('upgraded')
     expect(sqlite.prepare('SELECT type, name, sql FROM sqlite_master ORDER BY name').all()).toEqual(schema)
   })
