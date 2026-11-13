@@ -213,5 +213,34 @@ export function getMigrations(env: Pick<Env, 'TABLE_PREFIX'>): Migration[] {
       name: 'schema_v4',
       sql: `ALTER TABLE ${T.notebook_runs} ADD COLUMN halted INTEGER NOT NULL DEFAULT 0`,
     },
+    {
+      // Cancellation. `executions` is the registry of in-flight requests: one row per
+      // /api/query and /api/query/batch call that carried an executionId, written before the first
+      // statement runs (see lib/executions.ts). `cancel_requested_at` is the flag the running request
+      // reads at every statement boundary, and the only evidence that a cancellation was asked for;
+      // `handle` is the engine-side address a kill needs (the PostgreSQL application_name marker;
+      // NULL for the engines that can only stop between statements). `outcome` is set together with
+      // `finished_at`: ok, error or cancelled. Rows are pruned by age, so an execution whose request
+      // died without finishing cannot pile up.
+      //
+      // `cancelled` on a saved run is the run-level complement of the per-statement `cancelled`
+      // field in `results`, exactly as `halted` complements a failing statement.
+      name: 'schema_v5',
+      sql: [
+        `CREATE TABLE IF NOT EXISTS ${T.executions} (
+          id TEXT PRIMARY KEY,
+          user_id TEXT REFERENCES ${T.users}(id) ON DELETE CASCADE,
+          database_id TEXT REFERENCES ${T.d1_databases}(id) ON DELETE SET NULL,
+          kind TEXT NOT NULL,
+          handle TEXT,
+          started_at INTEGER NOT NULL,
+          cancel_requested_at INTEGER,
+          finished_at INTEGER,
+          outcome TEXT
+        )`,
+        `CREATE INDEX IF NOT EXISTS idx_${T.executions}_started ON ${T.executions}(started_at)`,
+        `ALTER TABLE ${T.notebook_runs} ADD COLUMN cancelled INTEGER NOT NULL DEFAULT 0`,
+      ].join(';\n'),
+    },
   ]
 }

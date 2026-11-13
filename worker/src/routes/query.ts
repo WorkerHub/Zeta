@@ -3,17 +3,19 @@ import { appDbWriteTargetError, appInternalTables, capAppDbPermission } from '..
 import { type QueryTarget, resolveQueryTarget } from '../lib/bindings'
 import { D1HttpError, isAppDb, queryD1Http } from '../lib/d1-http'
 import { now, tables } from '../lib/db'
+import { beginExecution, cancelRequested, finishExecution, pruneExecutions, requestExecutionCancel } from '../lib/executions'
 import { uuid } from '../lib/id'
 import { translateMySql } from '../lib/mysql-compat'
 import { MySqlQueryError, type MySqlSession, openMySqlSession } from '../lib/mysql-executor'
 import { normalizeMySqlUrl } from '../lib/mysql-url'
-import { openPostgresSession, PostgresQueryError, type PostgresSession } from '../lib/pg-executor'
+import { cancelPostgresExecution, openPostgresSession, PostgresQueryError, type PostgresSession } from '../lib/pg-executor'
 import { normalizePostgresUrl } from '../lib/pg-url'
 import { type RunStatement, reserveRunSeq, saveRun } from '../lib/runs'
 import { openSecret } from '../lib/secrets'
-import { normalizeSparkAccess } from '../lib/spark-access'
+import { type SparkAccess, normalizeSparkAccess } from '../lib/spark-access'
 import {
   CONNECT_TEST_OPEN,
+  cancelSparkExecution,
   openSparkSession,
   SparkQueryError,
   type SparkErrorCode,
@@ -193,9 +195,32 @@ function payloadUrl(payload: Record<string, unknown>, fail: (message: string) =>
 }
 
 // The open options for a Spark target: the connection check's patient budget when the caller asked for
-// it, always carrying the caller's session.
-function sparkOpenOptions(connectTest: boolean | undefined, session: string | undefined): SparkOpenOptions {
-  return connectTest ? { ...CONNECT_TEST_OPEN, session } : { session }
+// it, always carrying the caller's session, and this request's execution id when it has one (the
+// service's job group, which a cancel addresses).
+function sparkOpenOptions(
+  connectTest: boolean | undefined,
+  session: string | undefined,
+  execution: string | undefined
+): SparkOpenOptions {
+  const base: SparkOpenOptions = connectTest ? { ...CONNECT_TEST_OPEN, session } : { session }
+  return execution ? { ...base, execution } : base
+}
+
+// The decrypted Spark access of a registry row. Opening the executor and sending the cancel both need
+// it, so both read it through here instead of unwrapping the payload twice.
+async function sparkAccessFor(env: Env, db: DatabaseRow): Promise<SparkAccess> {
+  const fail = (m: string) => new SparkQueryError(m, 'config', 'spark_config')
+  const access = normalizeSparkAccess(await readStoredPayload(env, db, fail))
+  if (!access.ok) throw new SparkQueryError(access.error, 'config', 'spark_config')
+  return access.access
+}
+
+// The normalised connection string of a PostgreSQL registry row (same reasoning as sparkAccessFor).
+async function postgresUrlFor(env: Env, db: DatabaseRow): Promise<string> {
+  const fail = (m: string) => new PostgresQueryError(m, 'config')
+  const normalized = normalizePostgresUrl(payloadUrl(await readStoredPayload(env, db, fail), fail))
+  if (!normalized.ok) throw new PostgresQueryError(normalized.error, 'config')
+  return normalized.url
 }
 
 // Opens the executor for one request. A connection-string target decrypts its stored payload here (the
@@ -207,12 +232,19 @@ function sparkOpenOptions(connectTest: boolean | undefined, session: string | un
 // `sessionDatabase` is the database a MySQL request chose for its session (see
 // resolveSessionDatabase); it overrides the registered default as the pin target of that one session
 // and means nothing to the other engines, which never open a stateful session of their own.
+// `execution` is this request's execution id: PostgreSQL marks its connection with it
+// (application_name) and Spark turns it into a job group, which is what a cancel addresses.
 // Failures throw the engine's classified error, which the routes report as a target error.
 async function openExecutor(
   env: Env,
   db: DatabaseRow,
   target: QueryTarget,
-  opts: { connectTest?: boolean; session?: string; sessionDatabase?: string | null } = {}
+  opts: {
+    connectTest?: boolean
+    session?: string
+    sessionDatabase?: string | null
+    execution?: string
+  } = {}
 ): Promise<Executor> {
   if (target.kind === 'http') {
     return {
@@ -222,12 +254,9 @@ async function openExecutor(
   }
 
   if (target.kind === 'spark') {
-    const fail = (m: string) => new SparkQueryError(m, 'config', 'spark_config')
-    const access = normalizeSparkAccess(await readStoredPayload(env, db, fail))
-    if (!access.ok) throw new SparkQueryError(access.error, 'config', 'spark_config')
     const session: SparkSession = await openSparkSession(
-      access.access,
-      sparkOpenOptions(opts.connectTest, opts.session)
+      await sparkAccessFor(env, db),
+      sparkOpenOptions(opts.connectTest, opts.session, opts.execution)
     )
     return {
       run: (sql, kind) => session.run(sql, kind, MAX_RESULT_ROWS),
@@ -246,11 +275,9 @@ async function openExecutor(
     }
   }
 
-  const fail = (m: string) => new PostgresQueryError(m, 'config')
-  const normalized = normalizePostgresUrl(payloadUrl(await readStoredPayload(env, db, fail), fail))
-  if (!normalized.ok) throw new PostgresQueryError(normalized.error, 'config')
-
-  const session: PostgresSession = await openPostgresSession(normalized.url)
+  const session: PostgresSession = await openPostgresSession(await postgresUrlFor(env, db), {
+    applicationName: opts.execution,
+  })
   return {
     run: (sql, kind) => session.run(sql, kind, MAX_RESULT_ROWS),
     close: () => session.close(),
@@ -312,16 +339,103 @@ function appDbStatementError(env: Env, db: DatabaseRow, kind: SqlClass, sql: str
   return appDbWriteTargetError(sql, appInternalTables(env))
 }
 
+// ── Execution registration and cancellation ───────────────────────────────────
+// Both query paths (one statement, a batch of them) take an optional `executionId` from the client and
+// register it before anything runs; POST /cancel addresses that registration (see
+// lib/executions.ts). Cancellation itself is engine-specific and lives in the executors: PostgreSQL
+// gets a pg_cancel_backend on the session marked with this id, Spark a /cancel on this id's job
+// group, and D1 and TiDB — which have no kill channel at all — only ever stop at a statement boundary.
+
+// The client's uuid for one request: the registry key, PostgreSQL's application_name marker and
+// Spark's job group. Shape-checked here so a malformed value never reaches an engine as an identifier.
+const EXECUTION_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+// The optional executionId of a request body. Absent/null means the caller asked for nothing to be
+// cancellable: the request then behaves exactly as it did before the field existed.
+function resolveExecutionId(raw: unknown): { ok: true; value: string | null } | { ok: false; error: string } {
+  if (raw === undefined || raw === null) return { ok: true, value: null }
+  if (typeof raw !== 'string' || !EXECUTION_ID_PATTERN.test(raw.trim())) {
+    return { ok: false, error: 'executionId must be a uuid' }
+  }
+  return { ok: true, value: raw.trim() }
+}
+
+// Registers a request that is about to run. A 409 answers the one case where two executions would
+// share an id — and with it one kill address. The age-based pruning rides along, off the request's
+// critical path, so a request that died without finishing cannot leave a row behind for good.
+async function registerExecution(
+  c: Ctx,
+  exec: { id: string; userId: string; databaseId: string; kind: string }
+): Promise<Response | null> {
+  const registered = await beginExecution(c.env, {
+    ...exec,
+    // The address a kill needs: PostgreSQL's application_name marker (the id itself, unique per
+    // execution). Spark is addressed by session + execution id and D1/TiDB have no address at all.
+    handle: exec.kind === 'postgres' ? exec.id : null,
+  })
+  if (!registered.created) return c.json({ error: 'executionId is already in use' }, 409)
+  c.executionCtx.waitUntil(pruneExecutions(c.env).catch(() => {}))
+  return null
+}
+
+// Sends the engine-side kill for an execution that was just cancelled. Always best effort and always
+// off the cancel request's critical path: the registry flag is what the running request obeys, and no
+// deployment detail (URL, token, marker) may reach a response or a log line.
+async function dispatchCancel(
+  env: Env,
+  cancel: { id: string; userId: string; databaseId: string; kind: string; handle: string | null }
+): Promise<void> {
+  try {
+    const T = tables(env)
+    const db = await env.DB.prepare(`SELECT * FROM ${T.d1_databases} WHERE id = ?1 AND is_active = 1`)
+      .bind(cancel.databaseId)
+      .first<DatabaseRow>()
+    if (!db) return
+    const resolved = resolveQueryTarget(env, db)
+    if (!resolved.ok) return
+
+    if (resolved.target.kind === 'postgres') {
+      // No marker, no safe address: a pid-based kill could stop somebody else's statement.
+      if (!cancel.handle) return
+      await cancelPostgresExecution(await postgresUrlFor(env, db), cancel.handle)
+      return
+    }
+    if (resolved.target.kind === 'spark') {
+      await cancelSparkExecution(await sparkAccessFor(env, db), {
+        session: cancel.userId,
+        execution: cancel.id,
+      })
+    }
+    // http (D1) and mysql (TiDB): no kill channel exists — the flag stops the next statement.
+  } catch {
+    // A registration that was deleted, a payload that no longer decrypts, a token that was rotated:
+    // none of it may turn a cancel into an error for the caller.
+    console.error('Execution cancel could not reach its engine')
+  }
+}
+
 // ── POST /api/query ────────────────────────────────────────────────────────────
 
 query.post('/', async (c) => {
   const body = await c.req
-    .json<{ databaseId?: string; sql?: string; notebookId?: unknown; sessionDatabase?: unknown }>()
+    .json<{
+      databaseId?: string
+      sql?: string
+      notebookId?: unknown
+      sessionDatabase?: unknown
+      executionId?: unknown
+    }>()
     .catch(() => null)
   if (typeof body?.databaseId !== 'string' || typeof body.sql !== 'string' || !body.sql.trim()) {
     return c.json({ error: 'databaseId and sql are required' }, 400)
   }
   if (body.sql.length > MAX_SQL_LENGTH) return c.json({ error: 'SQL is too long' }, 413)
+
+  // The request's execution id is checked before any lookup: a malformed value is a bad request
+  // whatever state the registration is in.
+  const resolvedExecution = resolveExecutionId(body.executionId)
+  if (!resolvedExecution.ok) return c.json({ error: resolvedExecution.error }, 400)
+  const execution = resolvedExecution.value
 
   const userId = c.get('userId')
   const role = c.get('userRole')
@@ -373,30 +487,54 @@ query.post('/', async (c) => {
   const notebook = await resolveNotebook(c, body.notebookId)
   if (notebook instanceof Response) return notebook
 
+  // Registered before anything opens or runs, so a cancel that arrives while the target is still
+  // connecting is not lost.
+  if (execution) {
+    const taken = await registerExecution(c, { id: execution, userId, databaseId: db.id, kind: db.kind ?? 'sqlite' })
+    if (taken) return taken
+  }
+
   const executedAt = Date.now()
   let executor: Executor
   try {
     executor = await openExecutor(c.env, db, resolved.target, {
       session: userId,
       sessionDatabase: session.value,
+      execution: execution ?? undefined,
     })
   } catch (err) {
+    if (execution) await finishExecution(c.env, execution, 'error')
     return openExecutorError(c, err)
   }
 
+  let cancelled = false
+  let failed = false
   try {
     let result: Executed | null = null
     let errorMsg: string | null = null
     let errorStatus: ErrorStatus = 400
     let errorCode: SparkErrorCode | undefined
 
-    try {
-      result = await executor.run(runSql, kind)
-    } catch (err) {
-      const mapped = resolveExecError(c, err)
-      errorMsg = mapped.message
-      errorStatus = mapped.status
-      errorCode = mapped.code
+    if (execution && (await cancelRequested(c.env, execution))) {
+      // Cancelled while the request was still opening its target: the statement is not started.
+      cancelled = true
+    } else {
+      try {
+        result = await executor.run(runSql, kind)
+      } catch (err) {
+        // A cancelled statement's failure text is not evidence of a mistake — Spark answers a killed
+        // job with its ordinary 200 + error stack and PostgreSQL with 57014 — so the registry row,
+        // not the message, decides what happened (spike #27 §10.2).
+        if (execution && (await cancelRequested(c.env, execution))) {
+          cancelled = true
+        } else {
+          const mapped = resolveExecError(c, err)
+          errorMsg = mapped.message
+          errorStatus = mapped.status
+          errorCode = mapped.code
+          failed = true
+        }
+      }
     }
 
     const duration = Date.now() - executedAt
@@ -418,6 +556,7 @@ query.post('/', async (c) => {
       const statement: RunStatement = { sql, results: result?.results ?? [], duration_ms: duration }
       if (result?.changes !== undefined) statement.changes = result.changes
       if (result?.truncated) statement.truncated = true
+      if (cancelled) statement.cancelled = true
       if (errorMsg) statement.error = errorMsg
       run = { run_id: uuid(), executed_at: executedAt, seq: notebook.seq }
       c.executionCtx.waitUntil(
@@ -432,10 +571,17 @@ query.post('/', async (c) => {
           statementCount: 1,
           // One statement is the whole request: it can fail, but there is nothing after it to skip.
           halted: false,
+          cancelled,
           durationMs: duration,
           executedAt,
         })
       )
+    }
+
+    // A cancellation is not an error and carries no result: the statement either never started or
+    // was stopped mid-flight.
+    if (cancelled) {
+      return c.json({ cancelled: true, results: [], duration_ms: duration, ...run })
     }
 
     // A Spark failure also names its code, so the UI can render the sentence in the reader's language
@@ -447,9 +593,12 @@ query.post('/', async (c) => {
     const payload = isWriteClass(kind)
       ? { meta: result.meta, results: [] }
       : { results: result.results, meta: result.meta, truncated: result.truncated }
-    return c.json({ ...payload, duration_ms: duration, ...run })
+    return c.json({ ...payload, duration_ms: duration, cancelled: false, ...run })
   } finally {
     await executor.close()
+    if (execution) {
+      await finishExecution(c.env, execution, cancelled ? 'cancelled' : failed ? 'error' : 'ok')
+    }
   }
 })
 
@@ -457,7 +606,13 @@ query.post('/', async (c) => {
 
 query.post('/batch', async (c) => {
   const body = await c.req
-    .json<{ databaseId?: string; statements?: string[]; notebookId?: unknown; sessionDatabase?: unknown }>()
+    .json<{
+      databaseId?: string
+      statements?: string[]
+      notebookId?: unknown
+      sessionDatabase?: unknown
+      executionId?: unknown
+    }>()
     .catch(() => null)
   if (
     typeof body?.databaseId !== 'string' ||
@@ -471,6 +626,11 @@ query.post('/batch', async (c) => {
   if (body.statements.length > 100) {
     return c.json({ error: 'Maximum 100 statements per batch' }, 400)
   }
+
+  // Checked before any lookup, exactly like the single-statement path.
+  const resolvedExecution = resolveExecutionId(body.executionId)
+  if (!resolvedExecution.ok) return c.json({ error: resolvedExecution.error }, 400)
+  const execution = resolvedExecution.value
 
   const userId = c.get('userId')
   const role = c.get('userRole')
@@ -528,6 +688,13 @@ query.post('/batch', async (c) => {
   })
   const notebook = await resolveNotebook(c, body.notebookId, runsAny)
   if (notebook instanceof Response) return notebook
+
+  // Registered before the target opens (see the single-statement path).
+  if (execution) {
+    const taken = await registerExecution(c, { id: execution, userId, databaseId: db.id, kind: db.kind ?? 'sqlite' })
+    if (taken) return taken
+  }
+
   const executedAt = Date.now()
 
   let executor: Executor
@@ -535,17 +702,22 @@ query.post('/batch', async (c) => {
     executor = await openExecutor(c.env, db, resolved.target, {
       session: userId,
       sessionDatabase: session.value,
+      execution: execution ?? undefined,
     })
   } catch (err) {
+    if (execution) await finishExecution(c.env, execution, 'error')
     return openExecutorError(c, err)
   }
 
+  let cancelled = false
+  let failed = false
   try {
-    // Run the statements in order and stop at the first failure: a statement that is rejected before
-    // it runs, or that fails while running, ends the batch with its own result kept. Nothing after it
-    // runs — the remaining SQL usually depends on what just failed, and continuing would act on a
-    // half-finished notebook. `halted` reports that early stop to the client (and rides along into the
-    // saved run); a batch that runs to the end answers `halted: false`.
+    // Run the statements in order and stop at the first failure, or at the first cancellation: a
+    // statement that is rejected before it runs, or that fails while running, ends the batch with its
+    // own result kept. Nothing after it runs — the remaining SQL usually depends on what just failed,
+    // and continuing would act on a half-finished notebook. `halted` reports an early stop caused by a
+    // failure, `cancelled` one caused by POST /api/query/cancel; a batch that runs to the end answers
+    // both false. A cancelled statement carries no `error`, so the two never overlap.
     const results: RunStatement[] = []
     let halted = false
     // The statements the request asked to run, counted up front: a halted batch saves fewer
@@ -556,6 +728,13 @@ query.post('/batch', async (c) => {
     for (const rawSql of body.statements) {
       const sql = rawSql.trim()
       if (!sql) continue
+
+      // The statement boundary is where a cancellation takes effect for every engine: what has not
+      // started yet never will, and gets no entry — exactly like the statements a halt skips.
+      if (execution && (await cancelRequested(c.env, execution))) {
+        cancelled = true
+        break
+      }
 
       const { sql: runSql, error: translateError } = translate(sql, dialect)
       if (translateError) {
@@ -590,7 +769,10 @@ query.post('/batch', async (c) => {
         changes = executed.changes
         truncated = executed.truncated
       } catch (err) {
-        errorMsg = resolveExecError(c, err).message
+        // Same reasoning as the single-statement path: the registry row decides whether this was a
+        // cancellation or a failure, never the engine's message.
+        if (execution && (await cancelRequested(c.env, execution))) cancelled = true
+        else errorMsg = resolveExecError(c, err).message
       }
 
       const duration = Date.now() - start
@@ -610,11 +792,16 @@ query.post('/batch', async (c) => {
       if (changes !== undefined) entry.changes = changes
       if (errorMsg) entry.error = errorMsg
       if (truncated) entry.truncated = true
+      if (cancelled) entry.cancelled = true
       results.push(entry)
+
+      // A cancelled statement is the batch's last entry, like a failing one.
+      if (cancelled) break
 
       // The statement failed: its result (with the error) is the batch's last entry.
       if (errorMsg) {
         halted = true
+        failed = true
         break
       }
     }
@@ -633,17 +820,54 @@ query.post('/batch', async (c) => {
           statements: results,
           statementCount,
           halted,
+          cancelled,
           durationMs: Date.now() - executedAt,
           executedAt,
         })
       )
-      return c.json({ results, halted, run_id: runId, executed_at: executedAt, seq: notebook.seq })
+      return c.json({ results, halted, cancelled, run_id: runId, executed_at: executedAt, seq: notebook.seq })
     }
 
-    return c.json({ results, halted })
+    return c.json({ results, halted, cancelled })
   } finally {
     await executor.close()
+    if (execution) {
+      await finishExecution(c.env, execution, cancelled ? 'cancelled' : failed ? 'error' : 'ok')
+    }
   }
+})
+
+// ── POST /api/query/cancel ────────────────────────────────────────────────────
+
+// Stops an execution that is still running. Only the person who started it can cancel it — the
+// registry's conditional UPDATE carries the user_id, so an admin is no exception and another user's
+// execution is indistinguishable from one that does not exist (404, no enumeration).
+//
+// `cancelled: true` means a cancellation is in effect for that execution (now or from an earlier
+// call), `cancelled: false` that it had already finished and there was nothing to stop. The engine-side
+// kill (PostgreSQL, Spark) is dispatched after the answer, best effort: the flag is what the running
+// request obeys, and a repeated cancel must not send a second kill.
+query.post('/cancel', async (c) => {
+  const body = await c.req.json<{ executionId?: unknown }>().catch(() => null)
+  const resolved = resolveExecutionId(body?.executionId)
+  if (!resolved.ok || !resolved.value) return c.json({ error: 'executionId is required' }, 400)
+
+  const cancel = await requestExecutionCancel(c.env, resolved.value, c.get('userId'))
+  if (!cancel.found) return c.json({ error: 'Execution not found' }, 404)
+  if (cancel.state === 'finished') return c.json({ ok: true, cancelled: false })
+
+  if (cancel.dispatched) {
+    c.executionCtx.waitUntil(
+      dispatchCancel(c.env, {
+        id: resolved.value,
+        userId: cancel.userId,
+        databaseId: cancel.databaseId,
+        kind: cancel.kind,
+        handle: cancel.handle,
+      })
+    )
+  }
+  return c.json({ ok: true, cancelled: true })
 })
 
 // ── POST /api/query/probe ─────────────────────────────────────────────────────
