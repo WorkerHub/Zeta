@@ -125,6 +125,121 @@ describe('classifySql (postgres dialect)', () => {
   }
 })
 
+describe('classifySql (mysql dialect)', () => {
+  const cases: Array<[string, string, SqlClass]> = [
+    // reads — the introspection statements a TiDB Cloud Starter target actually gets
+    ['plain select', 'SELECT 1', 'read'],
+    ['select with a backtick identifier', 'SELECT `a;b` FROM `t`', 'read'],
+    ['show tables', 'SHOW TABLES', 'read'],
+    ['show create table', 'SHOW CREATE TABLE t', 'read'],
+    ['show columns', 'SHOW COLUMNS FROM t', 'read'],
+    ['show index', 'SHOW INDEX FROM t', 'read'],
+    ['show variables', "SHOW VARIABLES LIKE 'max%'", 'read'],
+    ['describe', 'DESCRIBE t', 'read'],
+    ['desc', 'DESC t', 'read'],
+    ['explain', 'EXPLAIN SELECT * FROM t', 'read'],
+    ['explain format', 'EXPLAIN FORMAT=JSON SELECT * FROM t', 'read'],
+    ['explain analyze select', 'EXPLAIN ANALYZE SELECT * FROM t', 'read'],
+    ['explain analyze delete', 'EXPLAIN ANALYZE DELETE FROM t', 'write'],
+    ['cte select', 'WITH a AS (SELECT 1) SELECT * FROM a', 'read'],
+
+    // writes
+    ['insert', 'INSERT INTO t VALUES (1)', 'write'],
+    ['replace', 'REPLACE INTO t VALUES (1)', 'write'],
+    ['update', 'UPDATE t SET a = 1', 'write'],
+    ['delete', 'DELETE FROM t', 'write'],
+    ['create table', 'CREATE TABLE t (a INT)', 'write'],
+    ['alter add', 'ALTER TABLE t ADD COLUMN b INT', 'write'],
+    ['analyze table', 'ANALYZE TABLE t', 'write'],
+    ['optimize table', 'OPTIMIZE TABLE t', 'write'],
+    ['repair table', 'REPAIR TABLE t', 'write'],
+    ['rename table', 'RENAME TABLE a TO b', 'write'],
+    ['call', 'CALL p(1)', 'write'],
+    ['data-modifying cte', 'WITH d AS (DELETE FROM t RETURNING *) SELECT * FROM d', 'write'],
+
+    // destructive
+    ['drop', 'DROP TABLE t', 'destructive'],
+    ['truncate', 'TRUNCATE t', 'destructive'],
+    ['alter drop column', 'ALTER TABLE t DROP COLUMN b', 'destructive'],
+
+    // forbidden
+    ['load data infile', "LOAD DATA INFILE '/x' INTO TABLE t", 'forbidden'],
+    ['load data local infile', "LOAD DATA LOCAL INFILE '/x' INTO TABLE t", 'forbidden'],
+    ['select into outfile', "SELECT * FROM t INTO OUTFILE '/tmp/x'", 'forbidden'],
+    ['select into dumpfile', "SELECT * FROM t INTO DUMPFILE '/tmp/x'", 'forbidden'],
+    ['lock tables', 'LOCK TABLES t WRITE', 'forbidden'],
+    ['unlock tables', 'UNLOCK TABLES', 'forbidden'],
+    ['prepare', "PREPARE s FROM 'SELECT 1'", 'forbidden'],
+    ['execute', 'EXECUTE s', 'forbidden'],
+    ['deallocate', 'DEALLOCATE PREPARE s', 'forbidden'],
+    ['grant', 'GRANT ALL ON *.* TO u', 'forbidden'],
+    ['revoke', 'REVOKE ALL ON *.* FROM u', 'forbidden'],
+    ['create user', "CREATE USER u IDENTIFIED BY 'x'", 'forbidden'],
+    ['create role', 'CREATE ROLE r', 'forbidden'],
+    ['flush', 'FLUSH PRIVILEGES', 'forbidden'],
+    ['kill', 'KILL 1', 'forbidden'],
+    ['shutdown', 'SHUTDOWN', 'forbidden'],
+    ['start transaction', 'START TRANSACTION', 'forbidden'],
+    // `BEGIN` is MySQL's synonym of START TRANSACTION: the live re-check showed the endpoint keeps one
+    // session per credentials, so an open transaction there would capture every other request.
+    ['begin', 'BEGIN', 'forbidden'],
+    ['commit', 'COMMIT', 'forbidden'],
+    ['rollback', 'ROLLBACK', 'forbidden'],
+    ['savepoint', 'SAVEPOINT s', 'forbidden'],
+    ['use', 'USE other', 'forbidden'],
+    ['set', 'SET @x = 1', 'forbidden'],
+    ['show processlist', 'SHOW PROCESSLIST', 'forbidden'],
+    ['show full processlist', 'SHOW FULL PROCESSLIST', 'forbidden'],
+    ['show grants', 'SHOW GRANTS', 'forbidden'],
+    ['handler', 'HANDLER t OPEN', 'forbidden'],
+
+    // scanner patches
+    ['executable comment', '/*!50000 DELETE FROM t */', 'forbidden'],
+    ['executable comment inside a read', 'SELECT 1 /*! , 2 */', 'forbidden'],
+    ['optimizer hint is a plain comment', '/*+ MAX_EXECUTION_TIME(1000) */ SELECT 1', 'read'],
+    ['hash comment hides nothing', 'SELECT 1 # ; DROP TABLE t', 'read'],
+    ['escaped quote keeps the statement in its string', "SELECT 'it\\'s; DROP TABLE x' FROM t", 'read'],
+    ['escaped double quote', 'SELECT "a\\"b; c" FROM t', 'read'],
+    ['multi-statement is still refused', 'SELECT 1; SELECT 2', 'multiple'],
+    // `[` is not a MySQL quote: it cannot be used to hide a second statement
+    ['bracket does not hide a second statement', 'SELECT 1 [; DROP TABLE t', 'multiple'],
+  ]
+
+  for (const [name, sql, expected] of cases) {
+    it(`${name} -> ${expected}`, () => {
+      expect(classifySql(sql, 'mysql')).toBe(expected)
+    })
+  }
+})
+
+describe('limitReadSql (mysql dialect)', () => {
+  it('wraps reads in an aliased derived table', () => {
+    expect(limitReadSql('SELECT * FROM t', 5000, 'mysql')).toBe(
+      'SELECT * FROM (\nSELECT * FROM t\n) AS zeta_limit LIMIT 5001'
+    )
+    expect(limitReadSql('WITH a AS (SELECT 1) SELECT * FROM a', 10, 'mysql')).toBe(
+      'SELECT * FROM (\nWITH a AS (SELECT 1) SELECT * FROM a\n) AS zeta_limit LIMIT 11'
+    )
+    // A hash comment cannot swallow the closing parenthesis: it ends at the newline
+    expect(limitReadSql('SELECT 1 # note', 10, 'mysql')).toBe(
+      'SELECT * FROM (\nSELECT 1 # note\n) AS zeta_limit LIMIT 11'
+    )
+  })
+
+  it('leaves row-locking reads and introspection to the caller row cap', () => {
+    for (const sql of [
+      'SELECT * FROM t FOR UPDATE',
+      'SELECT * FROM t FOR SHARE',
+      'SELECT * FROM t LOCK IN SHARE MODE',
+      'SHOW TABLES',
+      'DESCRIBE t',
+      'EXPLAIN ANALYZE SELECT 1',
+    ]) {
+      expect(limitReadSql(sql, 10, 'mysql'), sql).toBeNull()
+    }
+  })
+})
+
 describe('checkSqlAccess', () => {
   it('lets read users run reads', () => {
     expect(checkSqlAccess('read', 'read')).toBeNull()

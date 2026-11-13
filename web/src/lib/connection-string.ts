@@ -1,12 +1,12 @@
-// Registration form state for connection-string targets (PostgreSQL).
+// Registration form state for connection-string targets (PostgreSQL, MySQL/TiDB Cloud Starter).
 //
 // The backend tests the connection again when it stores the registration, so this is only the
 // form's own gate: a passing test vouches for the one string it ran against, and nothing else.
 
-export type PgTestState = 'idle' | 'testing' | 'passed' | 'failed'
+export type ConnectionTestState = 'idle' | 'testing' | 'passed' | 'failed'
 
 /** Whether the string currently in the form is the one whose test connection passed. */
-export function canSavePostgres(url: string, testedUrl: string | null): boolean {
+export function canSaveConnectionString(url: string, testedUrl: string | null): boolean {
   const current = url.trim()
   return current !== '' && current === testedUrl
 }

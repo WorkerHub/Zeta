@@ -1,18 +1,19 @@
 import { describe, it, expect, afterEach } from 'vitest'
 import { renderToStaticMarkup } from 'react-dom/server'
-import PostgresConnectionFields from '../../components/PostgresConnectionFields'
+import ConnectionStringFields from '../../components/ConnectionStringFields'
 import { t, setLocale } from '../translations'
-import type { PgTestState } from '../pg-connection'
+import type { ConnectionTestState } from '../connection-string'
 
 afterEach(() => setLocale('en'))
 
 const noop = () => {}
 
-function render(props: Partial<Parameters<typeof PostgresConnectionFields>[0]>) {
+function render(props: Partial<Parameters<typeof ConnectionStringFields>[0]>) {
   return renderToStaticMarkup(
-    <PostgresConnectionFields
+    <ConnectionStringFields
+      kind="postgres"
       url=""
-      testState={'idle' as PgTestState}
+      testState={'idle' as ConnectionTestState}
       testError=""
       testInfo=""
       onUrlChange={noop}
@@ -22,13 +23,24 @@ function render(props: Partial<Parameters<typeof PostgresConnectionFields>[0]>) 
   )
 }
 
-describe('PostgresConnectionFields', () => {
+describe('ConnectionStringFields', () => {
   it('masks the string by default and offers a reveal toggle', () => {
     const html = render({ url: 'postgresql://u:p@host/db' })
     expect(html).toContain('type="password"')
     expect(html).not.toContain('type="text"')
     expect(html).toContain(t('admin_db.show_connection_url'))
     expect(html).toContain(t('admin_db.connection_url_hint'))
+  })
+
+  it('shows the MySQL copy — including "TiDB Cloud Starter only" — for a mysql target', () => {
+    const html = render({ kind: 'mysql', url: 'mysql://u:p@host/db' })
+    // The placeholder is rendered into an attribute, so its angle brackets arrive escaped
+    const placeholder = t('admin_db.connection_url_placeholder_mysql').replace('<', '&lt;').replace('>', '&gt;')
+    expect(html).toContain(placeholder)
+    expect(html).toContain(t('admin_db.connection_url_hint_mysql'))
+    expect(html).not.toContain(t('admin_db.connection_url_hint'))
+    expect(t('admin_db.connection_url_hint_mysql')).toContain('TiDB Cloud Starter')
+    expect(t('admin_db.connection_url_hint_mysql')).toMatch(/MySQL/)
   })
 
   it('disables the test button until something is typed', () => {
