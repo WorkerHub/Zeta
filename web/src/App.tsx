@@ -2,6 +2,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { lazy, Suspense } from 'react'
 import { AuthProvider, useAuthContext } from './hooks/useAuth'
 import { useTheme } from './hooks/useTheme'
+import { useThemeColor } from './hooks/useThemeColor'
 import { useLocale } from './hooks/useLocale'
 
 const Login = lazy(() => import('./pages/Login'))
@@ -53,6 +54,7 @@ function AdminRoute({ children }: { children: React.ReactNode }) {
 
 export default function App() {
   useTheme()
+  useThemeColor()
   return (
     <AuthProvider>
       <BrowserRouter>
