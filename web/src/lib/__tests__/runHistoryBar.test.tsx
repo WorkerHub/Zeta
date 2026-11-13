@@ -12,9 +12,15 @@ afterEach(() => setLocale('en'))
 // contract this test pins: geometry, tokens, transparent track in every state.
 const stylesheet = readFileSync(new URL('../../index.css', import.meta.url), 'utf8')
 
-function declarations(selector: string): string {
+// Every declaration block written for exactly this selector (a selector can carry more than one
+// rule — the element itself, and again inside the @supports block)
+function allDeclarations(selector: string): string[] {
   const escaped = selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-  return new RegExp(`(?:^|\\n)\\s*${escaped}\\s*\\{([^}]*)\\}`).exec(stylesheet)?.[1] ?? ''
+  return [...stylesheet.matchAll(new RegExp(`(?:^|\\n)\\s*${escaped}\\s*\\{([^}]*)\\}`, 'g'))].map((m) => m[1] ?? '')
+}
+
+function declarations(selector: string): string {
+  return allDeclarations(selector)[0] ?? ''
 }
 
 const noop = () => {}
@@ -102,19 +108,29 @@ describe('RunHistoryBar hairline scrollbar', () => {
     expect(declarations('.run-history-scroll::-webkit-scrollbar')).toMatch(/height:\s*8px/)
   })
 
-  it('reads as a 4px line at rest, through transparent borders clipped out of the thumb', () => {
+  it('reads as a 4px line at rest, through a transparent border clipped out of the thumb', () => {
     const thumb = declarations('.run-history-scroll::-webkit-scrollbar-thumb')
-    expect(thumb).toMatch(/border:\s*2px solid transparent/)
+    expect(declarations('.run-history-scroll')).toMatch(/--run-strip-thumb-inset:\s*2px/)
+    expect(thumb).toMatch(/border:\s*var\(--run-strip-thumb-inset\) solid transparent/)
     expect(thumb).toMatch(/background-clip:\s*padding-box/)
     expect(thumb).toMatch(/border-radius:\s*9999px/)
     // Ink-300 at rest, in the frozen token layer rather than a bare colour
     expect(thumb).toMatch(/background-color:\s*var\(--color-ink-300\)/)
   })
 
-  it('fills the whole gutter on hover and while dragged, without a track behind it', () => {
-    expect(declarations('.run-history-scroll:hover::-webkit-scrollbar-thumb')).toMatch(/border-width:\s*0/)
-    expect(declarations('.run-history-scroll::-webkit-scrollbar-thumb:active')).toMatch(/border-width:\s*0/)
+  it('fills the whole gutter on hover, through an inset the hovered strip itself declares', () => {
+    // Chrome paints a custom scrollbar from the bar's own hover state: a rule that only touches the
+    // ::-webkit- thumb of a hovered element never repaints it (measured — hovering a tab kept the
+    // 4px line). Flipping an inherited custom property in the element's own :hover is what makes
+    // the engine repaint, so that declaration is part of the contract, not decoration.
+    expect(declarations('.run-history-scroll:hover')).toMatch(/--run-strip-thumb-inset:\s*0px/)
     expect(declarations('.run-history-scroll:hover::-webkit-scrollbar-thumb')).toMatch(/var\(--color-ink-400\)/)
+  })
+
+  it('keeps the full 8px gutter while the thumb is dragged, without a track behind it', () => {
+    const active = declarations('.run-history-scroll::-webkit-scrollbar-thumb:active')
+    expect(active).toMatch(/border-width:\s*0/)
+    expect(active).toMatch(/var\(--color-ink-400\)/)
   })
 
   it.each([
@@ -128,9 +144,13 @@ describe('RunHistoryBar hairline scrollbar', () => {
 
   it('gives Firefox the standard properties instead, guarded so Chrome keeps the pseudo-elements', () => {
     expect(stylesheet).toContain('@supports not selector(::-webkit-scrollbar)')
-    expect(declarations('.run-history-scroll')).toMatch(/scrollbar-width:\s*thin/)
-    expect(declarations('.run-history-scroll')).toMatch(/scrollbar-color:\s*var\(--color-ink-300\)\s+transparent/)
-    expect(declarations('.run-history-scroll:hover')).toMatch(/scrollbar-color:\s*var\(--color-ink-400\)\s+transparent/)
+    expect(allDeclarations('.run-history-scroll').join('\n')).toMatch(/scrollbar-width:\s*thin/)
+    expect(allDeclarations('.run-history-scroll').join('\n')).toMatch(
+      /scrollbar-color:\s*var\(--color-ink-300\)\s+transparent/
+    )
+    expect(allDeclarations('.run-history-scroll:hover').join('\n')).toMatch(
+      /scrollbar-color:\s*var\(--color-ink-400\)\s+transparent/
+    )
   })
 })
 

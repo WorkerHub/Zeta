@@ -434,10 +434,18 @@
    * (background-clip: padding-box) leave a thin line; hovering the strip drops them to fill the
    * gutter, an easier grab, and nothing reflows. The track stays transparent in every state,
    * dragging included.
+   * The thumb's inset is a custom property on the element rather than a declaration inside the
+   * hover rule alone: Chrome paints a custom scrollbar from the bar's own hover state and does not
+   * repaint it when only the ::-webkit- pseudo-element of the hovered element changes (measured:
+   * hovering a tab left the thumb at 4px until the element itself declared something in :hover).
+   * Flipping the inherited inset in :hover is that declaration, and it keeps one source of truth.
    * WebKit/Blink read those pseudo-elements. Firefox has none of them and takes the standard
    * properties in the guarded block — which the guard also keeps out of Chrome, since Chrome
    * ignores the pseudo-elements once scrollbar-width/scrollbar-color are set on the element.
    */
+  .run-history-scroll {
+    --run-strip-thumb-inset: 2px;
+  }
   .run-history-scroll::-webkit-scrollbar {
     height: 8px;
     background: transparent;
@@ -457,14 +465,17 @@
   .run-history-scroll::-webkit-scrollbar-thumb {
     background-color: var(--color-ink-300);
     background-clip: padding-box;
-    border: 2px solid transparent;
+    border: var(--run-strip-thumb-inset) solid transparent;
     border-radius: 9999px;
     min-width: 28px;
   }
-  /* Hovering the strip thickens the line to the full 8px gutter, for an easier grab */
+  /* Hovering the strip — over the tabs as much as over the bar — thickens the line to the full
+     8px gutter, for an easier grab */
+  .run-history-scroll:hover {
+    --run-strip-thumb-inset: 0px;
+  }
   .run-history-scroll:hover::-webkit-scrollbar-thumb {
     background-color: var(--color-ink-400);
-    border-width: 0;
   }
   .run-history-scroll::-webkit-scrollbar-thumb:active {
     background-color: var(--color-ink-400);
