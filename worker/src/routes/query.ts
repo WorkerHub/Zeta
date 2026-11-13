@@ -5,6 +5,8 @@ import { D1HttpError, isAppDb, queryD1Http } from '../lib/d1-http'
 import { now, tables } from '../lib/db'
 import { uuid } from '../lib/id'
 import { translateMySql } from '../lib/mysql-compat'
+import { MySqlQueryError, type MySqlSession, openMySqlSession } from '../lib/mysql-executor'
+import { normalizeMySqlUrl } from '../lib/mysql-url'
 import { openPostgresSession, PostgresQueryError, type PostgresSession } from '../lib/pg-executor'
 import { normalizePostgresUrl } from '../lib/pg-url'
 import { type RunStatement, reserveRunSeq, saveRun } from '../lib/runs'
@@ -49,7 +51,7 @@ function resolveExecError(c: Ctx, err: unknown): { message: string; status: Erro
     console.error(`Query execution error: ${err.message}`)
     return { message: 'Database configuration error. Contact the admin.', status: 500 }
   }
-  if (err instanceof PostgresQueryError) {
+  if (err instanceof PostgresQueryError || err instanceof MySqlQueryError) {
     if (err.kind === 'sql') return { message: err.message, status: 400 }
     if (c.get('userRole') === 'admin') return { message: `${err.message} Contact the admin.`, status: 500 }
     console.error(`Query execution error: ${err.message}`)
@@ -90,7 +92,8 @@ interface Executed {
 
 // The engine-specific half of a request: one thing to run statements against, and a close() that
 // releases it. For D1 the target is stateless over HTTP; for PostgreSQL one connection is opened
-// for the request, shared by every statement of a batch and closed when the request is done.
+// for the request, shared by every statement of a batch and closed when the request is done; for
+// MySQL one driver connection object is reused the same way (over HTTPS, so there is no socket).
 interface Executor {
   run(sql: string, kind: SqlClass): Promise<Executed>
   close(): Promise<void>
@@ -117,10 +120,34 @@ async function executeD1Statement(
   return { results: truncated ? rows.slice(0, MAX_RESULT_ROWS) : rows, meta: res.meta, truncated }
 }
 
-// Opens the executor for one request. A PostgreSQL target decrypts the stored connection string
-// here (the only place it is unwrapped), normalises it again so an old row cannot smuggle in a
-// dropped parameter, and proves the connection before any statement runs. Failures throw a
-// PostgresQueryError, which the routes report as a target error.
+// Reads the sealed connection payload of a registry row and returns the URL it holds. The URL is
+// decrypted here only — never in an API response — and the caller normalises it again so an old row
+// cannot smuggle in a dropped parameter. `fail` builds the engine's own config error.
+async function readStoredConnection(env: Env, db: DatabaseRow, fail: (message: string) => Error): Promise<string> {
+  if (!db.connection_secret) throw fail('This database has no stored connection.')
+  try {
+    const stored = await openSecret(env, db.connection_secret)
+    let payload: unknown
+    try {
+      payload = JSON.parse(stored)
+    } catch {
+      throw fail('The stored connection for this database is unreadable.')
+    }
+    const raw = (payload as { url?: unknown } | null)?.url
+    if (typeof raw !== 'string' || !raw) throw fail('The stored connection for this database is unreadable.')
+    return raw
+  } catch (err) {
+    if (err instanceof PostgresQueryError || err instanceof MySqlQueryError) throw err
+    // A changed ENCRYPTION_KEY makes stored payloads undecryptable: a configuration problem, and
+    // one the admin has to fix by saving the connection again.
+    console.error(`Stored connection could not be read: ${err instanceof Error ? err.name : typeof err}`)
+    throw fail('The stored connection for this database could not be read.')
+  }
+}
+
+// Opens the executor for one request. A connection-string target decrypts its stored URL here (the
+// only place it is unwrapped), normalises it again, and proves the connection before any statement
+// runs. Failures throw the engine's classified error, which the routes report as a target error.
 async function openExecutor(env: Env, db: DatabaseRow, target: QueryTarget): Promise<Executor> {
   if (target.kind === 'http') {
     return {
@@ -129,34 +156,22 @@ async function openExecutor(env: Env, db: DatabaseRow, target: QueryTarget): Pro
     }
   }
 
-  if (!db.connection_secret) {
-    throw new PostgresQueryError('This database has no stored connection.', 'config')
-  }
-  let url: string
-  try {
-    const stored = await openSecret(env, db.connection_secret)
-    let payload: unknown
-    try {
-      payload = JSON.parse(stored)
-    } catch {
-      throw new PostgresQueryError('The stored connection for this database is unreadable.', 'config')
+  if (target.kind === 'mysql') {
+    const raw = await readStoredConnection(env, db, (m) => new MySqlQueryError(m, 'config'))
+    const normalized = normalizeMySqlUrl(raw)
+    if (!normalized.ok) throw new MySqlQueryError(normalized.error, 'config')
+    const session: MySqlSession = await openMySqlSession(normalized.url)
+    return {
+      run: (sql, kind) => session.run(sql, kind, MAX_RESULT_ROWS),
+      close: () => session.close(),
     }
-    const raw = (payload as { url?: unknown } | null)?.url
-    if (typeof raw !== 'string' || !raw) {
-      throw new PostgresQueryError('The stored connection for this database is unreadable.', 'config')
-    }
-    const normalized = normalizePostgresUrl(raw)
-    if (!normalized.ok) throw new PostgresQueryError(normalized.error, 'config')
-    url = normalized.url
-  } catch (err) {
-    if (err instanceof PostgresQueryError) throw err
-    // A changed ENCRYPTION_KEY makes stored payloads undecryptable: a configuration problem, and
-    // one the admin has to fix by saving the connection again.
-    console.error(`Stored connection could not be read: ${err instanceof Error ? err.name : typeof err}`)
-    throw new PostgresQueryError('The stored connection for this database could not be read.', 'config')
   }
 
-  const session: PostgresSession = await openPostgresSession(url)
+  const raw = await readStoredConnection(env, db, (m) => new PostgresQueryError(m, 'config'))
+  const normalized = normalizePostgresUrl(raw)
+  if (!normalized.ok) throw new PostgresQueryError(normalized.error, 'config')
+
+  const session: PostgresSession = await openPostgresSession(normalized.url)
   return {
     run: (sql, kind) => session.run(sql, kind, MAX_RESULT_ROWS),
     close: () => session.close(),
@@ -177,7 +192,8 @@ function translate(sql: string, dialect: SqlDialect): { sql: string; error?: str
 }
 
 function dialectOf(db: DatabaseRow): SqlDialect {
-  return db.kind === 'postgres' ? 'postgres' : 'sqlite'
+  if (db.kind === 'postgres' || db.kind === 'mysql') return db.kind
+  return 'sqlite'
 }
 
 // The app-DB guardrails for one database row, applied right after permission resolution (see

@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@simplewebauthn/server": "^14.0.0",
+    "@tidbcloud/serverless": "0.3.0",
     "hono": "^4.7.0",
     "otpauth": "^9.3.6",
     "postgres": "4.1.1"

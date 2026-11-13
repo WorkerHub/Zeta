@@ -328,12 +328,13 @@ export const adminApi = {
   databases: () => apiFetch<{ results: AdminDatabase[] }>('/admin/databases'),
   listD1Databases: () => apiFetch<{ results: CfD1Database[] }>('/admin/d1/databases'),
   // One live connection to a connection-string target; stores nothing. The registration form
-  // gates its save button on a passing result for the exact string it is about to submit.
-  testConnection: (body: { connection_url: string }) =>
-    apiFetch<{ ok: boolean; server_version?: string; latency_ms?: number }>('/admin/databases/test-connection', {
-      method: 'POST',
-      body: JSON.stringify(body),
-    }),
+  // gates its save button on a passing result for the exact string it is about to submit. `kind`
+  // defaults to postgres on the worker, which is what this endpoint served before MySQL existed.
+  testConnection: (body: { connection_url: string; kind?: 'postgres' | 'mysql' }) =>
+    apiFetch<{ ok: boolean; kind?: 'postgres' | 'mysql'; server_version?: string; latency_ms?: number }>(
+      '/admin/databases/test-connection',
+      { method: 'POST', body: JSON.stringify(body) }
+    ),
   createDatabase: (body: {
     kind?: DbKind
     connection_url?: string

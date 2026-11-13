@@ -208,6 +208,9 @@ export const translations: Record<Locale, Record<string, string>> = {
     'admin_db.register_title_pg': 'Register a PostgreSQL database',
     'admin_db.register_desc_pg':
       'Paste the connection string of a cloud PostgreSQL with a public CA (Neon and the like). It is tested live before it is stored; a failed test saves nothing.',
+    'admin_db.register_title_mysql': 'Register a MySQL database',
+    'admin_db.register_desc_mysql':
+      'TiDB Cloud Starter only (the TiDB Cloud free instance) — a plain MySQL/MariaDB server cannot be registered here. Paste its mysql:// connection string; it is tested live before it is stored, and a failed test saves nothing.',
     'admin_db.kind': 'Engine',
     'admin_db.kind_sqlite': 'Cloudflare D1',
     'admin_db.kind_postgres': 'PostgreSQL',
@@ -217,6 +220,10 @@ export const translations: Record<Locale, Record<string, string>> = {
     'admin_db.connection_url_placeholder': 'postgresql://user:password@host/dbname?sslmode=require',
     'admin_db.connection_url_hint':
       'Paste the full string. On Neon use the pooled (-pooler) host; the first query after the compute wakes can take a few seconds.',
+    'admin_db.connection_url_placeholder_mysql':
+      'mysql://user:password@gateway01.<region>.prod.aws.tidbcloud.com:4000/test',
+    'admin_db.connection_url_hint_mysql':
+      'TiDB Cloud Starter (TiDB Cloud free instance) only — a plain MySQL/MariaDB server is not supported. The string is tested live before it is stored; the port is pinned to 4000 and extra parameters are dropped.',
     'admin_db.show_connection_url': 'Show connection string',
     'admin_db.hide_connection_url': 'Hide connection string',
     'admin_db.test_connection': 'Test connection',
@@ -595,6 +602,9 @@ export const translations: Record<Locale, Record<string, string>> = {
     'admin_db.register_title_pg': '登记 PostgreSQL 数据库',
     'admin_db.register_desc_pg':
       '粘贴公共 CA 的云 PostgreSQL 连接串（Neon 等）。保存前会实连测试一次，测试不通过不会落库。',
+    'admin_db.register_title_mysql': '登记 MySQL 数据库',
+    'admin_db.register_desc_mysql':
+      '仅支持 TiDB Cloud Starter（TiDB Cloud 免费实例）——普通 MySQL/MariaDB 无法在此登记。粘贴实例的 mysql:// 连接串，保存前会实连测试一次，测试不通过不会落库。',
     'admin_db.kind': '引擎类型',
     'admin_db.kind_sqlite': 'Cloudflare D1',
     'admin_db.kind_postgres': 'PostgreSQL',
@@ -604,6 +614,10 @@ export const translations: Record<Locale, Record<string, string>> = {
     'admin_db.connection_url_placeholder': 'postgresql://用户:password@主机/库名?sslmode=require',
     'admin_db.connection_url_hint':
       '粘贴完整连接串。Neon 建议用带 -pooler 的池化主机；计算休眠后首次查询慢几秒属正常。',
+    'admin_db.connection_url_placeholder_mysql':
+      'mysql://用户:password@gateway01.<区域>.prod.aws.tidbcloud.com:4000/test',
+    'admin_db.connection_url_hint_mysql':
+      '仅支持 TiDB Cloud Starter（TiDB Cloud 免费实例），不支持普通 MySQL/MariaDB。保存前会实连测试；端口固定为 4000，多余参数会被剔除。',
     'admin_db.show_connection_url': '显示连接串',
     'admin_db.hide_connection_url': '隐藏连接串',
     'admin_db.test_connection': '测试连接',

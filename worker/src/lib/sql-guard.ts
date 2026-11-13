@@ -1,6 +1,6 @@
 export type SqlClass = 'read' | 'write' | 'destructive' | 'forbidden' | 'multiple' | 'empty'
 export type Permission = 'read' | 'write' | 'write_drop'
-export type SqlDialect = 'sqlite' | 'postgres'
+export type SqlDialect = 'sqlite' | 'postgres' | 'mysql'
 
 export interface Token {
   type: 'word' | 'quoted' | 'punct'
@@ -30,9 +30,16 @@ function dollarQuoteEnd(sql: string, start: number): number | null {
 // their contents (a `;`, a keyword, a `)`) would leak into the token stream:
 //   * dollar-quoted bodies ($$…$$, $tag$…$tag$) — function bodies and quoted SQL text,
 //   * E'…' escape strings — backslash escapes make a doubled quote the wrong terminator.
-function scan(sql: string, dialect: SqlDialect): { tokens: Token[]; openComment: boolean } {
+//
+// The mysql dialect differs in three places, all of them in the dangerous direction (we would treat
+// as a comment/inside-a-string what the server executes as SQL):
+//   * `/*! … */` is an executable comment — it is reported as `executableComment`, never dropped,
+//   * `#` starts a comment that runs to the end of the line,
+//   * backslash escapes inside '…' and "…" (MySQL's default sql_mode), so \' does not close the string.
+function scan(sql: string, dialect: SqlDialect): { tokens: Token[]; openComment: boolean; executableComment: boolean } {
   const tokens: Token[] = []
   let openComment = false
+  let executableComment = false
   const n = sql.length
   let i = 0
   while (i < n) {
@@ -47,10 +54,26 @@ function scan(sql: string, dialect: SqlDialect): { tokens: Token[]; openComment:
       i++
     } else if (ch === '-' && sql[i + 1] === '-') {
       while (i < n && sql[i] !== '\n') i++
+    } else if (dialect === 'mysql' && ch === '#') {
+      while (i < n && sql[i] !== '\n') i++
     } else if (ch === '/' && sql[i + 1] === '*') {
+      // MySQL executes the body of `/*! … */`; `/*+ … */` is a plain optimizer hint and is dropped.
+      if (dialect === 'mysql' && sql[i + 2] === '!') executableComment = true
       const end = sql.indexOf('*/', i + 2)
       if (end === -1) openComment = true
       i = end === -1 ? n : end + 2
+    } else if (dialect === 'mysql' && ch !== '`' && (ch === "'" || ch === '"')) {
+      i++
+      while (i < n) {
+        if (sql[i] === '\\') {
+          i += 2
+        } else if (sql[i] === ch) {
+          if (sql[i + 1] === ch) i += 2
+          else break
+        } else i++
+      }
+      i++
+      tokens.push({ type: 'quoted', value: '', start })
     } else if (dialect === 'postgres' && (ch === 'e' || ch === 'E') && sql[i + 1] === "'") {
       i += 2
       while (i < n) {
@@ -75,7 +98,9 @@ function scan(sql: string, dialect: SqlDialect): { tokens: Token[]; openComment:
       }
       i++
       tokens.push({ type: 'quoted', value: '', start })
-    } else if (ch === '[') {
+    } else if (ch === '[' && dialect !== 'mysql') {
+      // SQLite (and T-SQL) bracket quoting; MySQL has no such form, so a `[` there must stay visible
+      // to the tokenizer — otherwise an unterminated `[` could hide a `;` from the multi-statement check.
       const end = sql.indexOf(']', i + 1)
       i = end === -1 ? n : end + 1
       tokens.push({ type: 'quoted', value: '', start })
@@ -87,7 +112,7 @@ function scan(sql: string, dialect: SqlDialect): { tokens: Token[]; openComment:
       i++
     }
   }
-  return { tokens, openComment }
+  return { tokens, openComment, executableComment }
 }
 
 // Exported for the app-DB guardrail (lib/app-db-guard.ts), which reuses the same tokens so the
@@ -120,6 +145,35 @@ const READ_PRAGMAS = new Set([
 const FILE_STATEMENTS = new Set(['copy', 'load'])
 
 const CTE_WRITE_KEYWORDS = new Set(['insert', 'update', 'delete', 'replace', 'merge'])
+
+// MySQL statements that name no data but change the connection, the server or the caller's
+// privileges — and, on a stateless HTTP endpoint, cannot even work as they read: `USE`/`SET @x` do
+// not carry over to the next statement, so allowing them would only mislead. `CREATE USER/ROLE` is
+// caught separately (it starts with `create`).
+const MYSQL_FORBIDDEN_KEYWORDS = new Set([
+  'lock',
+  'unlock',
+  'prepare',
+  'execute',
+  'deallocate',
+  'grant',
+  'revoke',
+  'flush',
+  'kill',
+  'shutdown',
+  'start',
+  'commit',
+  'rollback',
+  'savepoint',
+  'use',
+  'set',
+  'handler',
+])
+
+// `SHOW` variants that leak other sessions' SQL or the server's grants to any member with read
+// access. Everything else SHOW returns (`TABLES`, `CREATE`, `INDEX`, `VARIABLES`, `COLUMNS`, …) is
+// introspection and read-only.
+const MYSQL_FORBIDDEN_SHOW = new Set(['processlist', 'grants'])
 
 // Index just past the balanced parenthesis group that starts at tokens[open] (a `(`), or
 // tokens.length when it never closes.
@@ -217,6 +271,11 @@ function hasTopLevelLock(tokens: Token[]): boolean {
   return false
 }
 
+// MySQL's other row-locking form, `LOCK IN SHARE MODE`, plus `FOR UPDATE`/`FOR SHARE`.
+function hasMySqlTopLevelLock(tokens: Token[]): boolean {
+  return hasTopLevelLock(tokens) || hasTopLevelWord(tokens, 1, 'lock')
+}
+
 // EXPLAIN only plans, so it reads nothing — except EXPLAIN ANALYZE, which executes the statement
 // it explains (`EXPLAIN ANALYZE DELETE …` deletes). Both the `EXPLAIN ANALYZE …` and the
 // `EXPLAIN (ANALYZE, …) …` forms are handled; anything unparseable fails closed as a write.
@@ -256,10 +315,16 @@ function classifyStatement(tokens: Token[], dialect: SqlDialect): SqlClass {
   const first = tokens[0]
   if (first?.type !== 'word') return 'write'
 
+  if (dialect === 'mysql' && MYSQL_FORBIDDEN_KEYWORDS.has(first.value)) return 'forbidden'
+
   switch (first.value) {
     case 'select':
       // PostgreSQL's `SELECT … INTO new_table` creates (and fills) a table: a write, not a read.
       if (dialect === 'postgres' && hasTopLevelWord(tokens, 1, 'into')) return 'write'
+      // MySQL/PostgreSQL `SELECT … INTO OUTFILE/DUMPFILE` writes a server-side file.
+      if (dialect === 'mysql' && (hasTopLevelWord(tokens, 1, 'outfile') || hasTopLevelWord(tokens, 1, 'dumpfile'))) {
+        return 'forbidden'
+      }
       return 'read'
 
     case 'values':
@@ -268,9 +333,20 @@ function classifyStatement(tokens: Token[], dialect: SqlDialect): SqlClass {
     case 'explain':
       return classifyExplain(tokens, dialect)
 
-    // SHOW is introspection on PostgreSQL; on SQLite it only reaches here unrecognised.
-    case 'show':
-      return dialect === 'postgres' ? 'read' : 'write'
+    // SHOW is introspection on PostgreSQL and MySQL; on SQLite it only reaches here unrecognised.
+    case 'show': {
+      if (dialect === 'sqlite') return 'write'
+      if (dialect === 'mysql') {
+        const target = tokens[1]?.type === 'word' && tokens[1]!.value === 'full' ? tokens[2] : tokens[1]
+        if (target?.type === 'word' && MYSQL_FORBIDDEN_SHOW.has(target.value)) return 'forbidden'
+      }
+      return 'read'
+    }
+
+    case 'describe':
+    case 'desc':
+      // MySQL table introspection (`DESCRIBE t` / `DESC t`) is a read; nowhere else is it SQL we run.
+      return dialect === 'mysql' ? 'read' : 'write'
 
     case 'with':
       return classifyWith(tokens, dialect)
@@ -293,14 +369,22 @@ function classifyStatement(tokens: Token[], dialect: SqlDialect): SqlClass {
     case 'alter':
       return tokens.some((t) => t.type === 'word' && t.value === 'drop') ? 'destructive' : 'write'
 
+    case 'create':
+      // MySQL's `CREATE USER`/`CREATE ROLE` grants access to the server itself, not a table.
+      if (dialect === 'mysql' && (tokens[1]?.value === 'user' || tokens[1]?.value === 'role')) return 'forbidden'
+      return 'write'
+
     default:
       return FILE_STATEMENTS.has(first.value) ? 'forbidden' : 'write'
   }
 }
 
 export function classifySql(sql: string, dialect: SqlDialect = 'sqlite'): SqlClass {
+  const { tokens: all, executableComment } = scan(sql, dialect)
+  // MySQL executes `/*! … */`; a statement carrying one is refused outright rather than partial.
+  if (dialect === 'mysql' && executableComment) return 'forbidden'
   const statements: Token[][] = [[]]
-  for (const t of tokenize(sql, dialect)) {
+  for (const t of all) {
     if (t.type === 'punct' && t.value === ';') statements.push([])
     else statements[statements.length - 1]!.push(t)
   }
@@ -349,15 +433,17 @@ export function limitReadSql(sql: string, maxRows: number, dialect: SqlDialect =
     else if (t.value === ')' && --depth < 0) return null
   }
   if (depth !== 0) return null
-  // PostgreSQL cannot wrap a row-locking read in a subquery; its output is capped afterwards.
+  // PostgreSQL and MySQL both refuse a row-locking read inside a subquery; its output is capped
+  // afterwards instead (MySQL's extra form: `LOCK IN SHARE MODE`).
   if (dialect === 'postgres' && hasTopLevelLock(tokens)) return null
+  if (dialect === 'mysql' && hasMySqlTopLevelLock(tokens)) return null
   // A single statement can only have a `;` at its end: drop it so the statement fits in parentheses
   const semicolon = tokens.find((t) => t.type === 'punct' && t.value === ';')
   let body = semicolon ? sql.slice(0, semicolon.start) : sql
   // Close a trailing /* comment, and end a trailing -- comment with the newline, so neither can
   // swallow the closing parenthesis
   if (scan(body, dialect).openComment) body += '*/'
-  // PostgreSQL versions before 16 require an alias on a FROM subquery.
-  const alias = dialect === 'postgres' ? ' AS zeta_limit' : ''
+  // PostgreSQL before 16 and every MySQL require an alias on a FROM subquery.
+  const alias = dialect === 'sqlite' ? '' : ' AS zeta_limit'
   return `SELECT * FROM (\n${body}\n)${alias} LIMIT ${maxRows + 1}`
 }

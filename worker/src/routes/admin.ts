@@ -5,6 +5,8 @@ import { audit, getSettings, now, setSetting, tables } from '../lib/db'
 import { isValidEmail, sendEmail } from '../lib/email'
 import { uuid } from '../lib/id'
 import { KV } from '../lib/kv'
+import { MySqlQueryError, testMySqlConnection } from '../lib/mysql-executor'
+import { normalizeMySqlUrl } from '../lib/mysql-url'
 import { PostgresQueryError, testPostgresConnection } from '../lib/pg-executor'
 import { normalizePostgresUrl } from '../lib/pg-url'
 import { MAX_RUN_LIMIT, MAX_RUN_QUOTA_MB, parseBoundedInt, pruneRuns } from '../lib/runs'
@@ -254,31 +256,44 @@ function missingColumnResponse(c: Context<{ Bindings: Env; Variables: Variables 
   return null
 }
 
-// Maps a PostgreSQL connection/execution error to an admin-facing response. These routes are
+// Maps a connection-string engine's error to an admin-facing response. These routes are
 // admin-only, so the readable detail is shown verbatim — the pasted connection string never is
-// (lib/pg-executor.ts redacts it). Nothing is written to the logs.
-function pgError(c: Context<{ Bindings: Env; Variables: Variables }>, err: unknown) {
-  if (err instanceof PostgresQueryError) return c.json({ error: err.message }, 400)
+// (lib/pg-executor.ts and lib/mysql-executor.ts redact it). Nothing is written to the logs.
+function connectionError(c: Context<{ Bindings: Env; Variables: Variables }>, err: unknown) {
+  if (err instanceof PostgresQueryError || err instanceof MySqlQueryError) {
+    return c.json({ error: err.message }, 400)
+  }
   return c.json({ error: err instanceof Error ? err.message : String(err) }, 500)
 }
 
-// Proves a pasted PostgreSQL connection string against the real server before anything is saved.
-// Registration, re-saving and the explicit test endpoint all go through it, so a PostgreSQL row can
-// only exist after a connection succeeded.
-async function verifyPostgresConnection(
+// The engines that are registered from a connection string rather than from a Cloudflare database.
+type ConnectionKind = 'postgres' | 'mysql'
+
+function isConnectionKind(kind: unknown): kind is ConnectionKind {
+  return kind === 'postgres' || kind === 'mysql'
+}
+
+// Proves a pasted connection string against the real server before anything is saved.
+// Registration, re-saving and the explicit test endpoint all go through it, so such a row can only
+// exist after a connection succeeded. MySQL means TiDB Cloud Starter only: its normaliser refuses
+// every other host.
+async function verifyConnection(
   c: Context<{ Bindings: Env; Variables: Variables }>,
+  kind: ConnectionKind,
   connectionUrl: unknown
 ): Promise<Response | { url: string; database: string; serverVersion: string }> {
+  const label = kind === 'mysql' ? 'MySQL' : 'PostgreSQL'
   if (typeof connectionUrl !== 'string' || !connectionUrl.trim()) {
-    return c.json({ error: 'connection_url is required for a PostgreSQL database' }, 400)
+    return c.json({ error: `connection_url is required for a ${label} database` }, 400)
   }
-  const normalized = normalizePostgresUrl(connectionUrl)
+  const normalized = kind === 'mysql' ? normalizeMySqlUrl(connectionUrl) : normalizePostgresUrl(connectionUrl)
   if (!normalized.ok) return c.json({ error: normalized.error }, 400)
   try {
-    const { server_version } = await testPostgresConnection(normalized.url)
+    const { server_version } =
+      kind === 'mysql' ? await testMySqlConnection(normalized.url) : await testPostgresConnection(normalized.url)
     return { url: normalized.url, database: normalized.database, serverVersion: server_version }
   } catch (err) {
-    return pgError(c, err)
+    return connectionError(c, err)
   }
 }
 
@@ -317,15 +332,23 @@ admin.get('/databases', async (c) => {
   })
 })
 
-// Proves a pasted PostgreSQL connection string without saving anything: the admin form's "test
-// connection" button. Admin-only, so the provider's message is shown as-is (redacted of the URL).
+// Proves a pasted connection string without saving anything: the admin form's "test connection"
+// button. `kind` defaults to `postgres`, which is what this endpoint served before MySQL targets
+// existed. Admin-only, so the provider's message is shown as-is (redacted of the URL).
 admin.post('/databases/test-connection', async (c) => {
-  const body = await c.req.json<{ connection_url?: unknown }>().catch(() => null)
+  const body = await c.req.json<{ connection_url?: unknown; kind?: unknown }>().catch(() => null)
   if (!body) return c.json({ error: 'Invalid body' }, 400)
+  const kind = body.kind ?? 'postgres'
+  if (!isConnectionKind(kind)) return c.json({ error: 'Invalid database kind' }, 400)
   const started = Date.now()
-  const verified = await verifyPostgresConnection(c, body.connection_url)
+  const verified = await verifyConnection(c, kind, body.connection_url)
   if (verified instanceof Response) return verified
-  return c.json({ ok: true, server_version: verified.serverVersion, latency_ms: Date.now() - started })
+  return c.json({
+    ok: true,
+    kind,
+    server_version: verified.serverVersion,
+    latency_ms: Date.now() - started,
+  })
 })
 
 // The Cloudflare account's D1 databases (minus the app DB unless ALLOW_APP_DB_AS_TARGET is
@@ -378,12 +401,12 @@ admin.post('/databases', async (c) => {
   if (!body) return c.json({ error: 'Invalid body' }, 400)
 
   const kind = body.kind ?? 'sqlite'
-  if (kind !== 'sqlite' && kind !== 'postgres') return c.json({ error: 'Invalid database kind' }, 400)
+  if (kind !== 'sqlite' && !isConnectionKind(kind)) return c.json({ error: 'Invalid database kind' }, 400)
 
-  // PostgreSQL: the pasted connection string is proven against the real server first, and only a
-  // successful connection leads to a row (see verifyPostgresConnection).
-  if (kind === 'postgres') {
-    const verified = await verifyPostgresConnection(c, body.connection_url)
+  // Connection-string engines: the pasted string is proven against the real server first, and only
+  // a successful connection leads to a row (see verifyConnection).
+  if (isConnectionKind(kind)) {
+    const verified = await verifyConnection(c, kind, body.connection_url)
     if (verified instanceof Response) return verified
 
     const T = tables(c.env)
@@ -391,13 +414,14 @@ admin.post('/databases', async (c) => {
     try {
       await c.env.DB.prepare(
         `INSERT INTO ${T.d1_databases} (id, name, description, binding_name, cf_database_id, kind, connection_secret, is_active, created_at, created_by)
-         VALUES (?1, ?2, ?3, ?4, NULL, 'postgres', ?5, 1, ?6, ?7)`
+         VALUES (?1, ?2, ?3, ?4, NULL, ?5, ?6, 1, ?7, ?8)`
       )
         .bind(
           id,
           body.name?.trim() || verified.database,
           body.description ?? null,
-          `pg:${id}`,
+          `${kind === 'mysql' ? 'my' : 'pg'}:${id}`,
+          kind,
           await sealSecret(c.env, JSON.stringify({ url: verified.url })),
           now(),
           c.get('userId')
@@ -483,8 +507,8 @@ admin.patch('/databases/:id', async (c) => {
   if (!body) return c.json({ error: 'Invalid body' }, 400)
 
   const T = tables(c.env)
-  // The row's engine decides what may be edited: a PostgreSQL row takes a connection string, a
-  // SQLite row takes a Cloudflare database link.
+  // The row's engine decides what may be edited: a connection-string row (PostgreSQL/MySQL) takes a
+  // connection string, a SQLite row takes a Cloudflare database link.
   let row: { id: string; kind: string | null; cf_database_id: string | null } | null
   try {
     row = await c.env.DB.prepare(`SELECT id, kind, cf_database_id FROM ${T.d1_databases} WHERE id = ?1`)
@@ -496,10 +520,13 @@ admin.patch('/databases/:id', async (c) => {
     throw err
   }
   if (!row) return c.json({ error: 'Database not found' }, 404)
-  const isPostgres = row.kind === 'postgres'
+  const rowKind: ConnectionKind | 'sqlite' = isConnectionKind(row.kind) ? row.kind : 'sqlite'
 
-  if (body.cf_database_id !== undefined && isPostgres) {
-    return c.json({ error: 'A PostgreSQL database is not linked to a Cloudflare database.' }, 400)
+  if (body.cf_database_id !== undefined && rowKind !== 'sqlite') {
+    return c.json(
+      { error: `A ${rowKind === 'mysql' ? 'MySQL' : 'PostgreSQL'} database is not linked to a Cloudflare database.` },
+      400
+    )
   }
 
   const updates: string[] = []
@@ -507,8 +534,10 @@ admin.patch('/databases/:id', async (c) => {
   let i = 1
 
   if (body.connection_url !== undefined) {
-    if (!isPostgres) return c.json({ error: 'Only PostgreSQL databases take a connection string.' }, 400)
-    const verified = await verifyPostgresConnection(c, body.connection_url)
+    if (rowKind === 'sqlite') {
+      return c.json({ error: 'Only connection-string databases take a connection string.' }, 400)
+    }
+    const verified = await verifyConnection(c, rowKind, body.connection_url)
     if (verified instanceof Response) return verified
     updates.push(`connection_secret = ?${i++}`)
     bindings.push(await sealSecret(c.env, JSON.stringify({ url: verified.url })))

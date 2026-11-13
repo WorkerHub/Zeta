@@ -80,7 +80,7 @@ export interface DatabaseRow {
   created_by: string | null
 }
 
-export type DatabaseKind = 'sqlite' | 'postgres'
+export type DatabaseKind = 'sqlite' | 'postgres' | 'mysql'
 
 export interface PermissionRow {
   id: string

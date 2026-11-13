@@ -35,7 +35,10 @@ GitHub's blame view reads the file automatically.
 - `worker/src/lib/migrations-runner.ts` — applies pending migrations and records them in the ledger table `_<prefix>_schema_migrations`, with the anti-silent-switch guard; shared by `POST /api/setup` and `POST /api/admin/setup` (both via `lib/setup.ts`)
 - `worker/src/lib/d1-http.ts` — Cloudflare D1 HTTP API client (list account databases, run a query); query targets reach D1 over the REST API instead of bindings
 - `worker/src/lib/runs.ts` — saved notebook runs: 512 KB per run, per-notebook run limit and per-user storage quota pruning; fixed per-notebook run numbers (`seq`, taken from `notebooks.last_run_seq`, never reused)
-- `worker/src/lib/sql-guard.ts` — SQL classification / permission checks; `limitReadSql` caps reads at 5000 rows in the SQL itself
+- `worker/src/lib/sql-guard.ts` — SQL classification / permission checks per dialect (`sqlite`, `postgres`, `mysql`); `limitReadSql` caps reads at 5000 rows in the SQL itself
+- `worker/src/lib/pg-url.ts` / `worker/src/lib/pg-executor.ts` — PostgreSQL query targets: connection-string normalisation and one connection per request (postgres.js)
+- `worker/src/lib/mysql-url.ts` / `worker/src/lib/mysql-executor.ts` — MySQL query targets, which mean **TiDB Cloud Starter only** (host whitelist on `*.tidbcloud.com`): connection-string normalisation and the official `@tidbcloud/serverless` driver over HTTPS, one driver connection per request. A plain MySQL/MariaDB server cannot be registered.
+- `worker/src/lib/bindings.ts` — `resolveQueryTarget()`: the registry row's `kind` decides the execution target (`sqlite` → D1 HTTP API, `postgres` → wire connection, `mysql` → TiDB Cloud HTTPS endpoint)
 - `worker/src/index.ts` — Hono app entry, SPA fallback
 - `worker/src/routes/` — auth, profile, databases, query, admin
 - `web/src/pages/Query.tsx` — main SQL editor page

@@ -84,6 +84,17 @@ describe('resolveQueryTarget', () => {
     expect(!r.ok && r.error).toContain('no stored connection')
   })
 
+  it('resolves a mysql row to a mysql target regardless of ZETA_APP_DB_ID', () => {
+    const r = resolveQueryTarget(env, dbRow({ kind: 'mysql', connection_secret: 'enc:v1:x' }))
+    expect(r.ok && r.target).toEqual({ kind: 'mysql', databaseId: 'x' })
+  })
+
+  it('refuses a mysql row with no stored connection', () => {
+    const r = resolveQueryTarget(envWithAppDb, dbRow({ kind: 'mysql', connection_secret: null }))
+    expect(r.ok).toBe(false)
+    expect(!r.ok && r.error).toContain('no stored connection')
+  })
+
   it('treats a row from an un-migrated registry (no kind) as a sqlite target', () => {
     const row = dbRow({ cf_database_id: 'db-uuid' })
     delete (row as { kind?: string }).kind

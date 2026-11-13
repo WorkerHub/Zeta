@@ -1,11 +1,14 @@
 import { useState } from 'react'
 import { Eye, EyeOff, Loader2, PlugZap } from 'lucide-react'
 import { useLocale } from '../hooks/useLocale'
-import type { PgTestState } from '../lib/pg-connection'
+import type { ConnectionTestState } from '../lib/connection-string'
+import type { DbKind } from '../types'
 
 interface Props {
+  /** Which engine the string is for: it only selects the copy (placeholder and hint). */
+  kind: Extract<DbKind, 'postgres' | 'mysql'>
   url: string
-  testState: PgTestState
+  testState: ConnectionTestState
   /** Error text of a failed test, shown verbatim (the worker's message never includes the secret). */
   testError: string
   /** Detail of the last passing test, e.g. "PostgreSQL 18.6 · 320 ms". */
@@ -16,12 +19,23 @@ interface Props {
 
 /**
  * Connection-string block of the registration form: a masked field with a reveal toggle, the
- * test-connection button and its outcome. Pure presentation — the page owns the state machine.
+ * test-connection button and its outcome. Pure presentation — the page owns the state machine, and
+ * the engine only decides which copy is shown (MySQL means TiDB Cloud Starter, never a plain
+ * MySQL/MariaDB server).
  */
-export default function PostgresConnectionFields({ url, testState, testError, testInfo, onUrlChange, onTest }: Props) {
+export default function ConnectionStringFields({
+  kind,
+  url,
+  testState,
+  testError,
+  testInfo,
+  onUrlChange,
+  onTest,
+}: Props) {
   const { t } = useLocale()
   const [revealed, setRevealed] = useState(false)
   const testing = testState === 'testing'
+  const mysql = kind === 'mysql'
 
   return (
     <div className="sm:col-span-2 space-y-2">
@@ -35,7 +49,7 @@ export default function PostgresConnectionFields({ url, testState, testError, te
           className="input pr-11 font-mono text-caption"
           value={url}
           onChange={(e) => onUrlChange(e.target.value)}
-          placeholder={t('admin_db.connection_url_placeholder')}
+          placeholder={t(mysql ? 'admin_db.connection_url_placeholder_mysql' : 'admin_db.connection_url_placeholder')}
           autoComplete="off"
           spellCheck={false}
           aria-describedby="db-connection-url-hint"
@@ -51,7 +65,7 @@ export default function PostgresConnectionFields({ url, testState, testError, te
         </button>
       </div>
       <p id="db-connection-url-hint" className="text-caption text-ink-500">
-        {t('admin_db.connection_url_hint')}
+        {t(mysql ? 'admin_db.connection_url_hint_mysql' : 'admin_db.connection_url_hint')}
       </p>
       <div className="flex flex-wrap items-center gap-3">
         <button
