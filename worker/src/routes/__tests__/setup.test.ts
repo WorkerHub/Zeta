@@ -12,8 +12,9 @@ describe('setup endpoint', () => {
         { name: 'schema_v1', status: 'applied' },
         { name: 'schema_v2', status: 'applied' },
         { name: 'schema_v3', status: 'applied' },
+        { name: 'schema_v4', status: 'applied' },
       ],
-      upgraded: ['schema_v1: applied', 'schema_v2: applied', 'schema_v3: applied'],
+      upgraded: ['schema_v1: applied', 'schema_v2: applied', 'schema_v3: applied', 'schema_v4: applied'],
     })
     expect(calls.some((c) => c.sql.includes('CREATE TABLE IF NOT EXISTS users'))).toBe(true)
     expect(calls.some((c) => c.sql.includes('INSERT OR IGNORE INTO settings'))).toBe(true)
@@ -28,6 +29,9 @@ describe('setup endpoint', () => {
     ).toBe(true)
     expect(
       calls.some((c) => c.sql === 'INSERT INTO _schema_migrations (name) VALUES (?1)' && c.args[0] === 'schema_v3')
+    ).toBe(true)
+    expect(
+      calls.some((c) => c.sql === 'INSERT INTO _schema_migrations (name) VALUES (?1)' && c.args[0] === 'schema_v4')
     ).toBe(true)
   })
 

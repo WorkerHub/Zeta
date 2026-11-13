@@ -176,6 +176,13 @@ export interface NewRun {
   databaseId: string
   sql: string
   statements: RunStatement[]
+  // The number of statements the request asked to run (blank lines aside). `statements` holds the
+  // ones that actually ran and is smaller when the batch halted, so the difference is exactly what
+  // the failure skipped.
+  statementCount: number
+  // The batch stopped at a failing statement instead of running to the end (see POST
+  // /api/query/batch). A single-statement run, and a batch that ran to the end, save false.
+  halted: boolean
   durationMs: number
   executedAt: number // milliseconds, so runs started within the same second keep their order
 }
@@ -190,15 +197,15 @@ export async function saveRun(env: Env, run: NewRun): Promise<void> {
   await env.DB.batch([
     env.DB.prepare(
       `INSERT INTO ${T.notebook_runs} (id, notebook_id, user_id, database_id, sql, statement_count, row_count,
-         error_count, duration_ms, storage_truncated, results_bytes, executed_at, seq, results)
-       VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)`
+         error_count, duration_ms, storage_truncated, results_bytes, executed_at, seq, halted, results)
+       VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)`
     ).bind(
       run.id,
       run.notebookId,
       run.userId,
       run.databaseId,
       run.sql.slice(0, SUMMARY_SQL_LENGTH),
-      run.statements.length,
+      run.statementCount,
       packed.rowCount,
       packed.errorCount,
       run.durationMs,
@@ -206,6 +213,7 @@ export async function saveRun(env: Env, run: NewRun): Promise<void> {
       packed.bytes,
       run.executedAt,
       run.seq,
+      run.halted ? 1 : 0,
       packed.json
     ),
     env.DB.prepare(

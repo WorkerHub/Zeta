@@ -205,9 +205,16 @@ async function ownsNotebook(c: Context<{ Bindings: Env; Variables: Variables }>,
 }
 
 const RUN_SUMMARY_COLUMNS = `r.id, r.seq, r.notebook_id, r.database_id, r.sql, r.statement_count, r.row_count, r.error_count,
-  r.duration_ms, r.storage_truncated, r.results_bytes, r.executed_at`
+  r.duration_ms, r.storage_truncated, r.halted, r.results_bytes, r.executed_at`
 
 type RunSummaryRow = Omit<NotebookRunRow, 'user_id' | 'results'> & { database_name: string | null }
+
+// The stored 0/1 flag as the client's boolean: a run answers `halted` the same way the batch
+// response that created it did (see POST /api/query/batch), whether it just ran or was read back.
+const withHalted = <T extends { halted: number }>(row: T): Omit<T, 'halted'> & { halted: boolean } => ({
+  ...row,
+  halted: row.halted === 1,
+})
 
 // GET /api/notebooks/:id/runs — newest (highest number) first, without the results. Pages
 // continue below the number given in `before` (else from `offset`), which stays right while runs
@@ -237,7 +244,9 @@ notebooks.get('/:id/runs', async (c) => {
   for (const id of new Set(rows.results.map((r) => r.database_id))) access.set(id, await canUseDatabase(c, id))
 
   return c.json({
-    results: rows.results.slice(0, limit).map((r) => ({ ...r, accessible: access.get(r.database_id) ?? false })),
+    results: rows.results
+      .slice(0, limit)
+      .map((r) => ({ ...withHalted(r), accessible: access.get(r.database_id) ?? false })),
     has_more: rows.results.length > limit,
   })
 })
@@ -264,7 +273,7 @@ notebooks.get('/:id/runs/:runId', async (c) => {
   } catch {
     /* corrupt row: show the run without results */
   }
-  return c.json({ ...run, accessible: true, results })
+  return c.json({ ...withHalted(run), accessible: true, results })
 })
 
 // DELETE /api/notebooks/:id/runs/:runId

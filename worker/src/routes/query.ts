@@ -429,6 +429,9 @@ query.post('/', async (c) => {
           databaseId: db.id,
           sql,
           statements: [statement],
+          statementCount: 1,
+          // One statement is the whole request: it can fail, but there is nothing after it to skip.
+          halted: false,
           durationMs: duration,
           executedAt,
         })
@@ -538,8 +541,17 @@ query.post('/batch', async (c) => {
   }
 
   try {
-    // Run each statement sequentially, continue on error
+    // Run the statements in order and stop at the first failure: a statement that is rejected before
+    // it runs, or that fails while running, ends the batch with its own result kept. Nothing after it
+    // runs — the remaining SQL usually depends on what just failed, and continuing would act on a
+    // half-finished notebook. `halted` reports that early stop to the client (and rides along into the
+    // saved run); a batch that runs to the end answers `halted: false`.
     const results: RunStatement[] = []
+    let halted = false
+    // The statements the request asked to run, counted up front: a halted batch saves fewer
+    // statements than this, and the difference is what the failure skipped (the client reports it as
+    // "n more statements not run"). Blank lines never run, so they are not counted.
+    const statementCount = body.statements.filter((x) => x.trim()).length
 
     for (const rawSql of body.statements) {
       const sql = rawSql.trim()
@@ -548,19 +560,22 @@ query.post('/batch', async (c) => {
       const { sql: runSql, error: translateError } = translate(sql, dialect)
       if (translateError) {
         results.push({ sql, results: [], duration_ms: 0, error: translateError })
-        continue
+        halted = true
+        break
       }
 
       const kind = classifySql(runSql, dialect)
       const denied = checkSqlAccess(kind, permission)
       if (denied) {
         results.push({ sql, results: [], duration_ms: 0, error: denied })
-        continue
+        halted = true
+        break
       }
       const appDbDenied = appDbStatementError(c.env, db, kind, runSql)
       if (appDbDenied) {
         results.push({ sql, results: [], duration_ms: 0, error: appDbDenied })
-        continue
+        halted = true
+        break
       }
 
       const start = Date.now()
@@ -596,6 +611,12 @@ query.post('/batch', async (c) => {
       if (errorMsg) entry.error = errorMsg
       if (truncated) entry.truncated = true
       results.push(entry)
+
+      // The statement failed: its result (with the error) is the batch's last entry.
+      if (errorMsg) {
+        halted = true
+        break
+      }
     }
 
     // Save the run under its notebook (non-blocking)
@@ -610,14 +631,16 @@ query.post('/batch', async (c) => {
           databaseId: db.id,
           sql: results.map((r) => r.sql).join(';\n'),
           statements: results,
+          statementCount,
+          halted,
           durationMs: Date.now() - executedAt,
           executedAt,
         })
       )
-      return c.json({ results, run_id: runId, executed_at: executedAt, seq: notebook.seq })
+      return c.json({ results, halted, run_id: runId, executed_at: executedAt, seq: notebook.seq })
     }
 
-    return c.json({ results })
+    return c.json({ results, halted })
   } finally {
     await executor.close()
   }
