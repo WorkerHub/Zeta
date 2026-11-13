@@ -4,8 +4,10 @@ import {
   DEFAULT_THEME_COLOR,
   THEME_COLORS,
   THEME_COLOR_STORAGE_KEY,
+  hasStoredThemeColor,
   isThemeColor,
   normalizeThemeColor,
+  planThemeColorSync,
   readStoredThemeColor,
 } from '../theme-color'
 
@@ -42,5 +44,29 @@ describe('theme colour presets', () => {
     expect(ids).toEqual([...THEME_COLORS])
     expect(initScript).toContain(`localStorage.getItem('${THEME_COLOR_STORAGE_KEY}')`)
     expect(initScript).toContain("setAttribute('data-theme-color', c)")
+  })
+})
+
+describe('server sync decision', () => {
+  it('adopts a known server id, even the default, and never pushes', () => {
+    expect(planThemeColorSync('ocean', true, 'grape')).toEqual({ color: 'ocean', push: false })
+    expect(planThemeColorSync('terracotta', true, 'ocean')).toEqual({ color: 'terracotta', push: false })
+  })
+
+  it('keeps a stored local value and pushes it when the server has none', () => {
+    expect(planThemeColorSync(null, true, 'grape')).toEqual({ color: 'grape', push: true })
+  })
+
+  it('treats an unknown server id as unset', () => {
+    expect(planThemeColorSync('nope', true, 'grape')).toEqual({ color: 'grape', push: true })
+    expect(planThemeColorSync('nope', false, 'grape')).toEqual({ color: 'terracotta', push: false })
+  })
+
+  it('falls back to the default without a push when nothing is stored', () => {
+    expect(planThemeColorSync(null, false, 'grape')).toEqual({ color: 'terracotta', push: false })
+  })
+
+  it('reports no stored preset without a DOM', () => {
+    expect(hasStoredThemeColor()).toBe(false)
   })
 })

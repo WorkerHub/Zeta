@@ -12,7 +12,6 @@ import {
   Copy,
   CheckCircle,
   Fingerprint,
-  Palette,
 } from 'lucide-react'
 import QRCode from 'qrcode'
 import { startRegistration } from '@simplewebauthn/browser'
@@ -21,13 +20,13 @@ import { useLocale } from '../hooks/useLocale'
 import { useThemeColor } from '../hooks/useThemeColor'
 import Logo from '../components/Logo'
 import RunSettingsCard from '../components/RunSettingsCard'
-import ThemeColorPicker from '../components/ThemeColorPicker'
+import ThemeColorCard from '../components/ThemeColorCard'
 import type { User } from '../types'
 
 export default function ProfilePage() {
   const { t } = useLocale()
   // Brand colour preset — applied as soon as a dot is picked, no save step (§2.1)
-  const { themeColor, setThemeColor } = useThemeColor()
+  const { themeColor, setThemeColor, syncError } = useThemeColor()
   const [user, setUser] = useState<User | null>(null)
   const [loading, setLoading] = useState(true)
 
@@ -226,13 +225,7 @@ export default function ProfilePage() {
         </div>
 
         {/* Theme colour */}
-        <div className="card p-5">
-          <h2 className="text-heading text-ink-900 mb-4 flex items-center gap-2">
-            <Palette size={15} className="text-ink-400" /> {t('profile.theme_color')}
-          </h2>
-          <ThemeColorPicker value={themeColor} onChange={setThemeColor} />
-          <p className="text-caption text-ink-500 mt-3">{t('profile.theme_color_desc')}</p>
-        </div>
+        <ThemeColorCard value={themeColor} onChange={setThemeColor} syncError={syncError} />
 
         {/* Change password */}
         <div className="card p-5">

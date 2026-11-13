@@ -56,7 +56,7 @@
 
 ### 2.1 品牌色（六预设色阶）
 
-品牌色不是单一色相：六个预设各带一整套 `50–900` 色阶（浅色与深色各一份），动作、选中态、焦点环、Logo 全部只读 `--color-brand-*`，所以换预设就是换整站强调色。默认预设是陶土，其余五个是可选主题色；用户选择只存在本浏览器（`localStorage['theme-color']`），跨设备不同步是已知边界。
+品牌色不是单一色相：六个预设各带一整套 `50–900` 色阶（浅色与深色各一份），动作、选中态、焦点环、Logo 全部只读 `--color-brand-*`，所以换预设就是换整站强调色。默认预设是陶土，其余五个是可选主题色；用户选择保存在账号上（`GET/PUT /api/profile/theme-color`，服务端为准），`localStorage['theme-color']` 只作首屏缓存，换浏览器登录同一账号得到同一颜色。
 
 **默认预设 · 陶土（`terracotta`）**——也是 `@theme` 的基础值：
 
@@ -88,7 +88,7 @@
 
 - `index.css` 的 `@theme` 默认值就是陶土；其余五个预设以 `[data-theme-color='<id>']` 覆盖浅色 `--color-brand-50…900`，深色以 `.dark[data-theme-color='<id>']` 覆盖。两个块只写 `--color-brand-*`，ink 与功能色永不被预设改写。
 - 属性挂在 `<html>` 上，**陶土用「没有属性」表达**（基础 token 就是它），因此不需要 `[data-theme-color='terracotta']` 块；缺省值与非法值都等于无属性。
-- 选择器（Profile → 主题色）写 `localStorage['theme-color']`，由 `web/src/hooks/useThemeColor.ts` 同步属性、`web/src/lib/theme-color.ts` 负责 id 清单与回落（非法值静默回落陶土）；`web/public/theme-init.js` 在首帧前读同一键预涂属性，刷新不闪错色。
+- 选择器（Profile → 主题色）经 `web/src/hooks/useThemeColor.tsx` 立即上色并 PUT 到 `/api/profile/theme-color`（服务端为准），`web/src/lib/theme-color.ts` 负责 id 清单与回落（非法值静默回落陶土）；`localStorage['theme-color']` 只作首屏缓存，`web/public/theme-init.js` 在首帧前读它预涂属性，刷新不闪错色。
 - 明暗切换（`useTheme` / `.dark`）与主题色互不影响：`.dark` 只切明暗阶梯，`data-theme-color` 只切色相家族。
 - 选择器圆点用 `--color-swatch-<id>`（= 各预设 600，仅供展示，不是主题角色），不随当前预设变化。
 
