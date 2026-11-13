@@ -7,12 +7,15 @@ import { isWriteClass, limitReadSql, type SqlClass } from './sql-guard'
 // connection object and every statement of a batch runs through that one object in order; nothing
 // is pooled or cached between requests (Workers requests do not share memory anyway).
 //
-// The executor never asks for session features: no `persist()`, no `begin()`, no `USE`/`SET` of its
-// own. It cannot rely on per-request isolation either — the live re-check (2026-11-13, plan §10-7)
-// showed the HTTP endpoint pins **one** server-side session per set of credentials and returns the
-// same `CONNECTION_ID` to every request (even from a fresh process), so `USE`/`SET`/`BEGIN` from one
-// statement would persist for every other request of the app. That is why lib/sql-guard.ts refuses
-// them for this dialect instead of treating them as harmless.
+// The endpoint pins **one** server-side session per set of credentials and hands the same
+// `CONNECTION_ID` to every request, even from a fresh process (live re-check, 2026-11-13, plan §10-7),
+// so whatever one request does to the session is felt by the next. The B ruling takes that seriously
+// from both ends: `USE` is allowed for users (a session statement, not a read or a write) while `SET`,
+// transaction control and the rest of the session/privilege statements stay forbidden (see
+// lib/sql-guard.ts), and every session opened here *starts* by pinning the registered default database
+// — so a `USE` from an earlier request, or from another tool on the same instance, is never inherited.
+// Cross-database qualified names (`other_db.table`) are not intercepted: they are how a query reaches
+// another schema, now that `USE` is a per-request starting point rather than a persistent choice.
 //
 // The driver is imported dynamically so the D1 paths (the vast majority of requests) never pay for
 // loading it, exactly like the PostgreSQL executor.
@@ -134,7 +137,7 @@ export function describeMySqlError(err: unknown, url = '', connect = false): MyS
 
 type ExecuteResult = { rows?: unknown[] | null; rowsAffected?: number | null }
 
-// The database the session must be pointed at, taken from the stored (normalised) URL.
+// The database the session must start on, taken from the stored (normalised) URL.
 function databaseOf(url: string): string | null {
   try {
     const path = new URL(url).pathname.replace(/^\//, '')
@@ -144,22 +147,26 @@ function databaseOf(url: string): string | null {
   }
 }
 
+// The statement that points a session at the database the registration names. The name comes from the
+// URL path, so it is quoted the way MySQL quotes an identifier (a backtick doubles inside backticks).
+function useStatement(database: string): string {
+  return `USE \`${database.split('`').join('``')}\``
+}
+
 // The driver passes (url, { method, body, headers, cache }) to the injected fetch; the timeout is
 // added on top, so a hung endpoint fails as a transport error instead of holding the request.
 const timedFetch = (input: string, init: RequestInit = {}): Promise<Response> =>
   fetch(input, { ...init, signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS) })
 
-// Opens one driver connection and proves it with a `select 1` before the caller runs anything, so a
-// bad host, credential or network path surfaces once per request instead of once per statement.
+// Opens one driver connection and pins it before the caller runs anything, so a bad host, credential
+// or database surfaces once per request instead of once per statement.
 //
-// DEVIATION FROM THE FROZEN PLAN — kept by Muse's ruling of 2026-11-13, do not "simplify" it back.
-// Plan §3.3 specifies the proof as a bare `select 1`; this proof also reads `database()` and fails
-// closed (config) when the session sits on a different schema than the stored URL. Why: the endpoint
-// keeps ONE session per (credentials, database) and reuses it for every later request (plan §10-7),
-// so a `USE` issued anywhere else — a CLI on the same instance, another tool — would otherwise leave
-// our statements silently running against the wrong schema. Querying the wrong database is a data
-// correctness risk, so it is a hard configuration error for the admin to fix, not a query to guess
-// about. Approved to stay in the plan (was raised as an out-of-plan guard at review).
+// The B ruling (2026-11-13): `USE` is part of the SQL a user may run, and the endpoint reuses one
+// session per (credentials, database), so a `USE` from any earlier request — or from another tool on
+// the same instance — would otherwise decide where *our* statements land. The first statement of every
+// session therefore sets the registered default database again. That one statement also proves the
+// connection, and it fails as a configuration error when the database does not exist
+// (`Error 1049 (42000)`, see describeMySqlError), so nothing is lost against a bare `select 1`.
 export async function openMySqlSession(url: string): Promise<MySqlSession> {
   const { connect } = await import('@tidbcloud/serverless')
   const expected = databaseOf(url)
@@ -170,17 +177,8 @@ export async function openMySqlSession(url: string): Promise<MySqlSession> {
       // Workers verifies the endpoint certificate against the platform trust store; nothing to inject.
       fetch: timedFetch as unknown as NonNullable<Parameters<typeof connect>[0]['fetch']>,
     })
-    const proof = (await connection.execute('select 1 as ok, database() as db', null, {
-      fullResult: true,
-    })) as ExecuteResult
-    const actual = (proof.rows?.[0] as { db?: unknown } | undefined)?.db
-    // Beyond the plan's bare `select 1` — the 2026-11-13 approved deviation documented above.
-    if (expected && typeof actual === 'string' && actual && actual !== expected) {
-      throw new MySqlQueryError(
-        `The instance's session is on database "${actual}" instead of "${expected}". Save the target again in Admin → Databases, or run USE \`${expected}\` on that instance.`,
-        'config'
-      )
-    }
+    // A URL without a database cannot pin one; the driver's own default then has to do.
+    await connection.execute(expected ? useStatement(expected) : 'select 1', null, { fullResult: true })
   } catch (err) {
     throw describeMySqlError(err, url, true)
   }

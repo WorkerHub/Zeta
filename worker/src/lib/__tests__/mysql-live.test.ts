@@ -227,6 +227,42 @@ describe.skipIf(!LIVE_URL)('mysql executor against a live TiDB Cloud Starter', (
     }
   })
 
+  it('pins the registered database again for every session, whatever a previous USE did', {
+    timeout: 120_000,
+  }, async () => {
+    const normalized = normalizeMySqlUrl(LIVE_URL)
+    if (!normalized.ok) throw new Error(normalized.error)
+    const expected = normalized.database
+    const elsewhere = expected === 'test' ? 'mysql' : 'test'
+    const first = await openMySqlSession(normalized.url)
+    try {
+      const used = await first
+        .run(`USE \`${elsewhere}\``, 'read', 5000)
+        .then(() => true)
+        .catch(() => false)
+      if (!used) {
+        log('this instance refused USE, nothing to drift to', elsewhere)
+        return
+      }
+      const drifted = await first.run('SELECT database() AS db', 'read', 5000)
+      log('session database after USE', drifted.results[0])
+      expect(drifted.results[0]?.db).toBe(elsewhere)
+    } finally {
+      // Leave the shared session as it was found.
+      await first.run(`USE \`${expected}\``, 'read', 5000).catch(() => {})
+      await first.close()
+    }
+    // A fresh session must start on the registered database, not where the previous one stopped.
+    const second = await openMySqlSession(normalized.url)
+    try {
+      const pinned = await second.run('SELECT database() AS db', 'read', 5000)
+      log('session database of a fresh session', pinned.results[0])
+      expect(pinned.results[0]?.db).toBe(expected)
+    } finally {
+      await second.close()
+    }
+  })
+
   it('sends exactly one HTTP call per batch statement', { timeout: 120_000 }, async () => {
     const normalized = normalizeMySqlUrl(LIVE_URL)
     if (!normalized.ok) throw new Error(normalized.error)
@@ -240,7 +276,7 @@ describe.skipIf(!LIVE_URL)('mysql executor against a live TiDB Cloud Starter', (
       const session = await openMySqlSession(normalized.url)
       try {
         const afterConnect = calls
-        expect(afterConnect).toBe(1) // the `select 1` proof
+        expect(afterConnect).toBe(1) // the statement that pins the registered database
         for (const sql of ['SELECT 1', 'SELECT 2', 'SELECT 3', 'SELECT 4', 'SELECT 5']) {
           await session.run(sql, 'read', 5000)
         }

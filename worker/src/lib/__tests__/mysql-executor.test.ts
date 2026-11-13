@@ -61,9 +61,10 @@ function dbError(message: string, status: number, code = '') {
   return err
 }
 
-// Every session proves itself with `select 1` first, so each test seeds that answer before its own.
+// Every session pins the registered database first, so each test seeds that statement's answer
+// before its own.
 function seed(...entries: QueueEntry[]) {
-  driver.queue.push({ rows: [{ '1': 1 }] }, ...entries)
+  driver.queue.push({ rows: [{ ok: 1 }] }, ...entries)
 }
 
 afterEach(() => {
@@ -74,27 +75,41 @@ afterEach(() => {
 })
 
 describe('openMySqlSession', () => {
-  it('proves the connection with select 1 and the session database before running anything else', async () => {
+  it('starts every session on the registered database with USE before anything else', async () => {
     seed()
     await openMySqlSession(URL)
     expect(driver.connects).toHaveLength(1)
     expect(driver.connects[0]!.url).toBe(URL)
-    expect(driver.executes.map((e) => e.sql)).toEqual(['select 1 as ok, database() as db'])
+    expect(driver.executes.map((e) => e.sql)).toEqual(['USE `zeta`'])
   })
 
-  it('fails closed when the instance session points at another database', async () => {
-    // The endpoint keeps one session per (credentials, database) and reuses it, so a `USE` issued
-    // elsewhere would otherwise route our statements into the wrong schema.
-    driver.queue.push({ rows: [{ ok: 1, db: 'somewhere_else' }] })
+  it('quotes a database name that contains a backtick', async () => {
+    seed()
+    await openMySqlSession(`mysql://3Kx9aBcD.root:${PASSWORD}@${HOST}:4000/a%60b`)
+    expect(driver.executes.map((e) => e.sql)).toEqual(['USE `a``b`'])
+  })
+
+  it('resets a session that an earlier request left on another database', async () => {
+    // The endpoint keeps one session per (credentials, database) and reuses it: whatever a previous
+    // request's `USE` did is what the next request would start on without this statement.
+    seed()
+    const first = await openMySqlSession(URL)
+    await first.run('USE other', 'read', 5000)
+    seed()
+    await openMySqlSession(URL)
+    expect(driver.executes.map((e) => e.sql)).toEqual(['USE `zeta`', 'USE other', 'USE `zeta`'])
+  })
+
+  it('reports a database that does not exist as a config error, on the pinning statement', async () => {
+    driver.queue.push({ error: dbError("Error 1049 (42000): Unknown database 'zeta'", 401) })
     await expect(openMySqlSession(URL)).rejects.toMatchObject({ kind: 'config' })
     expect(driver.executes).toHaveLength(1)
   })
 
-  it('accepts a session already on the registered database', async () => {
-    driver.queue.push({ rows: [{ ok: 1, db: 'zeta' }] })
-    const session = await openMySqlSession(URL)
-    expect(driver.executes).toHaveLength(1)
-    await session.close()
+  it('falls back to a bare select 1 when the URL names no database', async () => {
+    seed()
+    await openMySqlSession(`mysql://3Kx9aBcD.root:${PASSWORD}@${HOST}:4000`)
+    expect(driver.executes.map((e) => e.sql)).toEqual(['select 1'])
   })
 
   it('runs a read through the row cap with a MySQL subquery alias', async () => {

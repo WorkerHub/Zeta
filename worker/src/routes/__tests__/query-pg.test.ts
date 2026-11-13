@@ -210,3 +210,31 @@ describe('query a PostgreSQL target', () => {
     expect(pg.opened).toHaveLength(0)
   })
 })
+
+describe('POST /api/query/probe (PostgreSQL)', () => {
+  it('opens the stored target, runs one statement and closes it, writing no history', async () => {
+    const env = await pgEnv('read')
+    pg.queue.push({ results: [{ '?column?': 1 }] })
+    const res = await post(env, '/api/query/probe', { databaseId: 'pg1' }, await bearer(env, 'u1'))
+    expect(res.status).toBe(200)
+    expect(await res.json()).toMatchObject({ ok: true, kind: 'postgres' })
+    expect(pg.opened).toHaveLength(1)
+    expect(pg.opened[0]!.runs).toEqual([{ sql: 'select 1', kind: 'read' }])
+    expect(pg.opened[0]!.closed).toBe(true)
+    const history = await env.DB.prepare('SELECT COUNT(*) AS n FROM query_history').first<{ n: number }>()
+    expect(history?.n).toBe(0)
+  })
+
+  it('reports a refused connection as a deployment error', async () => {
+    const env = await pgEnv()
+    pg.openError = { message: 'Authentication failed: password authentication failed', kind: 'auth' }
+    const member = await post(env, '/api/query/probe', { databaseId: 'pg1' }, await bearer(env, 'u1'))
+    expect(member.status).toBe(500)
+    expect(await member.json()).toEqual({ error: 'Database configuration error. Contact the admin.' })
+
+    pg.openError = { message: 'Authentication failed: password authentication failed', kind: 'auth' }
+    const admin = await post(env, '/api/query/probe', { databaseId: 'pg1' }, await bearer(env, 'a1', 'admin'))
+    expect(admin.status).toBe(500)
+    expect(((await admin.json()) as { error: string }).error).toContain('Authentication failed')
+  })
+})

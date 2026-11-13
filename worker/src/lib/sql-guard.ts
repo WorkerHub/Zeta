@@ -1,6 +1,6 @@
 export type SqlClass = 'read' | 'write' | 'destructive' | 'forbidden' | 'multiple' | 'empty'
 export type Permission = 'read' | 'write' | 'write_drop'
-export type SqlDialect = 'sqlite' | 'postgres' | 'mysql'
+export type SqlDialect = 'sqlite' | 'postgres' | 'mysql' | 'spark'
 
 export interface Token {
   type: 'word' | 'quoted' | 'punct'
@@ -36,6 +36,11 @@ function dollarQuoteEnd(sql: string, start: number): number | null {
 //   * `/*! … */` is an executable comment — it is reported as `executableComment`, never dropped,
 //   * `#` starts a comment that runs to the end of the line,
 //   * backslash escapes inside '…' and "…" (MySQL's default sql_mode), so \' does not close the string.
+//
+// The spark dialect keeps MySQL's backslash escapes (Spark's `escapedStringLiterals` has defaulted to
+// false since 2.0, so \' does not close a string there either) but none of MySQL's comment forms, and
+// it has no bracket quoting: `[` is an ordinary character, so it must stay visible to the tokenizer
+// — otherwise an unterminated `[` could hide a `;` from the multi-statement check.
 function scan(sql: string, dialect: SqlDialect): { tokens: Token[]; openComment: boolean; executableComment: boolean } {
   const tokens: Token[] = []
   let openComment = false
@@ -62,7 +67,7 @@ function scan(sql: string, dialect: SqlDialect): { tokens: Token[]; openComment:
       const end = sql.indexOf('*/', i + 2)
       if (end === -1) openComment = true
       i = end === -1 ? n : end + 2
-    } else if (dialect === 'mysql' && ch !== '`' && (ch === "'" || ch === '"')) {
+    } else if ((dialect === 'mysql' || dialect === 'spark') && ch !== '`' && (ch === "'" || ch === '"')) {
       i++
       while (i < n) {
         if (sql[i] === '\\') {
@@ -98,9 +103,10 @@ function scan(sql: string, dialect: SqlDialect): { tokens: Token[]; openComment:
       }
       i++
       tokens.push({ type: 'quoted', value: '', start })
-    } else if (ch === '[' && dialect !== 'mysql') {
-      // SQLite (and T-SQL) bracket quoting; MySQL has no such form, so a `[` there must stay visible
-      // to the tokenizer — otherwise an unterminated `[` could hide a `;` from the multi-statement check.
+    } else if (ch === '[' && dialect !== 'mysql' && dialect !== 'spark') {
+      // SQLite (and T-SQL) bracket quoting; MySQL and Spark have no such form, so a `[` there must
+      // stay visible to the tokenizer — otherwise an unterminated `[` could hide a `;` from the
+      // multi-statement check.
       const end = sql.indexOf(']', i + 1)
       i = end === -1 ? n : end + 1
       tokens.push({ type: 'quoted', value: '', start })
@@ -151,10 +157,12 @@ const CTE_WRITE_KEYWORDS = new Set(['insert', 'update', 'delete', 'replace', 'me
 //
 // Live re-check (2026-11-13, plan §10-7): the endpoint keeps **one** session per set of credentials,
 // shared by every request of the app (same `CONNECTION_ID` from a fresh process, `SET @x` and `USE`
-// both visible to the next request). `USE`/`SET` therefore do work — and would silently rewrite the
+// both visible to the next request). `SET` therefore does work — it would silently rewrite the
 // session for every other user's query, which is worse than the earlier "they do nothing" reading.
-// `BEGIN` is MySQL's synonym of the already-forbidden `START TRANSACTION`: an open transaction in the
-// shared session would capture other requests' statements.
+// `USE` is allowed by the B ruling (a session statement, neither a read nor a write) and is safe only
+// because every request re-pins the registered database before its statements run — see
+// lib/mysql-executor.ts. `BEGIN` is MySQL's synonym of the already-forbidden `START TRANSACTION`: an
+// open transaction in the shared session would capture other requests' statements.
 const MYSQL_FORBIDDEN_KEYWORDS = new Set([
   'lock',
   'unlock',
@@ -171,7 +179,6 @@ const MYSQL_FORBIDDEN_KEYWORDS = new Set([
   'commit',
   'rollback',
   'savepoint',
-  'use',
   'set',
   'handler',
 ])
@@ -282,6 +289,87 @@ function hasMySqlTopLevelLock(tokens: Token[]): boolean {
   return hasTopLevelLock(tokens) || hasTopLevelWord(tokens, 1, 'lock')
 }
 
+// ── spark ────────────────────────────────────────────────────────────────────────────────────
+// SparkSQL runs on one long-lived SparkSession that every request shares (the service serialises on
+// a global lock), so a statement that rewrites the session, loads code or resources, or reaches the
+// cluster's filesystem is not a query about data. See the phase-3 spike, §3.2.
+const SPARK_FORBIDDEN_KEYWORDS = new Set([
+  'set', // SET/RESET rewrite the shared session's configuration
+  'reset',
+  'use', // a session-wide default database; a qualified name covers the legitimate case
+  'cache', // CACHE/UNCACHE/CLEAR CACHE/REFRESH mutate the shared session's cache
+  'uncache',
+  'clear',
+  'refresh',
+  'add', // ADD JAR/FILE/ARCHIVE loads resources into the cluster
+  'list', // LIST JAR/FILE/ARCHIVE enumerates them
+  'call', // reserved from Spark 4 on; refused before it can matter
+])
+
+// Spark names a file on the cluster in table position — the docs' parquet.`/data/x` form, or
+// csv.'/data/x.csv' — and a bare quoted path after FROM or LOCATION does the same: all of them read
+// the cluster's filesystem.
+const SPARK_FILE_SOURCES = new Set(['parquet', 'csv', 'json', 'orc', 'text', 'avro', 'binaryfile', 'delta', 'file'])
+
+// True when two words sit next to each other at parenthesis depth 0. Quoted tokens and nested
+// parentheses are skipped, so `INSERT OVERWRITE DIRECTORY` is a pair while
+// `INSERT OVERWRITE TABLE t … WHERE directory = 1` is not.
+function hasTopLevelPair(tokens: Token[], first: string, second: string): boolean {
+  let prev = ''
+  let depth = 0
+  for (const t of tokens) {
+    if (t.type === 'punct') {
+      if (t.value === '(') depth++
+      else if (t.value === ')') depth = Math.max(0, depth - 1)
+      continue
+    }
+    if (depth !== 0 || t.type !== 'word') continue
+    if (prev === first && t.value === second) return true
+    prev = t.value
+  }
+  return false
+}
+
+// A quoted token that opened with ' or " is a string literal — a path here. A backtick opens an
+// identifier, which a path never is.
+function isStringLiteral(sql: string, token: Token | undefined): boolean {
+  return token?.type === 'quoted' && sql[token.start] !== '`'
+}
+
+// Statement shapes that may hide anywhere in a Spark statement — a CTE body, a subquery — and that
+// no query target may run, whatever the statement's first word says.
+function sparkForbiddenPattern(sql: string, tokens: Token[]): boolean {
+  for (let i = 0; i < tokens.length; i++) {
+    const t = tokens[i]!
+    if (t.type !== 'word') continue
+    const next = tokens[i + 1]
+    const prev = tokens[i - 1]
+    // `FROM '/path'`, `LOCATION 's3://…'`: a quoted path where a relation belongs.
+    if ((t.value === 'from' || t.value === 'location') && isStringLiteral(sql, next)) return true
+    if (SPARK_FILE_SOURCES.has(t.value)) {
+      // A file source in table position: the documented parquet.`/data/x` form, or csv.'/data/x.csv'.
+      // Either quote names a path here, so both are refused.
+      const tablePosition =
+        prev === undefined ||
+        (prev.type === 'word' && (prev.value === 'from' || prev.value === 'join')) ||
+        (prev.type === 'punct' && prev.value === ',')
+      if (tablePosition && next?.type === 'punct' && next.value === '.' && tokens[i + 2]?.type === 'quoted') {
+        return true
+      }
+    }
+    // `SELECT TRANSFORM(a, b) USING 'script'`: the script runs on the worker itself.
+    if (
+      t.value === 'transform' &&
+      next?.type === 'punct' &&
+      next.value === '(' &&
+      hasTopLevelWord(tokens, i, 'using')
+    ) {
+      return true
+    }
+  }
+  return false
+}
+
 // EXPLAIN only plans, so it reads nothing — except EXPLAIN ANALYZE, which executes the statement
 // it explains (`EXPLAIN ANALYZE DELETE …` deletes). Both the `EXPLAIN ANALYZE …` and the
 // `EXPLAIN (ANALYZE, …) …` forms are handled; anything unparseable fails closed as a write.
@@ -322,6 +410,7 @@ function classifyStatement(tokens: Token[], dialect: SqlDialect): SqlClass {
   if (first?.type !== 'word') return 'write'
 
   if (dialect === 'mysql' && MYSQL_FORBIDDEN_KEYWORDS.has(first.value)) return 'forbidden'
+  if (dialect === 'spark' && SPARK_FORBIDDEN_KEYWORDS.has(first.value)) return 'forbidden'
 
   switch (first.value) {
     case 'select':
@@ -351,8 +440,25 @@ function classifyStatement(tokens: Token[], dialect: SqlDialect): SqlClass {
 
     case 'describe':
     case 'desc':
-      // MySQL table introspection (`DESCRIBE t` / `DESC t`) is a read; nowhere else is it SQL we run.
+      // MySQL and Spark introspection (`DESCRIBE t`, `DESC t`, `DESCRIBE QUERY …`) is a read;
+      // nowhere else is it SQL we run.
+      return dialect === 'mysql' || dialect === 'spark' ? 'read' : 'write'
+
+    case 'use':
+      // MySQL's `USE` switches the shared session's default schema. The B ruling allows it — a
+      // session statement, neither a read nor a write — and every request re-pins the registered
+      // database before its own statements run (lib/mysql-executor.ts), so one request's pick never
+      // reaches the next. Spark forbids it above: its session is the one every user shares.
       return dialect === 'mysql' ? 'read' : 'write'
+
+    case 'insert':
+      // Spark's INSERT OVERWRITE replaces the target's data; its DIRECTORY form writes the cluster's
+      // filesystem instead of a table.
+      if (dialect === 'spark') {
+        if (hasTopLevelPair(tokens, 'overwrite', 'directory')) return 'forbidden'
+        if (hasTopLevelWord(tokens, 1, 'overwrite')) return 'destructive'
+      }
+      return 'write'
 
     case 'with':
       return classifyWith(tokens, dialect)
@@ -378,6 +484,13 @@ function classifyStatement(tokens: Token[], dialect: SqlDialect): SqlClass {
     case 'create':
       // MySQL's `CREATE USER`/`CREATE ROLE` grants access to the server itself, not a table.
       if (dialect === 'mysql' && (tokens[1]?.value === 'user' || tokens[1]?.value === 'role')) return 'forbidden'
+      if (dialect === 'spark') {
+        // `CREATE FUNCTION` loads arbitrary JVM code, a temporary view lands in the shared session's
+        // namespace, and `CREATE OR REPLACE TABLE` replaces a table together with its data.
+        if (hasTopLevelWord(tokens, 1, 'function')) return 'forbidden'
+        if (hasTopLevelWord(tokens, 1, 'temporary') && hasTopLevelWord(tokens, 1, 'view')) return 'forbidden'
+        if (hasTopLevelWord(tokens, 1, 'replace') && hasTopLevelWord(tokens, 1, 'table')) return 'destructive'
+      }
       return 'write'
 
     default:
@@ -389,6 +502,9 @@ export function classifySql(sql: string, dialect: SqlDialect = 'sqlite'): SqlCla
   const { tokens: all, executableComment } = scan(sql, dialect)
   // MySQL executes `/*! … */`; a statement carrying one is refused outright rather than partial.
   if (dialect === 'mysql' && executableComment) return 'forbidden'
+  // Spark's file sources and TRANSFORM … USING can sit in a CTE body or a subquery, so they are
+  // checked over the whole token stream before the statement's first word decides the rest.
+  if (dialect === 'spark' && sparkForbiddenPattern(sql, all)) return 'forbidden'
   const statements: Token[][] = [[]]
   for (const t of all) {
     if (t.type === 'punct' && t.value === ';') statements.push([])
