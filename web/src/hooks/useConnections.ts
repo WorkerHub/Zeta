@@ -24,9 +24,11 @@ export function useConnections(knownIds: string[]) {
   }, [connected])
 
   // Targets the page no longer lists (deleted, deactivated, access revoked) are dropped once the
-  // list arrives, so a stale id can never look connected.
+  // list arrives, so a stale id can never look connected. An empty list means "not loaded yet" —
+  // pruning then would wipe the session's state before the server answered.
   const known = useMemo(() => new Set(knownIds), [knownIds])
   useEffect(() => {
+    if (known.size === 0) return
     setConnected((current) => {
       const next = current.filter((id) => known.has(id))
       return next.length === current.length ? current : next
