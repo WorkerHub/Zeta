@@ -1,5 +1,6 @@
-import { AlertCircle, Loader2 } from 'lucide-react'
+import { AlertCircle, AlertTriangle, Loader2 } from 'lucide-react'
 import { useLocale } from '../hooks/useLocale'
+import type { HaltNotice } from '../lib/runs'
 import type { RunResults } from '../hooks/useNotebookRuns'
 import type { NotebookRunSummary, StatementResult } from '../types'
 import ResultsPanel from './ResultsPanel'
@@ -12,6 +13,8 @@ interface Props {
   runningStatementCount: number
   /** A caveat about the run in flight (Spark: cancelling does not stop the statement). */
   runningHint?: string
+  /** The shown run was a batch that stopped at a failing statement. */
+  halted?: HaltNotice | null
   runError: string
   transient: StatementResult[] | null
   selectedRun: NotebookRunSummary | null
@@ -43,6 +46,7 @@ export default function QueryResults({
   runningSql,
   runningStatementCount,
   runningHint = '',
+  halted = null,
   runError,
   transient,
   selectedRun,
@@ -100,45 +104,56 @@ export default function QueryResults({
           </div>
         </div>
       ) : (
-        // Always present, so entering and leaving a run never changes the panel's box
-        <div className="flex-1 overflow-hidden">
-          {results.length > 0 ? (
-            <ResultsPanel
-              results={results}
-              activeIndex={activeIndex}
-              onSelectIndex={onSelectIndex}
-              running={running}
-              runningLabel={runningLabel}
-              runningHint={runningHint}
-            />
-          ) : running ? (
-            <div
-              role="status"
-              className="flex flex-col items-center justify-center h-full gap-1.5 overflow-hidden px-4 text-ink-500"
-            >
-              <span className="flex items-center gap-2 min-w-0">
-                <Loader2 size={18} className="animate-spin shrink-0" aria-hidden="true" />
-                <span className="min-w-0 text-body truncate" title={runningLabel}>
-                  {runningLabel}
+        <>
+          {/* A batch that stopped at its failing statement: one line above the results it left
+              behind, naming the statement that failed and what never ran. Hidden while another
+              run is in flight — the mask covers the panel those results belong to. */}
+          {halted && !running && (
+            <p className="mx-4 mt-3 flex items-start gap-1.5 text-caption text-warning-600 shrink-0">
+              <AlertTriangle size={13} className="mt-0.5 shrink-0" aria-hidden="true" />
+              <span className="min-w-0">{t('results.halted', { n: halted.failedAt, m: halted.remaining })}</span>
+            </p>
+          )}
+          {/* Always present, so entering and leaving a run never changes the panel's box */}
+          <div className="flex-1 overflow-hidden">
+            {results.length > 0 ? (
+              <ResultsPanel
+                results={results}
+                activeIndex={activeIndex}
+                onSelectIndex={onSelectIndex}
+                running={running}
+                runningLabel={runningLabel}
+                runningHint={runningHint}
+              />
+            ) : running ? (
+              <div
+                role="status"
+                className="flex flex-col items-center justify-center h-full gap-1.5 overflow-hidden px-4 text-ink-500"
+              >
+                <span className="flex items-center gap-2 min-w-0">
+                  <Loader2 size={18} className="animate-spin shrink-0" aria-hidden="true" />
+                  <span className="min-w-0 text-body truncate" title={runningLabel}>
+                    {runningLabel}
+                  </span>
                 </span>
-              </span>
-              {runningHint && <p className="max-w-[520px] text-center text-caption text-ink-500">{runningHint}</p>}
-            </div>
-          ) : selectedResults && selectedResults.status !== 'ready' ? (
-            <div className="flex items-center justify-center h-full gap-2 px-4 text-center text-body text-ink-400">
-              {selectedResults.status === 'loading' && <Loader2 size={16} className="animate-spin" />}
-              {selectedResults.status === 'loading'
-                ? t('runs.loading')
-                : selectedResults.status === 'denied'
-                  ? t('runs.access_denied')
-                  : t('runs.load_failed')}
-            </div>
-          ) : !transient && !selectedRun ? (
-            <div className="flex items-center justify-center h-full text-ink-400 text-body">
-              {listLoading ? t('common.loading') : listError ? t('runs.list_failed') : t('query.no_results')}
-            </div>
-          ) : null}
-        </div>
+                {runningHint && <p className="max-w-[520px] text-center text-caption text-ink-500">{runningHint}</p>}
+              </div>
+            ) : selectedResults && selectedResults.status !== 'ready' ? (
+              <div className="flex items-center justify-center h-full gap-2 px-4 text-center text-body text-ink-400">
+                {selectedResults.status === 'loading' && <Loader2 size={16} className="animate-spin" />}
+                {selectedResults.status === 'loading'
+                  ? t('runs.loading')
+                  : selectedResults.status === 'denied'
+                    ? t('runs.access_denied')
+                    : t('runs.load_failed')}
+              </div>
+            ) : !transient && !selectedRun ? (
+              <div className="flex items-center justify-center h-full text-ink-400 text-body">
+                {listLoading ? t('common.loading') : listError ? t('runs.list_failed') : t('query.no_results')}
+              </div>
+            ) : null}
+          </div>
+        </>
       )}
     </>
   )

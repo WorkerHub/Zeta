@@ -5,13 +5,15 @@ import {
   cancelPending,
   clearRunsState,
   emptyRunsState,
+  haltNotice,
   idlePending,
   receivePage,
   removeRun,
+  runHaltNotice,
   runningPending,
   settleRun,
 } from '../runs'
-import type { NotebookRunSummary } from '../../types'
+import type { NotebookRunSummary, StatementResult } from '../../types'
 
 // `at` doubles as the run number
 const run = (id: string, at: number, notebook_id = 'nb-1'): NotebookRunSummary => ({
@@ -159,5 +161,73 @@ describe('the run in flight', () => {
   it('does not cancel a run that is not in flight', () => {
     expect(cancelPending(idlePending)).toBe(idlePending)
     expect(cancelPending({ ...idlePending, error: 'boom' })).toEqual({ ...idlePending, error: 'boom' })
+  })
+
+  it('keeps the halted notice with results the server did not name', () => {
+    const results: StatementResult[] = [{ sql: 'SELECT boom', results: [], duration_ms: 0, error: 'no such column' }]
+    const halted = haltNotice(true, results, 3)
+    expect(halted).toEqual({ failedAt: 1, remaining: 2 })
+    expect(settleRun(runningPending('one', 'SELECT boom', 3), { run: null, results, halted })).toMatchObject({
+      accepted: true,
+      pending: { running: false, transient: results, halted },
+    })
+  })
+
+  it('leaves no notice behind when the next run ends', () => {
+    const results: StatementResult[] = [{ sql: 'SELECT boom', results: [], duration_ms: 0, error: 'nope' }]
+    const halted = haltNotice(true, results, 2)
+    const transient = settleRun(runningPending('one', 'SELECT boom', 2), { run: null, results, halted })
+    if (!transient.accepted) throw new Error('expected the outcome to be accepted')
+    // The next run starts from a clean slate and its successor settles without one
+    expect(runningPending('one', 'SELECT 1', 1).halted).toBeNull()
+    expect(settleRun(runningPending('one', 'SELECT 1', 1), { run: run('next', 2), results: [] })).toMatchObject({
+      pending: idlePending,
+    })
+  })
+})
+
+describe('haltNotice', () => {
+  const errorAt = (n: number): StatementResult[] =>
+    Array.from({ length: n }, (_, i) =>
+      i === n - 1
+        ? { sql: 'SELECT boom', results: [], duration_ms: 0, error: 'no such column: boom' }
+        : { sql: 'SELECT 1', results: [{ n: 1 }], duration_ms: 1 }
+    )
+
+  it('names the failing statement and what never ran', () => {
+    // Three submitted, two attempted, the second one failed
+    expect(haltNotice(true, errorAt(2), 3)).toEqual({ failedAt: 2, remaining: 1 })
+    expect(haltNotice(true, errorAt(1), 3)).toEqual({ failedAt: 1, remaining: 2 })
+  })
+
+  it('says nothing for a run that completed', () => {
+    expect(haltNotice(false, errorAt(3), 3)).toBeNull()
+    expect(haltNotice(undefined, errorAt(3), 3)).toBeNull()
+  })
+
+  it('says nothing when every submitted statement was attempted or nothing came back', () => {
+    expect(haltNotice(true, errorAt(3), 3)).toBeNull()
+    expect(haltNotice(true, [], 3)).toBeNull()
+    // A count that cannot be trusted never invents a number
+    expect(haltNotice(true, errorAt(2), 1)).toBeNull()
+  })
+
+  it('takes the last failing entry, and falls back to the returned count', () => {
+    const twoErrors: StatementResult[] = [
+      { sql: 'SELECT boom', results: [], duration_ms: 0, error: 'first' },
+      { sql: 'SELECT 1', results: [], duration_ms: 1 },
+      { sql: 'SELECT boom', results: [], duration_ms: 0, error: 'last' },
+    ]
+    expect(haltNotice(true, twoErrors, 5)).toEqual({ failedAt: 3, remaining: 2 })
+    const noErrorEntry: StatementResult[] = [{ sql: 'SELECT 1', results: [], duration_ms: 1 }]
+    expect(haltNotice(true, noErrorEntry, 2)).toEqual({ failedAt: 1, remaining: 1 })
+  })
+
+  it("reads a saved run's own record, so history shows the same notice", () => {
+    const ran: NotebookRunSummary = { ...run('saved', 4), statement_count: 3 }
+    expect(runHaltNotice({ ...ran, halted: true }, errorAt(2))).toEqual({ failedAt: 2, remaining: 1 })
+    expect(runHaltNotice({ ...ran, halted: false }, errorAt(3))).toBeNull()
+    // A record written before the halt column existed has no flag: nothing is announced
+    expect(runHaltNotice(ran, errorAt(2))).toBeNull()
   })
 })

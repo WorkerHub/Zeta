@@ -40,6 +40,7 @@ import { useConnections } from '../hooks/useConnections'
 import { knocksBack } from '../lib/connection-state'
 import { errorCodeText } from '../lib/error-copy'
 import { splitSqlStatements, usedDatabaseOf } from '../lib/sql'
+import { haltNotice } from '../lib/runs'
 import { missingSessionDatabase } from '../lib/session-database'
 import type { Database as DbType, DbKind, NotebookRunSummary, StatementResult } from '../types'
 
@@ -93,6 +94,7 @@ export default function QueryPage() {
     runningStatementCount,
     runError,
     transient,
+    transientHalted,
     selectedRun,
     selectedResults,
     startRun,
@@ -101,6 +103,13 @@ export default function QueryPage() {
   } = runs
   const statementResults: StatementResult[] =
     transient ?? (selectedResults?.status === 'ready' ? selectedResults.results : [])
+  // A halted batch announces itself in the results area: the response's halted flag (a saved run's
+  // record carries it too, so a run opened from history shows the same line)
+  const shownHalted = transient
+    ? transientHalted
+    : selectedResults?.status === 'ready'
+      ? (selectedResults.halted ?? null)
+      : null
   const [activeResultIdx, setActiveResultIdx] = useState(0)
   // Failures outside a query run (loading databases, deleting a notebook, managing saved runs)
   const [pageError, setPageError] = useState('')
@@ -223,7 +232,8 @@ export default function QueryPage() {
             database_id: db.id,
             database_name: db.name,
             sql: sqlToRun,
-            statement_count: results.length,
+            // How many statements were submitted; a halted batch returned fewer of them
+            statement_count: statements.length,
             row_count: results.reduce((n, r) => n + (r.changes ?? r.results.length), 0),
             error_count: results.filter((r) => r.error).length,
             duration_ms: results.reduce((n, r) => n + r.duration_ms, 0),
@@ -275,7 +285,11 @@ export default function QueryPage() {
           { databaseId: db.id, statements, notebookId: nbId, ...(sessionDatabase ? { sessionDatabase } : {}) },
           controller.signal
         )
-        finishRun(nbId, { run: summary(res, res.results), results: res.results })
+        finishRun(nbId, {
+          run: summary(res, res.results),
+          results: res.results,
+          halted: haltNotice(res.halted, res.results, statements.length),
+        })
         rememberSessionUse(res.results)
       }
     } catch (err) {
@@ -794,6 +808,7 @@ export default function QueryPage() {
               runningHint={runningKind === 'spark' ? t('query.spark_cancel_hint') : ''}
               runError={runError}
               transient={transient}
+              halted={shownHalted}
               selectedRun={selectedRun}
               selectedResults={selectedResults}
               results={statementResults}
