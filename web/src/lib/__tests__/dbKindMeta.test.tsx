@@ -6,8 +6,8 @@ import type { DbKind } from '../../types'
 
 afterEach(() => setLocale('en'))
 
-const render = (kind?: DbKind, provider?: string | null, tone?: 'default' | 'muted') =>
-  renderToStaticMarkup(<DbKindMeta kind={kind} provider={provider} tone={tone} />)
+const render = (kind?: DbKind, provider?: string | null) =>
+  renderToStaticMarkup(<DbKindMeta kind={kind} provider={provider} />)
 
 describe('DbKindMeta', () => {
   it('names the engine and the provider it runs on', () => {
@@ -30,10 +30,13 @@ describe('DbKindMeta', () => {
     expect(render(undefined)).toContain('D1')
   })
 
-  it('renders the engine in the info accent and the provider in the plain text colour', () => {
+  it('ranks the engine above the provider and the separating dot below both', () => {
     const html = render('postgres')
-    expect(html).toContain('text-info-600')
-    expect(html).toContain('text-ink-700')
+    expect(html).toContain('text-ink-500')
+    expect(html).toContain('text-ink-400')
+    expect(html).toContain('text-ink-300')
+    expect(html).not.toContain('text-info-600')
+    expect(html).not.toContain('text-ink-700')
   })
 
   it('keeps the provider names in Chinese too', () => {
@@ -60,13 +63,10 @@ describe('DbKindMeta', () => {
     expect(html).toContain('Instabox')
   })
 
-  it("quiets the whole pair on the switcher button's second line", () => {
-    const html = render('postgres', undefined, 'muted')
+  it('leaves the provider step out when the engine has no provider', () => {
+    const html = render('spark')
     expect(html).toContain('text-ink-500')
-    expect(html).not.toContain('text-info-600')
-    expect(html).not.toContain('text-ink-700')
-    // One step smaller than a row's own pair: it sits under the target's name
-    expect(html).toContain('text-micro')
-    expect(render('postgres')).toContain('text-caption')
+    expect(html).not.toContain('text-ink-400')
+    expect(html).not.toContain('text-ink-300')
   })
 })
