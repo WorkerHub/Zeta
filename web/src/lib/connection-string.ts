@@ -4,10 +4,17 @@
 // The backend tests the connection again when it stores the registration, so this is only the
 // form's own gate: a passing test vouches for the exact values it ran against, and nothing else.
 
+import type { DbKind } from '../types'
+
 export type ConnectionTestState = 'idle' | 'testing' | 'passed' | 'failed'
 
 /** The engines registered from values the user pastes, rather than from a Cloudflare database. */
 export type ConnectionKind = 'postgres' | 'mysql' | 'spark'
+
+/** Whether this target is registered from pasted values rather than from a Cloudflare database. */
+export function isConnectionKind(kind: DbKind | undefined): kind is ConnectionKind {
+  return kind === 'postgres' || kind === 'mysql' || kind === 'spark'
+}
 
 export interface ConnectionValues {
   kind: ConnectionKind

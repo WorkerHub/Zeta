@@ -21,6 +21,11 @@ interface Props {
   onPlatformTokenChange: (token: string) => void
   onAppTokenChange: (token: string) => void
   onTest: () => void
+  /**
+   * Editing a saved registration: the stored values never come back, so every field starts empty
+   * and masked, and blank means "keep what is stored".
+   */
+  editing?: boolean
 }
 
 type Field = 'url' | 'platform' | 'app'
@@ -57,6 +62,7 @@ export default function ConnectionStringFields({
   onPlatformTokenChange,
   onAppTokenChange,
   onTest,
+  editing = false,
 }: Props) {
   const { t } = useLocale()
   const [revealed, setRevealed] = useState<Record<Field, boolean>>({ url: false, platform: false, app: false })
@@ -110,16 +116,16 @@ export default function ConnectionStringFields({
       <div className="relative">
         <input
           id="db-connection-url"
-          type={spark || revealed.url ? 'text' : 'password'}
+          type={(spark && !editing) || revealed.url ? 'text' : 'password'}
           className="input pr-11 font-mono text-caption"
           value={url}
           onChange={(e) => onUrlChange(e.target.value)}
-          placeholder={t(urlCopy.placeholder)}
+          placeholder={t(editing ? 'admin_db.connection_unchanged' : urlCopy.placeholder)}
           autoComplete="off"
           spellCheck={false}
           aria-describedby="db-connection-url-hint"
         />
-        {!spark && (
+        {(!spark || editing) && (
           <RevealToggle
             revealed={revealed.url}
             label={revealed.url ? t('admin_db.hide_connection_url') : t('admin_db.show_connection_url')}
@@ -145,6 +151,7 @@ export default function ConnectionStringFields({
                   className="input pr-11 font-mono text-caption"
                   value={token.value}
                   onChange={(e) => token.onChange(e.target.value)}
+                  placeholder={editing ? t('admin_db.connection_unchanged') : undefined}
                   autoComplete="off"
                   spellCheck={false}
                 />
