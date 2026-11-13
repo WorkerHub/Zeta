@@ -276,6 +276,54 @@ describe('saving runs', () => {
     ])
   })
 
+  it('saves whether a cancellation stopped the run, and answers a stored run with the same boolean', async () => {
+    const { env, app, executed } = setup()
+    const executionId = crypto.randomUUID()
+    // Cancelled while the first statement is in flight: it completes, the second never starts
+    const inner = globalThis.fetch
+    let calls = 0
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: unknown, init: RequestInit) => {
+        calls++
+        if (calls === 1) {
+          const cancelled = await call(env, '/api/query/cancel', 'POST', MEMBER, 'member', { executionId })
+          expect(cancelled.body).toEqual({ ok: true, cancelled: true })
+        }
+        return inner(url as never, init as never)
+      })
+    )
+
+    const stopped = await batch(env, {
+      statements: ['SELECT x FROM t LIMIT 1', 'SELECT 2 AS b'],
+      notebookId: 'nb-1',
+      executionId,
+    })
+    expect(stopped.status).toBe(200)
+    // A cancellation is not a failure: halted stays false and only the one statement ran
+    expect(stopped.body.halted).toBe(false)
+    expect(stopped.body.cancelled).toBe(true)
+    expect(stopped.body.results).toHaveLength(1)
+    expect(executed).toHaveLength(1)
+
+    expect(rows(app, 'SELECT seq, halted, cancelled, statement_count FROM notebook_runs')).toEqual([
+      { seq: 1, halted: 0, cancelled: 1, statement_count: 2 },
+    ])
+
+    const detail = await call(env, `/api/notebooks/nb-1/runs/${String(stopped.body.run_id)}`)
+    expect(detail.body).toMatchObject({ halted: false, cancelled: true, statement_count: 2 })
+    const list = await call(env, '/api/notebooks/nb-1/runs')
+    expect((list.body.results as Row[]).map((r) => [r.cancelled, r.halted])).toEqual([[true, false]])
+
+    // A complete batch says false, so the two flags never share a reading
+    const complete = await batch(env, { statements: ['SELECT 1 AS a'], notebookId: 'nb-1' })
+    expect(complete.body.cancelled).toBe(false)
+    expect(rows(app, 'SELECT seq, cancelled FROM notebook_runs ORDER BY seq')).toEqual([
+      { seq: 1, cancelled: 1 },
+      { seq: 2, cancelled: 0 },
+    ])
+  })
+
   it('does not save a batch whose statements were all rejected before running', async () => {
     const { env, app, executed } = setup()
     const { status, body } = await batch(env, { statements: ['DELETE FROM t', 'DROP TABLE t'], notebookId: 'nb-1' })

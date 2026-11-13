@@ -138,6 +138,8 @@ export interface NotebookRunRow {
   storage_truncated: number
   // 1 when the batch stopped at a failing statement (schema_v4, see POST /api/query/batch)
   halted: number
+  // 1 when a cancellation stopped the run (schema_v5, see POST /api/query/cancel)
+  cancelled: number
   results_bytes: number
   executed_at: number // milliseconds
   results: string // JSON: the run's statement results

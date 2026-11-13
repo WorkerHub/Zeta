@@ -28,6 +28,7 @@ describe('appInternalTables', () => {
         'zeta_notebooks',
         'zeta_notebook_runs',
         'zeta_rate_limits',
+        'zeta_executions',
         // The schema-migration ledger is internal too (ONE-352)
         '_zeta_schema_migrations',
       ].sort()

@@ -34,6 +34,8 @@ export function tables(env: Pick<Env, 'TABLE_PREFIX'>) {
     notebooks: `${p}notebooks`,
     notebook_runs: `${p}notebook_runs`,
     rate_limits: `${p}rate_limits`,
+    // One row per in-flight query request: the cancellation registry (see lib/executions.ts).
+    executions: `${p}executions`,
   }
 }
 
@@ -53,7 +55,7 @@ export function migrationsTable(env: Pick<Env, 'TABLE_PREFIX'>): string {
 
 // ── Existing-schema detection (anti-silent-switch guard) ─────────────────────────────────────
 
-// The unprefixed names of the 11 Zeta tables double as the family suffixes: any table named
+// The unprefixed names of the 12 Zeta tables double as the family suffixes: any table named
 // `<something>users`, `<something>settings` … belongs to the family, with `<something>_` as its
 // prefix (and a bare `users` means an unprefixed schema).
 const FAMILY_TABLES = Object.values(tables({ TABLE_PREFIX: '' }))
@@ -67,14 +69,14 @@ const MIN_FAMILY_TABLES = 9
 export interface ExistingTableFamily {
   // '' for an unprefixed schema, otherwise the prefix with its trailing '_' (e.g. 'ZETA_')
   prefix: string
-  // how many of the 11 family tables were found under that prefix
+  // how many of the 12 family tables were found under that prefix
   tableCount: number
 }
 
 // Scans sqlite_master for an initialised Zeta table family under any prefix. This is the eyes of
 // the anti-silent-switch guard: runSetup() refuses to initialise when it finds a family whose
 // prefix differs from the resolved one, instead of silently stranding the existing data under a
-// new set of tables. Only table NAMES are read, and only the 11 Zeta family names are ever
+// new set of tables. Only table NAMES are read, and only the 12 Zeta family names are ever
 // matched — other projects' tables (SL_*, eNotify_*, …) are neither counted nor interpreted.
 export async function detectExistingTableFamily(db: D1Database): Promise<ExistingTableFamily | null> {
   const rows = await db.prepare("SELECT name FROM sqlite_master WHERE type = 'table'").all<{ name: string }>()

@@ -21,6 +21,8 @@ const my = vi.hoisted(() => ({
     error?: { message: string; kind: string }
   }>,
   openError: null as null | { message: string; kind: string },
+  // Runs before a scripted result is handed back, so a test can cancel mid-statement
+  onRun: null as null | (() => Promise<void>),
 }))
 
 vi.mock('../../lib/mysql-executor', async (importOriginal) => {
@@ -38,6 +40,7 @@ vi.mock('../../lib/mysql-executor', async (importOriginal) => {
       return {
         async run(sql: string, kind: string) {
           record.runs.push({ sql, kind })
+          if (my.onRun) await my.onRun()
           const next = my.queue.shift()
           if (next?.error) throw new actual.MySqlQueryError(next.error.message, next.error.kind as never)
           return {
@@ -64,6 +67,7 @@ afterEach(() => {
   my.opened.length = 0
   my.queue.length = 0
   my.openError = null
+  my.onRun = null
 })
 
 // The app database is a real in-memory SQLite with the production schema, so the registry,
@@ -101,6 +105,62 @@ describe('query a MySQL target', () => {
     // The row cap is applied inside the executor (limitReadSql, MySQL dialect)
     expect(my.opened[0]!.runs).toEqual([{ sql: 'SELECT * FROM t', kind: 'read' }])
     expect(my.opened[0]!.closed).toBe(true)
+  })
+
+  it('stops a cancelled batch at the statement boundary, without a kill', async () => {
+    // TiDB has no kill channel (KILL is rejected by the endpoint), so a cancel only sets the flag:
+    // the running statement finishes, the next one never starts, and the response says cancelled
+    // rather than halted.
+    const env = await myEnv('read')
+    const executionId = crypto.randomUUID()
+    my.onRun = async () => {
+      const res = await post(env, '/api/query/cancel', { executionId }, await bearer(env, 'u1'))
+      expect(await res.json()).toEqual({ ok: true, cancelled: true })
+    }
+    my.queue.push({ results: [{ n: 1 }] }, { results: [{ n: 2 }] })
+
+    const res = await post(
+      env,
+      '/api/query/batch',
+      { databaseId: 'my1', statements: ['SELECT 1', 'SELECT 2'], executionId },
+      await bearer(env, 'u1')
+    )
+
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as {
+      results: Array<{ results?: unknown[]; cancelled?: boolean }>
+      cancelled: boolean
+      halted: boolean
+    }
+    // The statement that was already running completed and its rows are real
+    expect(body.results).toHaveLength(1)
+    expect(body.results[0]).toMatchObject({ results: [{ n: 1 }] })
+    expect(body.results[0]!.cancelled).toBeUndefined()
+    expect(body.cancelled).toBe(true)
+    expect(body.halted).toBe(false)
+    expect(my.opened[0]!.runs.map((r) => r.sql)).toEqual(['SELECT 1'])
+  })
+
+  it('reports a statement interrupted while a cancel is pending as cancelled, not as an error', async () => {
+    const env = await myEnv('read')
+    const executionId = crypto.randomUUID()
+    my.onRun = async () => {
+      await post(env, '/api/query/cancel', { executionId }, await bearer(env, 'u1'))
+    }
+    // The statement fails for its own reason, but the pending cancellation decides how it is recorded
+    my.queue.push({ error: { message: 'You have an error in your SQL syntax', kind: 'sql' } })
+
+    const res = await post(
+      env,
+      '/api/query',
+      { databaseId: 'my1', sql: 'SELECT nope FROM t', executionId },
+      await bearer(env, 'u1')
+    )
+
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as { cancelled?: boolean; error?: string }
+    expect(body.cancelled).toBe(true)
+    expect(body.error).toBeUndefined()
   })
 
   it('returns the affected row count for a write and no result rows', async () => {

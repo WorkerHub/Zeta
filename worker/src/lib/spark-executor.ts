@@ -9,7 +9,9 @@ import type { SparkAccess } from './spark-access'
 //   GET  {url}/health  → {"ok":true,"sparkVersion":"3.5.3"}   (platform token only)
 //   POST {url}/query   → {"columns":[…],"rows":[[…]],"rowCount":n,"truncated":bool}
 //                        headers: Authorization: Bearer <platform token>, X-Auth-Token: <app token>
-//                        body:    {"sql":"…","maxRows":5000,"session":"<caller id>"}
+//                        body:    {"sql":"…","maxRows":5000,"session":"<caller id>","execution":"<execution id>"}
+//   POST {url}/cancel  → {"ok":true}
+//                        same headers, body: {"session":"<caller id>","execution":"<execution id>"}
 //
 // There is no driver to load: Workers cannot open a Spark Connect (gRPC) or Thrift (JDBC) session,
 // and the service's HTTP contract *is* the interface. So this module is a thin `fetch` client with
@@ -94,6 +96,12 @@ export const QUERY_TIMEOUT_MS = 300_000
 /** The hard ceiling of one connection check: booting a stopped-by-suspension machine takes ~17 s. */
 export const CONNECT_HARD_CAP_MS = 120_000
 
+/**
+ * The ceiling of one cancel request. The spike measured /cancel at 739–1356 ms, so this is generous
+ * headroom — and it keeps a wedged service from holding the cancel open for long.
+ */
+const CANCEL_TIMEOUT_MS = 10_000
+
 // How hard a health probe tries. `delays[i]` is the wait *before* attempt i, so [0, 800, 2400] fires
 // immediately, then after 0.8 s and 2.4 s.
 export interface SparkHealthPolicy {
@@ -144,6 +152,13 @@ export interface SparkOpenOptions {
    * Omitted → the service's default session.
    */
   session?: string
+  /**
+   * This request's execution id, which the service turns into a Spark job group (`session` /
+   * `execution`). It is what makes a cancel hit *this* request's job instead of whatever the session
+   * happens to be running when the cancel arrives — the two are indistinguishable by session alone
+   * (see lib/executions.ts). Omitted → the service groups by session, as before the field existed.
+   */
+  execution?: string
 }
 
 /** What a connection check runs with: the 20 s health budget and the 120 s hard cap, in one place. */
@@ -278,7 +293,8 @@ async function postQuery(
   statement: string,
   maxRows: number,
   timeoutMs: number,
-  session?: string
+  session?: string,
+  execution?: string
 ): Promise<SparkResponse> {
   let res: Response
   try {
@@ -290,9 +306,14 @@ async function postQuery(
         'Content-Type': 'application/json',
         Accept: 'application/json',
       },
-      // The field is left out entirely when there is no session, so the service answers on its default
-      // session exactly as it did before the field existed.
-      body: JSON.stringify(session ? { sql: statement, maxRows, session } : { sql: statement, maxRows }),
+      // A field is left out entirely when it has no value, so the service answers exactly as it did
+      // before that field existed (its default session, its session-level job group).
+      body: JSON.stringify({
+        sql: statement,
+        maxRows,
+        ...(session ? { session } : {}),
+        ...(execution ? { execution } : {}),
+      }),
       signal: AbortSignal.timeout(Math.max(1, timeoutMs)),
     })
   } catch (err) {
@@ -327,6 +348,7 @@ export async function openSparkSession(access: SparkAccess, opts: SparkOpenOptio
   // Read before the health probe: an unusable session is this deployment's problem, not a reason to
   // spend a request on the machine.
   const session = readSession(opts.session)
+  const execution = readSession(opts.execution)
   const deadline = opts.hardCapMs ? Date.now() + opts.hardCapMs : Number.POSITIVE_INFINITY
   const health = await probeSparkHealth(access, opts.health ?? QUERY_HEALTH, deadline)
   const statementTimeout = opts.statementTimeoutMs ?? QUERY_TIMEOUT_MS
@@ -337,7 +359,14 @@ export async function openSparkSession(access: SparkAccess, opts: SparkOpenOptio
     async run(statement: string, kind: SqlClass, maxRows: number): Promise<SparkExecuted> {
       const remaining = deadline - Date.now()
       if (remaining <= 0) throw new SparkQueryError(SPARK_STARTING_MESSAGE, 'starting', 'spark_not_ready')
-      const response = await postQuery(access, statement, maxRows, Math.min(statementTimeout, remaining), session)
+      const response = await postQuery(
+        access,
+        statement,
+        maxRows,
+        Math.min(statementTimeout, remaining),
+        session,
+        execution
+      )
 
       // A write's result table is not returned, and the service's rowCount is 0 for DDL/DML — an
       // affected-row count is never invented here (same contract as the D1 and PostgreSQL paths).
@@ -356,6 +385,47 @@ export async function openSparkSession(access: SparkAccess, opts: SparkOpenOptio
 
     // Nothing to release: each statement is one HTTP request and the service keeps its own session.
     async close() {},
+  }
+}
+
+// Stops the running job of one execution. The service cancels the job group of `session` /
+// `execution`, leaves the SparkSession, its temporary views and its current database untouched, and
+// answers {"ok":true} even when nothing is running (idempotent).
+//
+// The answer separates only "the service acknowledged" from "it did not" — and even a
+// acknowledgement is no proof that this execution stopped: a cancelled /query answers with an
+// ordinary 200 + error stack that no field distinguishes from a SQL failure (spike #27 §10.2), which
+// is why the caller decides "cancelled" from its own registry row (lib/executions.ts) instead.
+export async function cancelSparkExecution(
+  access: SparkAccess,
+  opts: { session?: string; execution?: string }
+): Promise<{ ok: boolean }> {
+  let session: string | undefined
+  let execution: string | undefined
+  try {
+    session = readSession(opts.session)
+    execution = readSession(opts.execution)
+  } catch {
+    // A value this deployment could never have sent: report it as a failed cancel, never as a query.
+    return { ok: false }
+  }
+
+  try {
+    const res = await fetch(`${access.url}/cancel`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${access.platform_token}`,
+        'X-Auth-Token': access.app_token,
+        'Content-Type': 'application/json',
+        Accept: 'application/json',
+      },
+      body: JSON.stringify({ ...(session ? { session } : {}), ...(execution ? { execution } : {}) }),
+      signal: AbortSignal.timeout(CANCEL_TIMEOUT_MS),
+    })
+    return { ok: res.ok }
+  } catch (err) {
+    console.error(`Spark cancel did not complete: ${err instanceof Error ? err.name : typeof err}`)
+    return { ok: false }
   }
 }
 

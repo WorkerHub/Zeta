@@ -205,15 +205,19 @@ async function ownsNotebook(c: Context<{ Bindings: Env; Variables: Variables }>,
 }
 
 const RUN_SUMMARY_COLUMNS = `r.id, r.seq, r.notebook_id, r.database_id, r.sql, r.statement_count, r.row_count, r.error_count,
-  r.duration_ms, r.storage_truncated, r.halted, r.results_bytes, r.executed_at`
+  r.duration_ms, r.storage_truncated, r.halted, r.cancelled, r.results_bytes, r.executed_at`
 
 type RunSummaryRow = Omit<NotebookRunRow, 'user_id' | 'results'> & { database_name: string | null }
 
-// The stored 0/1 flag as the client's boolean: a run answers `halted` the same way the batch
-// response that created it did (see POST /api/query/batch), whether it just ran or was read back.
-const withHalted = <T extends { halted: number }>(row: T): Omit<T, 'halted'> & { halted: boolean } => ({
+// The stored 0/1 flag as the client's boolean: a run answers `halted` and `cancelled` the same way the
+// query response that created it did (see POST /api/query/batch and /api/query/cancel), whether it
+// just ran or was read back.
+const withFlags = <T extends { halted: number; cancelled: number }>(
+  row: T
+): Omit<T, 'halted' | 'cancelled'> & { halted: boolean; cancelled: boolean } => ({
   ...row,
   halted: row.halted === 1,
+  cancelled: row.cancelled === 1,
 })
 
 // GET /api/notebooks/:id/runs — newest (highest number) first, without the results. Pages
@@ -246,7 +250,7 @@ notebooks.get('/:id/runs', async (c) => {
   return c.json({
     results: rows.results
       .slice(0, limit)
-      .map((r) => ({ ...withHalted(r), accessible: access.get(r.database_id) ?? false })),
+      .map((r) => ({ ...withFlags(r), accessible: access.get(r.database_id) ?? false })),
     has_more: rows.results.length > limit,
   })
 })
@@ -273,7 +277,7 @@ notebooks.get('/:id/runs/:runId', async (c) => {
   } catch {
     /* corrupt row: show the run without results */
   }
-  return c.json({ ...withHalted(run), accessible: true, results })
+  return c.json({ ...withFlags(run), accessible: true, results })
 })
 
 // DELETE /api/notebooks/:id/runs/:runId
