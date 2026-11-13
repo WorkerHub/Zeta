@@ -10,6 +10,13 @@ import { generateRegistrationOptions, verifyRegistrationResponse } from '@simple
 import { isoBase64URL } from '@simplewebauthn/server/helpers'
 import { KV } from '../lib/kv'
 import { getRunPolicy, parseBoundedInt, pruneRuns } from '../lib/runs'
+import {
+  THEME_COLORS,
+  ThemeColorColumnMissingError,
+  isThemeColor,
+  readThemeColor,
+  writeThemeColor,
+} from '../lib/theme-color'
 import { resolveAppOrigin, resolveRpID } from '../lib/app-url'
 
 const profile = new Hono<{ Bindings: Env; Variables: Variables }>()
@@ -66,6 +73,9 @@ profile.get('/me', async (c) => {
 
   return c.json({
     ...user,
+    // Read on its own so this query never names the column: a database that has not run schema_v6
+    // yet answers null here instead of failing, and signing in keeps working. See lib/theme-color.ts.
+    theme_color: await readThemeColor(c.env, user.id),
     totpCredentials: totpRows.results,
     passkeyCredentials: passkeyRows.results,
   })
@@ -123,6 +133,28 @@ profile.put('/run-settings', async (c) => {
   // Awaited so the returned usage already reflects the pruning
   await pruneRuns(c.env, { userId: c.get('userId') })
   return c.json(await runSettings(c))
+})
+
+// ── Theme colour ──────────────────────────────────────────────────────────────
+// The account's brand-colour preset (see lib/theme-color.ts). null means never set — the browser
+// then paints the default terracotta. Until the database has run schema_v6 the read answers null
+// and a write answers 503 with an explanation, so the gap between a deploy and the admin's upgrade
+// stays usable instead of exposing a missing column.
+
+profile.get('/theme-color', async (c) => c.json({ theme_color: await readThemeColor(c.env, c.get('userId')) }))
+
+profile.put('/theme-color', async (c) => {
+  const body = await c.req.json<{ theme_color?: unknown }>().catch(() => null)
+  if (!isThemeColor(body?.theme_color)) {
+    return c.json({ error: `theme_color must be one of: ${THEME_COLORS.join(', ')}` }, 400)
+  }
+  try {
+    await writeThemeColor(c.env, c.get('userId'), body.theme_color)
+  } catch (err) {
+    if (err instanceof ThemeColorColumnMissingError) return c.json({ error: err.message }, 503)
+    throw err
+  }
+  return c.json({ theme_color: body.theme_color })
 })
 
 // ── POST /api/profile/change-password ────────────────────────────────────────

@@ -31,7 +31,14 @@ const statements = (prefix: string | undefined) =>
 describe('getMigrations', () => {
   it('appends the registry and saved-run migrations to the collapsed schema_v1, with no PRAGMA probing', () => {
     const migrations = getMigrations(env('ZETA'))
-    expect(migrations.map((m) => m.name)).toEqual(['schema_v1', 'schema_v2', 'schema_v3', 'schema_v4', 'schema_v5'])
+    expect(migrations.map((m) => m.name)).toEqual([
+      'schema_v1',
+      'schema_v2',
+      'schema_v3',
+      'schema_v4',
+      'schema_v5',
+      'schema_v6',
+    ])
     expect(migrations[0]!.sql).not.toMatch(/PRAGMA/)
     expect(migrations[0]!.sql).not.toMatch(/\bALTER TABLE\b/)
     // No SQL line comments: exec() collapses the SQL onto one line (see migrations-runner.ts)
@@ -82,6 +89,24 @@ describe('getMigrations', () => {
     expect(getMigrations(env('')).find((m) => m.name === 'schema_v5')!.sql).toContain(
       'CREATE TABLE IF NOT EXISTS executions ('
     )
+  })
+
+  it('adds the theme-colour column to users, nullable and prefix-aware', () => {
+    // One additive statement, no default and no backfill: a row that predates the migration was
+    // never set, and reads as null (the default terracotta) either way.
+    expect(getMigrations(env('ZETA')).find((m) => m.name === 'schema_v6')!.sql).toBe(
+      'ALTER TABLE ZETA_users ADD COLUMN theme_color TEXT'
+    )
+    expect(getMigrations(env('SL')).find((m) => m.name === 'schema_v6')!.sql).toBe(
+      'ALTER TABLE SL_users ADD COLUMN theme_color TEXT'
+    )
+    expect(getMigrations(env('')).find((m) => m.name === 'schema_v6')!.sql).toBe(
+      'ALTER TABLE users ADD COLUMN theme_color TEXT'
+    )
+    // Additive only: nothing is dropped, renamed or rewritten
+    const sql = getMigrations(env('ZETA')).find((m) => m.name === 'schema_v6')!.sql
+    expect(sql).not.toMatch(/\b(DROP|RENAME)\b/i)
+    expect(sql).not.toMatch(/\bUPDATE\b|\bDELETE\b/i)
   })
 
   it('parameterises every table and index name by the effective prefix', () => {
@@ -258,5 +283,63 @@ describe('schema_v4 applied after schema_v3', () => {
     ])
     // The run that existed before the upgrade reads as "ran to the end": nothing was backfilled
     expect(sqlite.prepare('SELECT id, halted FROM notebook_runs').all()).toEqual([{ id: 'r1', halted: 0 }])
+  })
+})
+
+describe('schema_v6 applied after schema_v5', () => {
+  it.each([
+    ['no prefix', '', 'users'],
+    ['the SL_ prefix', 'SL', 'SL_users'],
+    ['the ZETA_ prefix', 'ZETA', 'ZETA_users'],
+  ])('creates a nullable, writable theme_color under %s', async (_, prefix, usersTable) => {
+    const { db, sqlite } = sqliteD1()
+    await runMigrations(fakeEnv({ DB: db, TABLE_PREFIX: prefix }))
+
+    const columns = sqlite.prepare(`PRAGMA table_info(${usersTable})`).all() as Array<{ name: string; notnull: number }>
+    const themeColor = columns.find((c) => c.name === 'theme_color')
+    expect(themeColor).toBeDefined()
+    // Nullable: "no preset" is a value, not a default to seed
+    expect(themeColor!.notnull).toBe(0)
+
+    sqlite.exec(`
+      INSERT INTO ${usersTable} (id, email, name, role, created_at, updated_at)
+      VALUES ('u1', 'u@example.com', 'U', 'member', 0, 0)
+    `)
+    expect(sqlite.prepare(`SELECT theme_color FROM ${usersTable}`).all()).toEqual([{ theme_color: null }])
+    sqlite.exec(`UPDATE ${usersTable} SET theme_color = 'ocean'`)
+    expect(sqlite.prepare(`SELECT theme_color FROM ${usersTable}`).all()).toEqual([{ theme_color: 'ocean' }])
+  })
+
+  it('adds the theme-colour column to a users table that already holds users, changing no row', async () => {
+    const { db, sqlite } = sqliteD1()
+    const env = fakeEnv({ DB: db, TABLE_PREFIX: '' })
+    const migrations = getMigrations({ TABLE_PREFIX: '' })
+    const upToV6 = migrations.slice(0, migrations.findIndex((m) => m.name === 'schema_v6') + 1)
+    expect(upToV6[upToV6.length - 1]!.name).toBe('schema_v6')
+
+    // A deployment whose accounts predate the column
+    await runMigrations(env, upToV6.slice(0, -1))
+    sqlite.exec(`
+      INSERT INTO users (id, email, name, role, created_at, updated_at, notebook_run_limit)
+      VALUES ('u1', 'u@example.com', 'U', 'member', 11, 22, 5);
+    `)
+
+    const upgrade = await runMigrations(env, upToV6)
+    expect(upgrade.migrations).toEqual([
+      { name: 'schema_v1', status: 'skipped' },
+      { name: 'schema_v2', status: 'skipped' },
+      { name: 'schema_v3', status: 'skipped' },
+      { name: 'schema_v4', status: 'skipped' },
+      { name: 'schema_v5', status: 'skipped' },
+      { name: 'schema_v6', status: 'applied' },
+    ])
+    // The existing account is untouched apart from the new column reading as unset
+    expect(
+      sqlite.prepare('SELECT id, name, created_at, updated_at, notebook_run_limit, theme_color FROM users').all()
+    ).toEqual([{ id: 'u1', name: 'U', created_at: 11, updated_at: 22, notebook_run_limit: 5, theme_color: null }])
+
+    // ... and it takes a preset once the column exists
+    sqlite.exec(`UPDATE users SET theme_color = 'ocean' WHERE id = 'u1'`)
+    expect(sqlite.prepare('SELECT theme_color FROM users').all()).toEqual([{ theme_color: 'ocean' }])
   })
 })

@@ -242,5 +242,15 @@ export function getMigrations(env: Pick<Env, 'TABLE_PREFIX'>): Migration[] {
         `ALTER TABLE ${T.notebook_runs} ADD COLUMN cancelled INTEGER NOT NULL DEFAULT 0`,
       ].join(';\n'),
     },
+    {
+      // The user's brand-colour preset, one per account (see lib/theme-color.ts and
+      // GET/PUT /api/profile/theme-color). Nullable on purpose: a row that predates the migration
+      // was never set, and reads as "no preset" — the default terracotta — without any backfill.
+      //
+      // Deploying does NOT add the column: only the setup/admin upgrade runs migrations, so between
+      // the two the reads answer null and writes answer 503 instead of failing on a missing column.
+      name: 'schema_v6',
+      sql: `ALTER TABLE ${T.users} ADD COLUMN theme_color TEXT`,
+    },
   ]
 }
