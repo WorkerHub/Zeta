@@ -124,6 +124,14 @@ export const translations: Record<Locale, Record<string, string>> = {
     'theme.dark': 'Dark',
     'theme.label': 'Theme',
 
+    // Theme colour presets
+    'theme_color.terracotta': 'Terracotta',
+    'theme_color.ocean': 'Ocean',
+    'theme_color.teal': 'Teal',
+    'theme_color.forest': 'Forest',
+    'theme_color.grape': 'Grape',
+    'theme_color.rose': 'Rose',
+
     // User menu
     'user.profile_security': 'Profile & Security',
     'user.admin_panel': 'Admin Panel',
@@ -151,6 +159,8 @@ export const translations: Record<Locale, Record<string, string>> = {
     'profile.back_to_query': 'Back to query',
     'profile.account': 'Account',
     'profile.role': 'Role',
+    'profile.theme_color': 'Theme color',
+    'profile.theme_color_desc': 'Buttons, selection and focus rings follow it. Saved in this browser only.',
     'profile.change_password': 'Change Password',
     'profile.current_password': 'Current password',
     'profile.new_password': 'New password',
@@ -554,6 +564,14 @@ export const translations: Record<Locale, Record<string, string>> = {
     'theme.dark': '深色',
     'theme.label': '主题',
 
+    // Theme colour presets
+    'theme_color.terracotta': '陶土',
+    'theme_color.ocean': '海蓝',
+    'theme_color.teal': '青碧',
+    'theme_color.forest': '森绿',
+    'theme_color.grape': '葡萄紫',
+    'theme_color.rose': '玫瑰',
+
     // User menu
     'user.profile_security': '个人资料与安全',
     'user.admin_panel': '管理面板',
@@ -580,6 +598,8 @@ export const translations: Record<Locale, Record<string, string>> = {
     'profile.back_to_query': '返回查询',
     'profile.account': '账户',
     'profile.role': '角色',
+    'profile.theme_color': '主题色',
+    'profile.theme_color_desc': '用于按钮、选中态与焦点环；仅保存在本浏览器。',
     'profile.change_password': '修改密码',
     'profile.current_password': '当前密码',
     'profile.new_password': '新密码',
