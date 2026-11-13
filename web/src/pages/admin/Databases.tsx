@@ -7,13 +7,27 @@ import DatabaseForm from '../../components/DatabaseForm'
 import { effectiveProvider, engineLabelKey } from '../../lib/db-provider'
 import type { AdminDatabase, CfD1Database, DatabaseGrant } from '../../types'
 
-// Desktop column widths for the data-source list only: everything but the database ID is fixed, so
-// that one column stays flexible and absorbs the width the others leave over. Below `md` the table
-// keeps its natural, content-sized columns and scrolls horizontally inside its card, as before.
-const COL_NAME = 'md:w-[200px] md:max-w-[200px]'
-const COL_ENGINE = 'md:w-[140px] md:max-w-[140px]'
-const COL_PROVIDER = 'md:w-[120px]'
-const COL_STATUS = 'md:w-[112px] md:max-w-[112px]'
+// Desktop column widths for the data-source list, frozen by §4: every column has a hard width, laid
+// down in a <colgroup> that the table's `table-fixed` layout at `md` cannot stretch apart. The action
+// column is the only auto one and takes the width of its buttons, so the table stays exactly as wide
+// as its columns (spare space remains to the right of the last column, never between two columns).
+// Below `md` the table keeps its natural, content-sized columns and scrolls horizontally, as before.
+export const COL_NAME = 'md:w-[200px]'
+export const COL_ENGINE = 'md:w-[140px]'
+export const COL_PROVIDER = 'md:w-[120px]'
+export const COL_ID = 'md:w-[300px]'
+export const COL_STATUS = 'md:w-[112px]'
+
+// The database ID as plain monospaced text: no code-block background, padding or rounding, so the
+// cell does not paint a grey bar across the column's empty half. Truncation only kicks in past the
+// column width, and the native title still carries the whole value.
+export function DatabaseIdText({ value }: { value: string }) {
+  return (
+    <code className="block max-w-full truncate font-mono text-caption text-ink-700 tnum" title={value}>
+      {value}
+    </code>
+  )
+}
 
 // The database-ID header hint. The project has no tooltip component and no floating-layer
 // dependency, so this is the lightweight fallback: a focusable icon whose accessible name and
@@ -250,14 +264,22 @@ export default function AdminDatabases() {
         ) : databases.length === 0 ? (
           <p className="px-4 py-8 text-center text-body text-ink-500">{t('admin_db.no_databases')}</p>
         ) : (
-          <table className="w-full text-body">
+          <table className="w-full text-body md:w-max md:table-fixed">
+            <colgroup>
+              <col className={COL_NAME} />
+              <col className={COL_ENGINE} />
+              <col className={COL_PROVIDER} />
+              <col className={COL_ID} />
+              <col className={COL_STATUS} />
+              <col />
+            </colgroup>
             <thead>
               <tr className="border-b border-ink-200 bg-ink-50">
-                <th className={`text-left px-4 py-3 text-label text-ink-500 ${COL_NAME}`}>{t('admin_db.name')}</th>
-                <th className={`text-left px-4 py-3 text-label text-ink-500 whitespace-nowrap ${COL_ENGINE}`}>
+                <th className="text-left px-4 py-3 text-label text-ink-500">{t('admin_db.name')}</th>
+                <th className="text-left px-4 py-3 text-label text-ink-500 whitespace-nowrap">
                   {t('admin_db.engine')}
                 </th>
-                <th className={`text-left px-4 py-3 text-label text-ink-500 whitespace-nowrap ${COL_PROVIDER}`}>
+                <th className="text-left px-4 py-3 text-label text-ink-500 whitespace-nowrap">
                   {t('admin_db.provider')}
                 </th>
                 <th className="text-left px-4 py-3 text-label text-ink-500 hidden md:table-cell whitespace-nowrap">
@@ -266,7 +288,7 @@ export default function AdminDatabases() {
                     <DatabaseIdHint text={t('admin_db.cf_database_id_hint')} />
                   </span>
                 </th>
-                <th className={`text-left px-4 py-3 text-label text-ink-500 whitespace-nowrap ${COL_STATUS}`}>
+                <th className="text-right px-4 py-3 text-label text-ink-500 whitespace-nowrap">
                   {t('admin_db.status')}
                 </th>
                 <th className="px-4 py-3" />
@@ -278,7 +300,7 @@ export default function AdminDatabases() {
                   key={db.id}
                   className="border-b border-ink-100 hover:bg-ink-50 transition-colors duration-(--duration-base)"
                 >
-                  <td className={`px-4 py-3 ${COL_NAME}`}>
+                  <td className="px-4 py-3">
                     <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-body-strong text-ink-900">
                       <span className="min-w-0 truncate" title={db.name}>
                         {db.name}
@@ -291,39 +313,32 @@ export default function AdminDatabases() {
                       </p>
                     )}
                   </td>
-                  <td className={`px-4 py-3 text-ink-700 whitespace-nowrap ${COL_ENGINE}`}>
-                    {t(engineLabelKey(db.kind))}
-                  </td>
-                  <td className={`px-4 py-3 text-ink-700 whitespace-nowrap ${COL_PROVIDER}`}>
+                  <td className="px-4 py-3 text-ink-700 whitespace-nowrap">{t(engineLabelKey(db.kind))}</td>
+                  <td className="px-4 py-3 text-ink-700 whitespace-nowrap">
                     {effectiveProvider(db.kind, db.provider) ?? '—'}
                   </td>
                   <td className="px-4 py-3 hidden md:table-cell whitespace-nowrap">
-                    {/* The ID column is the only flexible one. Its inner block keeps 288px, so the
-                        column never drops below 320px once the cell's 32px padding is added. */}
-                    <div className="min-w-[288px]">
-                      {!isD1(db) ? (
-                        <span className="text-caption text-ink-400">—</span>
-                      ) : db.cf_database_id ? (
-                        <code
-                          className="block max-w-full truncate text-caption text-ink-700 font-mono bg-ink-100 px-1.5 py-0.5 rounded tnum"
-                          title={db.cf_database_id}
-                        >
-                          {db.cf_database_id}
-                        </code>
-                      ) : (
-                        <span className="badge badge-neutral">
-                          {t('admin_db.legacy_binding', { name: db.binding_name })}
-                        </span>
-                      )}
-                    </div>
-                  </td>
-                  <td className={`px-4 py-3 whitespace-nowrap ${COL_STATUS}`}>
-                    <span className={`badge ${db.is_active ? 'badge-green' : 'badge-neutral'}`}>
-                      {db.is_active ? t('admin_db.active') : t('admin_db.inactive')}
-                    </span>
+                    {!isD1(db) ? (
+                      <span className="text-caption text-ink-400">—</span>
+                    ) : db.cf_database_id ? (
+                      <DatabaseIdText value={db.cf_database_id} />
+                    ) : (
+                      <span className="badge badge-neutral">
+                        {t('admin_db.legacy_binding', { name: db.binding_name })}
+                      </span>
+                    )}
                   </td>
                   <td className="px-4 py-3 whitespace-nowrap">
-                    <div className="flex items-center gap-1 justify-end">
+                    {/* Right-aligned inside its 112px column, so the badge's right edge sits within
+                        40px of the first action button (the two cells' 16px paddings plus 0). */}
+                    <div className="flex justify-end">
+                      <span className={`badge ${db.is_active ? 'badge-green' : 'badge-neutral'}`}>
+                        {db.is_active ? t('admin_db.active') : t('admin_db.inactive')}
+                      </span>
+                    </div>
+                  </td>
+                  <td className="px-4 py-3 whitespace-nowrap">
+                    <div className="flex items-center gap-1">
                       <button type="button" onClick={() => startEdit(db)} className="btn-ghost btn-sm gap-1">
                         <Pencil size={13} /> {t('admin_db.edit')}
                       </button>
