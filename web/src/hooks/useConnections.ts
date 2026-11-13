@@ -92,7 +92,22 @@ export function useConnections(knownIds: string[]) {
     setSessionDatabases((current) => setSessionDatabase(current, id, name))
   }, [])
 
+  // The remembered database turned out not to exist: forget it, but keep the connection — the target
+  // itself answered, just not the database this tab had picked
+  const forgetSessionDatabase = useCallback((id: string) => {
+    setSessionDatabases((current) => withoutSessionDatabase(current, id))
+  }, [])
+
   // A query that fails for an auth/transport/not-ready reason means the target is not reachable
   // any more: the next click has to prove it again.
-  return { isConnected, busyId, connect, disconnect, knockBack: disconnect, sessionDatabaseOf, rememberSessionDatabase }
+  return {
+    isConnected,
+    busyId,
+    connect,
+    disconnect,
+    knockBack: disconnect,
+    sessionDatabaseOf,
+    rememberSessionDatabase,
+    forgetSessionDatabase,
+  }
 }

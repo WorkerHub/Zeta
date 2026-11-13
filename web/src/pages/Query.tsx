@@ -40,6 +40,7 @@ import { useConnections } from '../hooks/useConnections'
 import { knocksBack } from '../lib/connection-state'
 import { errorCodeText } from '../lib/error-copy'
 import { splitSqlStatements, usedDatabaseOf } from '../lib/sql'
+import { missingSessionDatabase } from '../lib/session-database'
 import type { Database as DbType, DbKind, NotebookRunSummary, StatementResult } from '../types'
 
 const THEME_ICONS = { auto: Monitor, light: Sun, dark: Moon }
@@ -70,8 +71,16 @@ export default function QueryPage() {
   // Connection state of the current target (see hooks/useConnections): per target, this browser
   // session only. A target that has not answered a probe cannot be queried.
   const knownDbIds = useMemo(() => databases.map((d) => d.id), [databases])
-  const { isConnected, busyId, connect, disconnect, knockBack, sessionDatabaseOf, rememberSessionDatabase } =
-    useConnections(knownDbIds)
+  const {
+    isConnected,
+    busyId,
+    connect,
+    disconnect,
+    knockBack,
+    sessionDatabaseOf,
+    rememberSessionDatabase,
+    forgetSessionDatabase,
+  } = useConnections(knownDbIds)
   const connected = selectedDb ? isConnected(selectedDb.id) : false
   // The engine the run in flight targets: the Spark cancellation caveat is engine-specific
   const [runningKind, setRunningKind] = useState<DbKind>('sqlite')
@@ -251,6 +260,14 @@ export default function QueryPage() {
           finishRun(nbId, { run: summary(err instanceof ApiError ? err.body : {}, [entry]), results: [entry] })
           // The target itself is no longer usable (auth/transport): the next click has to prove it
           if (err instanceof ApiError && knocksBack(err.status)) knockBack(db.id)
+          // The remembered database is gone: forget it, or every run keeps failing on the same pin
+          if (
+            err instanceof ApiError &&
+            db.kind === 'mysql' &&
+            missingSessionDatabase({ statement: stmt, message: err.message })
+          ) {
+            forgetSessionDatabase(db.id)
+          }
         }
       } else {
         // Multiple statements — use batch endpoint
@@ -265,6 +282,10 @@ export default function QueryPage() {
       if (controller.signal.aborted) return
       finishRun(nbId, { error: describeError(err) })
       if (err instanceof ApiError && knocksBack(err.status)) knockBack(db.id)
+      // A batch's own statements report their failures one by one, so a failed request is the pin
+      if (err instanceof ApiError && db.kind === 'mysql' && missingSessionDatabase({ message: err.message })) {
+        forgetSessionDatabase(db.id)
+      }
     } finally {
       if (runControllers.current.get(nbId) === controller) runControllers.current.delete(nbId)
     }
@@ -279,6 +300,7 @@ export default function QueryPage() {
     knockBack,
     sessionDatabaseOf,
     rememberSessionDatabase,
+    forgetSessionDatabase,
   ])
 
   // The temporary run tab's X: abort the request, ahead of its response, and drop the run
