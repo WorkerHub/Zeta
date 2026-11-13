@@ -2,6 +2,9 @@
 // `localStorage['theme-color']` and the `data-theme-color` attribute on <html>; index.css owns
 // every value. Terracotta is the default and is expressed by the attribute's absence, so both
 // the pre-paint script and the hook agree on it.
+//
+// Once signed in the server is authoritative (GET/PUT /api/profile/theme-color); localStorage is
+// only the first-paint cache that theme-init.js reads before the bundle boots.
 
 export const THEME_COLOR_STORAGE_KEY = 'theme-color'
 
@@ -29,6 +32,50 @@ export function readStoredThemeColor(): ThemeColor {
 export function storeThemeColor(color: ThemeColor): void {
   if (typeof localStorage === 'undefined') return
   localStorage.setItem(THEME_COLOR_STORAGE_KEY, color)
+}
+
+/** Whether this browser holds a valid stored preset — the "local has a value" half of the sync decision. */
+export function hasStoredThemeColor(): boolean {
+  if (typeof localStorage === 'undefined') return false
+  return isThemeColor(localStorage.getItem(THEME_COLOR_STORAGE_KEY))
+}
+
+/**
+ * The first-load sync decision, kept pure so the table is unit-testable without a DOM:
+ * the server wins when it answers a known id; otherwise an existing local preset is kept and
+ * pushed up (`push`) so the account takes over this browser's choice; with neither, the default
+ * stands and nothing is pushed.
+ */
+export function planThemeColorSync(
+  serverRaw: unknown,
+  stored: boolean,
+  local: ThemeColor
+): { color: ThemeColor; push: boolean } {
+  if (isThemeColor(serverRaw)) return { color: serverRaw, push: false }
+  if (stored) return { color: local, push: true }
+  return { color: DEFAULT_THEME_COLOR, push: false }
+}
+
+/**
+ * What to show when a user-initiated save failed. A 503 means the database upgrade has not run
+ * yet; the worker's own error sentence says what to do about it, so it is shown verbatim instead
+ * of the generic copy. Anything else uses the generic sentence.
+ */
+export function themeSaveErrorMessage(
+  status: number | undefined,
+  serverMessage: string | undefined,
+  fallback: string
+): string {
+  return status === 503 && serverMessage ? serverMessage : fallback
+}
+
+/**
+ * A failed switch returns to the last colour the server acknowledged. Before the first boot
+ * answer there is none, so it returns to whatever was on screen before the switch instead of a
+ * possibly stale cached colour.
+ */
+export function rollbackThemeColor(baseline: ThemeColor | null, previous: ThemeColor): ThemeColor {
+  return baseline ?? previous
 }
 
 /**

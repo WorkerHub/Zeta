@@ -1,4 +1,5 @@
 import { getAccessToken, clearSession, setSession, getCurrentUser } from './auth'
+import type { ThemeColor } from './theme-color'
 import type {
   AdminDatabase,
   CfD1Database,
@@ -199,6 +200,12 @@ export const profileApi = {
   me: () => apiFetch<User>('/profile/me'),
   update: (body: { name: string }) =>
     apiFetch<{ message: string }>('/profile/me', { method: 'PATCH', body: JSON.stringify(body) }),
+  themeColor: (signal?: AbortSignal) => apiFetch<{ theme_color: string | null }>('/profile/theme-color', { signal }),
+  updateThemeColor: (color: ThemeColor) =>
+    apiFetch<{ theme_color: string }>('/profile/theme-color', {
+      method: 'PUT',
+      body: JSON.stringify({ theme_color: color }),
+    }),
   changePassword: (body: { currentPassword: string; newPassword: string }) =>
     apiFetch<{ message: string }>('/profile/change-password', { method: 'POST', body: JSON.stringify(body) }),
 

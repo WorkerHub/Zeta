@@ -1,7 +1,8 @@
 import { describe, it, expect, afterEach } from 'vitest'
 import { renderToStaticMarkup } from 'react-dom/server'
 import ThemeColorPicker from '../../components/ThemeColorPicker'
-import { useThemeColor } from '../../hooks/useThemeColor'
+import { AuthProvider } from '../../hooks/useAuth'
+import { ThemeColorProvider, useThemeColor } from '../../hooks/useThemeColor'
 import { THEME_COLORS, type ThemeColor } from '../theme-color'
 import { setLocale, t } from '../translations'
 
@@ -16,6 +17,15 @@ function Probe() {
   const { themeColor, setThemeColor } = useThemeColor()
   return <span>{`${themeColor}/${typeof setThemeColor}`}</span>
 }
+
+const renderProbe = () =>
+  renderToStaticMarkup(
+    <AuthProvider>
+      <ThemeColorProvider>
+        <Probe />
+      </ThemeColorProvider>
+    </AuthProvider>
+  )
 
 describe('ThemeColorPicker', () => {
   it('offers one radio per preset, drawn with that preset swatch token', () => {
@@ -51,6 +61,6 @@ describe('ThemeColorPicker', () => {
 
 describe('useThemeColor', () => {
   it('defaults to terracotta and exposes a setter without a DOM', () => {
-    expect(renderToStaticMarkup(<Probe />)).toContain('terracotta/function')
+    expect(renderProbe()).toContain('terracotta/function')
   })
 })
