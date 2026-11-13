@@ -186,7 +186,14 @@ describe('classifySql (mysql dialect)', () => {
     ['commit', 'COMMIT', 'forbidden'],
     ['rollback', 'ROLLBACK', 'forbidden'],
     ['savepoint', 'SAVEPOINT s', 'forbidden'],
-    ['use', 'USE other', 'forbidden'],
+    // The B ruling: `USE` switches the shared session's default schema and is allowed; every request
+    // re-pins the registered database first (lib/mysql-executor.ts), so nothing leaks between them.
+    ['use', 'USE other', 'read'],
+    ['use with a backtick name', 'USE `other db`', 'read'],
+    ['use does not hide a second statement', 'USE other; DROP TABLE t', 'multiple'],
+    // Cross-database qualified names are not intercepted: that is how a query reaches another schema.
+    ['qualified name in a read', 'SELECT * FROM other.t', 'read'],
+    ['qualified name in a write', 'INSERT INTO other.t VALUES (1)', 'write'],
     ['set', 'SET @x = 1', 'forbidden'],
     ['show processlist', 'SHOW PROCESSLIST', 'forbidden'],
     ['show full processlist', 'SHOW FULL PROCESSLIST', 'forbidden'],
@@ -237,6 +244,124 @@ describe('limitReadSql (mysql dialect)', () => {
     ]) {
       expect(limitReadSql(sql, 10, 'mysql'), sql).toBeNull()
     }
+  })
+})
+
+describe('classifySql (spark dialect)', () => {
+  const cases: Array<[string, string, SqlClass]> = [
+    // reads — what a shared Spark session is actually for
+    ['plain select', 'SELECT 1', 'read'],
+    ['select with a backtick identifier', 'SELECT `a;b` FROM `t`', 'read'],
+    ['show tables', 'SHOW TABLES', 'read'],
+    ['show databases', 'SHOW DATABASES', 'read'],
+    ['describe', 'DESCRIBE t', 'read'],
+    ['describe query', 'DESCRIBE QUERY SELECT * FROM t', 'read'],
+    ['explain', 'EXPLAIN SELECT * FROM t', 'read'],
+    ['values', 'VALUES (1), (2)', 'read'],
+    ['cte select', 'WITH a AS (SELECT 1) SELECT * FROM a', 'read'],
+    // `transform` is also a higher-order function: without USING there is no script
+    ['higher-order transform', 'SELECT transform(a, x -> x + 1) FROM t', 'read'],
+    ['join using columns', 'SELECT * FROM a JOIN b USING (id)', 'read'],
+    // Only `<source>.<quoted path>` opens a file source: a column that happens to be named like one
+    // stays an ordinary read.
+    ['a column named like a file source stays a read', 'SELECT text, csv FROM t', 'read'],
+    // Spark escapes a quote with a backslash (`escapedStringLiterals` defaults to false since 2.0)
+    ['escaped quote keeps the statement in its string', "SELECT 'it\\'s; DROP TABLE x' FROM t", 'read'],
+
+    // writes
+    ['insert into', 'INSERT INTO t SELECT 1', 'write'],
+    ['create table', 'CREATE TABLE t (a INT)', 'write'],
+    ['create view', 'CREATE VIEW v AS SELECT 1', 'write'],
+    ['alter add column', 'ALTER TABLE t ADD COLUMN b INT', 'write'],
+    ['merge', 'MERGE INTO t USING s ON t.id = s.id WHEN MATCHED THEN DELETE', 'write'],
+
+    // destructive
+    ['drop', 'DROP TABLE t', 'destructive'],
+    ['truncate', 'TRUNCATE TABLE t', 'destructive'],
+    ['alter drop column', 'ALTER TABLE t DROP COLUMN b', 'destructive'],
+    ['insert overwrite', 'INSERT OVERWRITE TABLE t SELECT 1', 'destructive'],
+    ['create or replace table', 'CREATE OR REPLACE TABLE t (a INT)', 'destructive'],
+
+    // forbidden — the session, the cluster and its files are off limits
+    ['set', 'SET spark.sql.shuffle.partitions=2', 'forbidden'],
+    ['reset', 'RESET', 'forbidden'],
+    ['use', 'USE other', 'forbidden'],
+    ['cache', 'CACHE TABLE t', 'forbidden'],
+    ['uncache', 'UNCACHE TABLE t', 'forbidden'],
+    ['clear cache', 'CLEAR CACHE', 'forbidden'],
+    ['refresh', 'REFRESH TABLE t', 'forbidden'],
+    ['add jar', 'ADD JAR /tmp/x.jar', 'forbidden'],
+    ['add file', 'ADD FILE /tmp/x.py', 'forbidden'],
+    ['add archive', 'ADD ARCHIVE /tmp/x.zip', 'forbidden'],
+    ['list jar', 'LIST JAR', 'forbidden'],
+    ['list file', 'LIST FILE', 'forbidden'],
+    ['create function', "CREATE FUNCTION f AS 'com.evil.Payload'", 'forbidden'],
+    ['create or replace temporary function', "CREATE OR REPLACE TEMPORARY FUNCTION f AS 'x'", 'forbidden'],
+    ['create temporary view', 'CREATE TEMPORARY VIEW v AS SELECT 1', 'forbidden'],
+    ['create global temporary view', 'CREATE GLOBAL TEMPORARY VIEW v AS SELECT 1', 'forbidden'],
+    ['call', 'CALL p(1)', 'forbidden'],
+    ['load data', "LOAD DATA LOCAL INPATH '/x' INTO TABLE t", 'forbidden'],
+    ['insert overwrite directory', "INSERT OVERWRITE DIRECTORY '/x' SELECT 1", 'forbidden'],
+    [
+      'insert overwrite directory using a source',
+      "INSERT OVERWRITE DIRECTORY '/x' USING parquet SELECT 1",
+      'forbidden',
+    ],
+    // LOCAL DIRECTORY writes the executor's own disk — `local` sits between the words a pair check
+    // would require, so the whole sequence is what gets matched
+    ['insert overwrite local directory', "INSERT OVERWRITE LOCAL DIRECTORY '/x' SELECT 1", 'forbidden'],
+    [
+      'insert overwrite local directory using a source',
+      "INSERT OVERWRITE LOCAL DIRECTORY '/x' USING parquet SELECT 1",
+      'forbidden',
+    ],
+    // TRANSFORM … USING runs the script on the worker itself
+    ['transform using', "SELECT TRANSFORM(a, b) USING 'bash -c id' FROM t", 'forbidden'],
+    ['transform using, lowercase', "select transform(a) using 'bash -c id' from t", 'forbidden'],
+    ['transform using in a cte body', "WITH x AS (SELECT TRANSFORM(a) USING 'id' FROM t) SELECT * FROM x", 'forbidden'],
+    // file sources read the cluster's filesystem
+    ['parquet path', 'SELECT * FROM parquet.`/data/x`', 'forbidden'],
+    ['csv path', "SELECT * FROM csv.'/data/x.csv'", 'forbidden'],
+    ['json path', "SELECT * FROM json.'/data/x.json'", 'forbidden'],
+    ['orc path', 'SELECT * FROM orc.`/data/x`', 'forbidden'],
+    ['text path', 'SELECT * FROM text.`/data/x`', 'forbidden'],
+    ['avro path', 'SELECT * FROM avro.`/data/x`', 'forbidden'],
+    ['binaryFile path', 'SELECT * FROM binaryFile.`/data/x`', 'forbidden'],
+    ['delta path', 'SELECT * FROM delta.`/data/x`', 'forbidden'],
+    ['file path', 'SELECT * FROM file.`/data/x`', 'forbidden'],
+    ['file source in a cte body', 'WITH a AS (SELECT * FROM parquet.`/x`) SELECT * FROM a', 'forbidden'],
+    // The source word decides, not what precedes it: a bare `SELECT text.`/x`` reads the cluster's
+    // files just as well as one after FROM, and a qualified name still opens a file source.
+    ['bare file source without a FROM', 'SELECT text.`/data/x`', 'forbidden'],
+    ['bare file source reading a csv path', "SELECT csv.'/x.csv'", 'forbidden'],
+    ['file source in an insert', "INSERT INTO t SELECT csv.'/x.csv'", 'forbidden'],
+    ['file source after a qualified name', 'SELECT * FROM a.parquet.`/x`', 'forbidden'],
+    ['file source after a qualified name in a join', 'SELECT * FROM t JOIN db.delta.`/x` ON true', 'forbidden'],
+    ['location path', "CREATE TABLE t USING delta LOCATION '/data/x'", 'forbidden'],
+    ['quoted path in from position', "SELECT * FROM '/data/x'", 'forbidden'],
+
+    // scanner + statement splitting
+    ['multi-statement is still refused', 'SELECT 1; SELECT 2', 'multiple'],
+    // `[` is not a Spark quote, so it cannot hide a second statement (the report's key case)
+    ['bracket does not hide a second statement', 'SELECT 1 [; DROP TABLE t', 'multiple'],
+    // `#` opens no comment in Spark, so the statement behind it stays visible
+    ['hash is not a comment', 'SELECT 1 # ; DROP TABLE t', 'multiple'],
+    // `/*! */` is an ordinary comment in Spark, not an executable one
+    ['executable comment is a plain comment', '/*!50000 DELETE FROM t */', 'empty'],
+    // `$$` opens no dollar quote either
+    ['dollar signs do not open a quote', 'SELECT $$a; DROP TABLE t$$', 'multiple'],
+  ]
+
+  for (const [name, sql, expected] of cases) {
+    it(`${name} -> ${expected}`, () => {
+      expect(classifySql(sql, 'spark'), sql).toBe(expected)
+    })
+  }
+
+  it('lets read users run reads and blocks everything higher', () => {
+    expect(checkSqlAccess(classifySql('SHOW TABLES', 'spark'), 'read')).toBeNull()
+    expect(checkSqlAccess(classifySql('INSERT INTO t SELECT 1', 'spark'), 'read')).not.toBeNull()
+    expect(checkSqlAccess(classifySql('INSERT OVERWRITE TABLE t SELECT 1', 'spark'), 'write')).not.toBeNull()
   })
 })
 

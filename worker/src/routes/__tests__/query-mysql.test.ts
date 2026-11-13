@@ -178,7 +178,6 @@ describe('query a MySQL target', () => {
       ['DROP TABLE t', 403],
       ['SELECT 1; SELECT 2', 400],
       ['LOAD DATA INFILE "/x" INTO TABLE t', 403],
-      ['USE other', 403],
       ['SET @x = 1', 403],
       ['SELECT 1 /*! , 2 */', 403],
       ['SHOW PROCESSLIST', 403],
@@ -187,6 +186,16 @@ describe('query a MySQL target', () => {
       expect(res.status, sql).toBe(status)
     }
     expect(my.opened).toHaveLength(0)
+  })
+
+  it('lets a session statement through: USE reaches the executor as a read', async () => {
+    // The B ruling allows `USE` (a session statement, neither a read nor a write); the executor pins
+    // the registered database at every open, so one request's pick never leaks into the next.
+    const env = await myEnv('read')
+    my.queue.push({ results: [] })
+    const res = await post(env, '/api/query', { databaseId: 'my1', sql: 'USE other' }, await bearer(env, 'u1'))
+    expect(res.status).toBe(200)
+    expect(my.opened[0]!.runs).toEqual([{ sql: 'USE other', kind: 'read' }])
   })
 
   it('reports a connection failure as a deployment error, with detail only for admins', async () => {
@@ -223,6 +232,28 @@ describe('query a MySQL target', () => {
     const res = await post(env, '/api/query', { databaseId: 'my1', sql: 'SELECT 1' }, await bearer(env, 'a1', 'admin'))
     expect(res.status).toBe(500)
     expect(((await res.json()) as { error: string }).error).toContain('no stored connection')
+    expect(my.opened).toHaveLength(0)
+  })
+})
+
+describe('POST /api/query/probe (MySQL)', () => {
+  it('opens the stored target, runs one statement and closes it', async () => {
+    const env = await myEnv('read')
+    my.queue.push({ results: [{ '1': 1 }] })
+    const res = await post(env, '/api/query/probe', { databaseId: 'my1' }, await bearer(env, 'u1'))
+    expect(res.status).toBe(200)
+    expect(await res.json()).toMatchObject({ ok: true, kind: 'mysql' })
+    expect(my.opened).toHaveLength(1)
+    expect(my.opened[0]!.url).toBe(STORED_URL)
+    expect(my.opened[0]!.runs).toEqual([{ sql: 'select 1', kind: 'read' }])
+    expect(my.opened[0]!.closed).toBe(true)
+  })
+
+  it('needs a permission row for a member', async () => {
+    const env = await myEnv('read')
+    await env.DB.prepare(`DELETE FROM user_database_permissions WHERE database_id = 'my1'`).run()
+    const res = await post(env, '/api/query/probe', { databaseId: 'my1' }, await bearer(env, 'u1'))
+    expect(res.status).toBe(403)
     expect(my.opened).toHaveLength(0)
   })
 })
