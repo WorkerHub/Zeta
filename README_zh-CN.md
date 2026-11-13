@@ -351,6 +351,7 @@ git config blame.ignoreRevsFile .git-blame-ignore-revs
 | `GET/POST/PATCH/DELETE /api/notebooks` | SQL Notebook 的增删改查（每用户，最多 20 个） |
 | `GET/DELETE /api/notebooks/:id/runs[/:runId]` | Notebook 的运行记录：列表（按编号 `seq` 从大到小，支持 `limit`，以及 `before=<seq>` 或 `offset` 翻页）、读取单条及其结果、删除单条、清空全部 |
 | `GET/PUT /api/profile/run-settings` | 用户自己的保留次数（`run_limit`，`null` 表示跟随管理员上限）及存储用量 |
+| `GET/PUT /api/profile/theme-color` | 账号的主题色预设（`theme_color`，取六个预设之一；`null` 表示从未设置，按默认 terracotta 显示）。数据库尚未执行升级时 GET 返回 `null`、PUT 返回 `503` |
 | `GET/POST/PATCH/DELETE /api/admin/*` | 仅管理员：用户、数据库、权限、设置 |
 | `POST /api/admin/setup` | 仅管理员：执行与 POST /api/setup 相同的初始化/升级，无需 SETUP_SECRET（管理员会话即凭据） |
 | `POST /api/setup` | 幂等的数据库 Schema 初始化（JSON 请求体 `{"secret": "<SETUP_SECRET>"}`）。按 IP 限流：每 10 分钟 3 次 |

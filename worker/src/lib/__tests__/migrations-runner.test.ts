@@ -199,7 +199,11 @@ describe('runMigrations anti-silent-switch guard', () => {
     // create, not the size of the current registry
     const upgrade = await runMigrations(env)
 
-    expect(upgrade.migrations.at(-1)).toEqual({ name: 'schema_v5', status: 'applied' })
+    // Every migration the v4 database still owed is applied — schema_v5 among them, whatever
+    // comes after it
+    expect(upgrade.migrations.filter((m) => m.status === 'applied')).toEqual(
+      migrations.slice(upToV4.length).map((m) => ({ name: m.name, status: 'applied' }))
+    )
     expect(tableNames(sqlite)).toContain('ZETA_executions')
   })
 
