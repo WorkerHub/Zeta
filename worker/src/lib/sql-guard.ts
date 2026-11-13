@@ -292,11 +292,11 @@ function hasMySqlTopLevelLock(tokens: Token[]): boolean {
 // ── spark ────────────────────────────────────────────────────────────────────────────────────
 // SparkSQL runs on one long-lived SparkSession that every request shares (the service serialises on
 // a global lock), so a statement that rewrites the session, loads code or resources, or reaches the
-// cluster's filesystem is not a query about data. See the phase-3 spike, §3.2.
+// cluster's filesystem is not a query about data. See the phase-3 spike, §3.2. `USE` is not on this
+// list: it is a session statement, classified as a read below.
 const SPARK_FORBIDDEN_KEYWORDS = new Set([
   'set', // SET/RESET rewrite the shared session's configuration
   'reset',
-  'use', // a session-wide default database; a qualified name covers the legitimate case
   'cache', // CACHE/UNCACHE/CLEAR CACHE/REFRESH mutate the shared session's cache
   'uncache',
   'clear',
@@ -444,11 +444,13 @@ function classifyStatement(tokens: Token[], dialect: SqlDialect): SqlClass {
       return dialect === 'mysql' || dialect === 'spark' ? 'read' : 'write'
 
     case 'use':
-      // MySQL's `USE` switches the shared session's default schema. The B ruling allows it — a
-      // session statement, neither a read nor a write — and every request re-pins the registered
-      // database before its own statements run (lib/mysql-executor.ts), so one request's pick never
-      // reaches the next. Spark forbids it above: its session is the one every user shares.
-      return dialect === 'mysql' ? 'read' : 'write'
+      // `USE` switches the session's default schema. The B ruling allows it on MySQL — a session
+      // statement, neither a read nor a write — and every request re-pins a database before its own
+      // statements run (lib/mysql-executor.ts), so one request's pick never reaches the next. Spark
+      // classifies it the same way: a session statement, neither a read nor a write, with a database
+      // that does not exist reported by Spark itself as an ordinary SQL error. The statements that
+      // rewrite the shared session's configuration or cache stay forbidden above.
+      return dialect === 'mysql' || dialect === 'spark' ? 'read' : 'write'
 
     case 'insert':
       // Spark's INSERT OVERWRITE replaces the target's data; both DIRECTORY forms write a filesystem

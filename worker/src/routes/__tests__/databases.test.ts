@@ -81,3 +81,33 @@ describe('GET /api/databases', () => {
     expect(body).toEqual([expect.objectContaining({ id: 'r2', is_app_db: false, permission: 'write_drop' })])
   })
 })
+
+describe('GET /api/databases (provider label)', () => {
+  // A registration may name its own provider; without one the engine's is shown, and Spark has none.
+  const withProviders = [
+    { ...rows[1], id: 'pg', name: 'neon', kind: 'postgres', provider: 'Aiven' },
+    { ...rows[1], id: 'my', name: 'tidb', kind: 'mysql', provider: null },
+    { ...rows[1], id: 'sp', name: 'spark', kind: 'spark', provider: null },
+    { ...rows[1], id: 'legacy', name: 'old', kind: undefined, provider: undefined },
+  ]
+
+  it('shows the effective provider and the stored text it came from, to a member too', async () => {
+    const { db } = fakeD1((sql) => {
+      if (sql.includes('FROM d1_databases')) return withProviders
+      if (sql.startsWith('SELECT database_id, permission')) {
+        return withProviders.map((row) => ({ database_id: row.id, permission: 'read' }))
+      }
+      return null
+    })
+    const env = fakeEnv({ DB: db, ZETA_APP_DB_ID: APP_DB })
+    const res = await callWorker(env, '/api/databases', { headers: await bearer(env, 'u1') })
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as Array<{ id: string; provider: string | null; provider_custom: string | null }>
+    const byId = Object.fromEntries(body.map((row) => [row.id, row]))
+    expect(byId.pg).toMatchObject({ provider: 'Aiven', provider_custom: 'Aiven' })
+    expect(byId.my).toMatchObject({ provider: 'TiDB', provider_custom: null })
+    expect(byId.sp).toMatchObject({ provider: null, provider_custom: null })
+    // A row from before the kind column is a D1 target
+    expect(byId.legacy).toMatchObject({ provider: 'D1', provider_custom: null })
+  })
+})

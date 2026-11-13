@@ -118,7 +118,6 @@ describe('query a SparkSQL target', () => {
     const { env } = await sparkEnv()
     for (const sql of [
       'SET spark.sql.shuffle.partitions=2',
-      'USE other',
       'CACHE TABLE t',
       'ADD JAR /tmp/x.jar',
       "CREATE FUNCTION f AS 'com.evil.Payload'",
@@ -129,6 +128,25 @@ describe('query a SparkSQL target', () => {
       expect(res.status, sql).toBe(403)
     }
     expect(spark.opened).toHaveLength(0)
+  })
+
+  it('lets USE through as a session statement, and refuses a session database it cannot use', async () => {
+    const { env } = await sparkEnv('read')
+    spark.queue.push({ results: [] })
+    const res = await post(env, '/api/query', { databaseId: 'sp1', sql: 'USE other' }, await bearer(env, 'u1'))
+    expect(res.status).toBe(200)
+    expect(spark.opened[0]!.runs).toEqual([{ sql: 'USE other', kind: 'read' }])
+
+    // `sessionDatabase` is MySQL-only: a Spark target refuses it instead of ignoring it.
+    const pinned = await post(
+      env,
+      '/api/query',
+      { databaseId: 'sp1', sql: 'SELECT 1', sessionDatabase: 'other' },
+      await bearer(env, 'u1')
+    )
+    expect(pinned.status).toBe(400)
+    expect(((await pinned.json()) as { error: string }).error).toContain('only supported for MySQL')
+    expect(spark.opened).toHaveLength(1)
   })
 
   it('shows a stopped machine to members, with the sentence and the code', async () => {

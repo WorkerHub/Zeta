@@ -258,6 +258,11 @@ describe('classifySql (spark dialect)', () => {
     ['describe query', 'DESCRIBE QUERY SELECT * FROM t', 'read'],
     ['explain', 'EXPLAIN SELECT * FROM t', 'read'],
     ['values', 'VALUES (1), (2)', 'read'],
+    // A session statement: neither a read nor a write, and a database that does not exist is
+    // reported by Spark itself as an ordinary SQL error.
+    ['use', 'USE other', 'read'],
+    ['use with a backtick name', 'USE `other db`', 'read'],
+    ['use does not hide a second statement', 'USE other; DROP TABLE t', 'multiple'],
     ['cte select', 'WITH a AS (SELECT 1) SELECT * FROM a', 'read'],
     // `transform` is also a higher-order function: without USING there is no script
     ['higher-order transform', 'SELECT transform(a, x -> x + 1) FROM t', 'read'],
@@ -285,7 +290,6 @@ describe('classifySql (spark dialect)', () => {
     // forbidden — the session, the cluster and its files are off limits
     ['set', 'SET spark.sql.shuffle.partitions=2', 'forbidden'],
     ['reset', 'RESET', 'forbidden'],
-    ['use', 'USE other', 'forbidden'],
     ['cache', 'CACHE TABLE t', 'forbidden'],
     ['uncache', 'UNCACHE TABLE t', 'forbidden'],
     ['clear cache', 'CLEAR CACHE', 'forbidden'],

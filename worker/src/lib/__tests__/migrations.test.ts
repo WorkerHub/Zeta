@@ -1,9 +1,11 @@
 import type { DatabaseSync } from 'node:sqlite'
 import { describe, expect, it } from 'vitest'
+import { fakeEnv } from '../../routes/__tests__/fakes'
 import { sqliteD1 } from '../../routes/__tests__/sqlite-d1'
 import type { Env } from '../../types'
 import { tables } from '../db'
 import { getMigrations } from '../migrations'
+import { runMigrations } from '../migrations-runner'
 
 // schema_v1 is the single schema definition (lib/migrations.ts). These tests apply it to a real
 // SQLite database so they check actual SQL, not string patterns.
@@ -27,9 +29,9 @@ const statements = (prefix: string | undefined) =>
   (getMigrations(env(prefix)).find((m) => m.name === 'schema_v1')!.sql as string).split(';\n')
 
 describe('getMigrations', () => {
-  it('appends schema_v2 to the collapsed schema_v1, with no PRAGMA probing', () => {
+  it('appends the registry migrations to the collapsed schema_v1, with no PRAGMA probing', () => {
     const migrations = getMigrations(env('ZETA'))
-    expect(migrations.map((m) => m.name)).toEqual(['schema_v1', 'schema_v2'])
+    expect(migrations.map((m) => m.name)).toEqual(['schema_v1', 'schema_v2', 'schema_v3'])
     expect(migrations[0]!.sql).not.toMatch(/PRAGMA/)
     expect(migrations[0]!.sql).not.toMatch(/\bALTER TABLE\b/)
     // No SQL line comments: exec() collapses the SQL onto one line (see migrations-runner.ts)
@@ -43,6 +45,17 @@ describe('getMigrations', () => {
     // Additive only: nothing is dropped, renamed or rewritten
     expect(sql).not.toMatch(/\b(DROP|RENAME)\b/i)
     expect(sql).not.toMatch(/UPDATE |DELETE /i)
+  })
+
+  it('adds the display-only provider column, nullable so every existing row keeps its current label', () => {
+    const sql = getMigrations(env('ZETA')).find((m) => m.name === 'schema_v3')!.sql
+    expect(sql).toBe('ALTER TABLE ZETA_d1_databases ADD COLUMN provider TEXT')
+    // Additive only, and prefix-aware like every other statement
+    expect(sql).not.toMatch(/\b(DROP|RENAME)\b/i)
+    expect(sql).not.toMatch(/UPDATE |DELETE /i)
+    expect(getMigrations(env('')).find((m) => m.name === 'schema_v3')!.sql).toBe(
+      'ALTER TABLE d1_databases ADD COLUMN provider TEXT'
+    )
   })
 
   it('parameterises every table and index name by the effective prefix', () => {
@@ -142,5 +155,43 @@ describe('schema_v2 applied after schema_v1', () => {
       { id: 'legacy', kind: 'sqlite', connection_secret: null },
       { id: 'pg', kind: 'postgres', connection_secret: 'enc:v1:sealed' },
     ])
+  })
+})
+
+describe('schema_v3 applied after schema_v2', () => {
+  it('upgrades a registry that already holds rows, and reads the new column back as null', async () => {
+    const { db, sqlite } = sqliteD1()
+    const env = fakeEnv({ DB: db, TABLE_PREFIX: '' })
+    const migrations = getMigrations({ TABLE_PREFIX: '' })
+    const v3 = migrations[migrations.length - 1]!
+    expect(v3.name).toBe('schema_v3')
+
+    // The state of a deployment that ran setup before this release: v1 + v2 recorded, rows present.
+    const applied = await runMigrations(
+      env,
+      migrations.filter((m) => m.name !== 'schema_v3')
+    )
+    expect(applied.migrations.map((m) => m.name)).toEqual(['schema_v1', 'schema_v2'])
+    sqlite.exec(`
+      INSERT INTO d1_databases (id, name, binding_name, kind, created_at)
+      VALUES ('my', 'tidb', 'my:my', 'mysql', 0);
+    `)
+
+    // The admin panel's "check & upgrade" run: only the new entry is applied, and only then.
+    const upgrade = await runMigrations(env, migrations)
+    expect(upgrade.migrations).toEqual([
+      { name: 'schema_v1', status: 'skipped' },
+      { name: 'schema_v2', status: 'skipped' },
+      { name: 'schema_v3', status: 'applied' },
+    ])
+    expect(sqlite.prepare('SELECT id, kind, provider FROM d1_databases').all()).toEqual([
+      { id: 'my', kind: 'mysql', provider: null },
+    ])
+
+    // The column takes a custom label and is cleared again by the edit path.
+    sqlite.exec(`UPDATE d1_databases SET provider = 'Aiven' WHERE id = 'my'`)
+    expect(sqlite.prepare('SELECT provider FROM d1_databases').all()).toEqual([{ provider: 'Aiven' }])
+    sqlite.exec(`UPDATE d1_databases SET provider = NULL WHERE id = 'my'`)
+    expect(sqlite.prepare('SELECT provider FROM d1_databases').all()).toEqual([{ provider: null }])
   })
 })
