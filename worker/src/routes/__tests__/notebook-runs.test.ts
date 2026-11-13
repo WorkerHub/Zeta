@@ -20,8 +20,11 @@ type Row = Record<string, unknown>
 const rows = (sqlite: DatabaseSync, sql: string) => sqlite.prepare(sql).all() as Row[]
 const count = (sqlite: DatabaseSync, sql: string) => Number(rows(sqlite, sql)[0]!.n)
 
-// The unprefixed schema_v1 as plain SQL — the single schema definition in lib/migrations.ts.
-const SCHEMA_V1 = getMigrations({ TABLE_PREFIX: '' }).find((m) => m.name === 'schema_v1')!.sql
+// The app database of a deployment that ran setup after the latest release: every migration, in
+// order (the single schema definition lives in lib/migrations.ts).
+const APP_SCHEMA = getMigrations({ TABLE_PREFIX: '' })
+  .map((m) => m.sql)
+  .join(';\n')
 
 // Runs the SQL sent over the D1 HTTP API against the real target SQLite, returning the D1 HTTP
 // response shape. A failed statement returns its error message instead of throwing.
@@ -45,7 +48,7 @@ function jsonResponse(payload: unknown) {
 
 function setup() {
   const app = sqliteD1()
-  app.sqlite.exec(SCHEMA_V1)
+  app.sqlite.exec(APP_SCHEMA)
   app.sqlite.exec(`
     INSERT INTO users (id, email, name, role, created_at, updated_at) VALUES
       ('${ADMIN}', 'admin@example.com', 'Admin', 'admin', 0, 0),
@@ -240,6 +243,37 @@ describe('saving runs', () => {
     expect(status).toBe(400)
     expect(body.run_id).toEqual(expect.any(String))
     expect(rows(app, 'SELECT error_count FROM notebook_runs')).toEqual([{ error_count: 1 }])
+  })
+
+  it('saves whether the batch halted, and answers a stored run with the same boolean', async () => {
+    const { env, app } = setup()
+    const stopped = await batch(env, {
+      statements: ['SELECT 1 AS a', 'SELECT nope', 'SELECT 2 AS b'],
+      notebookId: 'nb-1',
+    })
+    expect(stopped.body.halted).toBe(true)
+    // The third statement never ran, so the run holds only the two attempted ones
+    expect(stopped.body.results).toHaveLength(2)
+
+    const complete = await batch(env, { statements: ['SELECT 1 AS a', 'SELECT 2 AS b'], notebookId: 'nb-1' })
+    expect(complete.body.halted).toBe(false)
+
+    expect(rows(app, 'SELECT seq, halted, statement_count FROM notebook_runs ORDER BY seq')).toEqual([
+      { seq: 1, halted: 1, statement_count: 3 },
+      { seq: 2, halted: 0, statement_count: 2 },
+    ])
+
+    // Reading a run back gives the boolean the batch answered with, in the detail and the list.
+    // statement_count is what the request submitted while results holds what ran, so the difference
+    // (3 - 2) is exactly the statement the failure skipped.
+    const detail = await call(env, `/api/notebooks/nb-1/runs/${String(stopped.body.run_id)}`)
+    expect(detail.body).toMatchObject({ halted: true, statement_count: 3, error_count: 1 })
+    expect((detail.body.results as Row[]).length).toBe(2)
+    const list = await call(env, '/api/notebooks/nb-1/runs')
+    expect((list.body.results as Row[]).map((r) => [r.halted, r.statement_count])).toEqual([
+      [false, 2],
+      [true, 3],
+    ])
   })
 
   it('does not save a batch whose statements were all rejected before running', async () => {

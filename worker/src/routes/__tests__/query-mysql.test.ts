@@ -127,29 +127,35 @@ describe('query a MySQL target', () => {
       await bearer(env, 'a1', 'admin')
     )
     expect(res.status).toBe(200)
-    const body = (await res.json()) as { results: Array<{ results: unknown[] }> }
+    const body = (await res.json()) as { results: Array<{ results: unknown[] }>; halted?: boolean }
     expect(body.results.map((r) => r.results)).toEqual([[{ n: 1 }], [{ n: 2 }], [{ n: 3 }]])
+    expect(body.halted).toBe(false)
     expect(my.opened).toHaveLength(1)
     expect(my.opened[0]!.runs).toHaveLength(3)
     expect(my.opened[0]!.closed).toBe(true)
   })
 
-  it('records a failing statement in the batch and keeps going', async () => {
+  it('stops the batch at the failing statement, keeping its error', async () => {
     const env = await myEnv()
     my.queue.push(
+      { results: [{ n: 1 }] },
       { error: { message: "Error 1146 (42S02): Table 'zeta.t' doesn't exist", kind: 'sql' } },
-      { results: [] }
+      { results: [{ n: 3 }] }
     )
     const res = await post(
       env,
       '/api/query/batch',
-      { databaseId: 'my1', statements: ['SELECT * FROM t', 'SELECT 1'] },
+      { databaseId: 'my1', statements: ['SELECT 1', 'SELECT * FROM t', 'SELECT 3'] },
       await bearer(env, 'a1', 'admin')
     )
     expect(res.status).toBe(200)
-    const body = (await res.json()) as { results: Array<{ error?: string; results: unknown[] }> }
-    expect(body.results[0]!.error).toContain('1146')
-    expect(body.results[1]!.error).toBeUndefined()
+    const body = (await res.json()) as { results: Array<{ error?: string; results: unknown[] }>; halted?: boolean }
+    expect(body.results).toHaveLength(2)
+    expect(body.results[1]!.error).toContain('1146')
+    expect(body.halted).toBe(true)
+    // The third statement never reached the driver
+    expect(my.opened[0]!.runs).toHaveLength(2)
+    expect(my.opened[0]!.closed).toBe(true)
   })
 
   it('marks a truncated result', async () => {
