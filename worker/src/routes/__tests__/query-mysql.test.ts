@@ -13,7 +13,7 @@ import { sqliteD1 } from './sqlite-d1'
 type Run = { sql: string; kind: string }
 
 const my = vi.hoisted(() => ({
-  opened: [] as Array<{ url: string; runs: Run[]; closed: boolean }>,
+  opened: [] as Array<{ url: string; sessionDatabase: string | null; runs: Run[]; closed: boolean }>,
   queue: [] as Array<{
     results?: unknown[]
     changes?: number
@@ -27,13 +27,13 @@ vi.mock('../../lib/mysql-executor', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../../lib/mysql-executor')>()
   return {
     ...actual,
-    openMySqlSession: async (url: string) => {
+    openMySqlSession: async (url: string, sessionDatabase?: string | null) => {
       if (my.openError) {
         const pending = my.openError
         my.openError = null
         throw new actual.MySqlQueryError(pending.message, pending.kind as never)
       }
-      const record = { url, runs: [] as Run[], closed: false }
+      const record = { url, sessionDatabase: sessionDatabase ?? null, runs: [] as Run[], closed: false }
       my.opened.push(record)
       return {
         async run(sql: string, kind: string) {
@@ -189,13 +189,85 @@ describe('query a MySQL target', () => {
   })
 
   it('lets a session statement through: USE reaches the executor as a read', async () => {
-    // The B ruling allows `USE` (a session statement, neither a read nor a write); the executor pins
-    // the registered database at every open, so one request's pick never leaks into the next.
+    // The B ruling allows `USE` (a session statement, neither a read nor a write); the executor pins the
+    // registered database at every open, so one request's pick never leaks into the next.
     const env = await myEnv('read')
     my.queue.push({ results: [] })
     const res = await post(env, '/api/query', { databaseId: 'my1', sql: 'USE other' }, await bearer(env, 'u1'))
     expect(res.status).toBe(200)
     expect(my.opened[0]!.runs).toEqual([{ sql: 'USE other', kind: 'read' }])
+  })
+
+  it('pins the session database the request chose, in a single query and across a batch', async () => {
+    const env = await myEnv('read')
+    my.queue.push({ results: [{ n: 1 }] }, { results: [{ n: 1 }] }, { results: [{ n: 2 }] })
+
+    const single = await post(
+      env,
+      '/api/query',
+      { databaseId: 'my1', sql: 'SELECT * FROM t', sessionDatabase: ' analytics ' },
+      await bearer(env, 'u1')
+    )
+    expect(single.status).toBe(200)
+    // Trimmed before it reaches the executor
+    expect(my.opened[0]!.sessionDatabase).toBe('analytics')
+
+    const batch = await post(
+      env,
+      '/api/query/batch',
+      { databaseId: 'my1', statements: ['SELECT 1', 'SELECT 2'], sessionDatabase: 'analytics' },
+      await bearer(env, 'u1')
+    )
+    expect(batch.status).toBe(200)
+    // One pin per request, not one per statement
+    expect(my.opened).toHaveLength(2)
+    expect(my.opened[1]!.sessionDatabase).toBe('analytics')
+    expect(my.opened[1]!.runs).toHaveLength(2)
+  })
+
+  it('keeps the registered database when the field is absent or blank', async () => {
+    const env = await myEnv('read')
+    for (const sessionDatabase of [undefined, null, '', '   ']) {
+      my.queue.push({ results: [] })
+      const res = await post(
+        env,
+        '/api/query',
+        { databaseId: 'my1', sql: 'SELECT 1', sessionDatabase },
+        await bearer(env, 'u1')
+      )
+      expect(res.status, String(sessionDatabase)).toBe(200)
+      expect(my.opened.at(-1)!.sessionDatabase, String(sessionDatabase)).toBeNull()
+    }
+  })
+
+  it('refuses a session database it cannot use, before opening a session', async () => {
+    const env = await myEnv('read')
+    // A PostgreSQL row can be resolved as a target but takes no session database
+    const sealed = await sealSecret(env, JSON.stringify({ url: 'postgres://u:p@example.com:5432/db' }))
+    await env.DB.prepare(
+      `INSERT INTO d1_databases (id, name, binding_name, kind, provider, connection_secret, is_active, created_at)
+       VALUES ('pg1', 'neon', 'pg:pg1', 'postgres', NULL, ?1, 1, 0)`
+    )
+      .bind(sealed)
+      .run()
+    await env.DB.prepare(
+      `INSERT INTO user_database_permissions (id, user_id, database_id, permission, granted_at)
+       VALUES ('p2', 'u1', 'pg1', 'read', 0)`
+    ).run()
+
+    for (const [body, fragment] of [
+      [{ databaseId: 'pg1', sql: 'SELECT 1', sessionDatabase: 'other' }, 'only supported for MySQL'],
+      [{ databaseId: 'my1', sql: 'SELECT 1', sessionDatabase: 42 }, 'must be a string'],
+      [{ databaseId: 'my1', sql: 'SELECT 1', sessionDatabase: 'd'.repeat(65) }, 'too long'],
+    ] as const) {
+      for (const path of ['/api/query', '/api/query/batch']) {
+        const payload = path === '/api/query' ? body : { ...body, statements: ['SELECT 1'] }
+        const res = await post(env, path, payload, await bearer(env, 'a1', 'admin'))
+        expect(res.status, `${path} ${fragment}`).toBe(400)
+        expect(((await res.json()) as { error: string }).error, path).toContain(fragment)
+      }
+    }
+    expect(my.opened).toHaveLength(0)
   })
 
   it('reports a connection failure as a deployment error, with detail only for admins', async () => {
@@ -246,6 +318,8 @@ describe('POST /api/query/probe (MySQL)', () => {
     expect(my.opened).toHaveLength(1)
     expect(my.opened[0]!.url).toBe(STORED_URL)
     expect(my.opened[0]!.runs).toEqual([{ sql: 'select 1', kind: 'read' }])
+    // A probe never carries a session database: it measures the registration as stored.
+    expect(my.opened[0]!.sessionDatabase).toBeNull()
     expect(my.opened[0]!.closed).toBe(true)
   })
 

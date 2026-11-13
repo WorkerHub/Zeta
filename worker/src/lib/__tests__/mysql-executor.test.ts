@@ -106,6 +106,44 @@ describe('openMySqlSession', () => {
     expect(driver.executes).toHaveLength(1)
   })
 
+  it('pins the database the session chose instead of the registered one', async () => {
+    seed()
+    await openMySqlSession(URL, 'analytics')
+    expect(driver.executes.map((e) => e.sql)).toEqual(['USE `analytics`'])
+  })
+
+  it('quotes a session database that contains a backtick', async () => {
+    seed()
+    await openMySqlSession(URL, 'a`b')
+    expect(driver.executes.map((e) => e.sql)).toEqual(['USE `a``b`'])
+  })
+
+  it('falls back to the registered database for a blank session choice', async () => {
+    for (const choice of [undefined, null, '', '   ']) {
+      seed()
+      await openMySqlSession(URL, choice)
+      expect(
+        driver.executes.map((e) => e.sql),
+        String(choice)
+      ).toEqual(['USE `zeta`'])
+      driver.executes.length = 0
+      driver.connects.length = 0
+      driver.queue.length = 0
+    }
+  })
+
+  it('reports a session database that does not exist as a config error', async () => {
+    driver.queue.push({ error: dbError("Error 1049 (42000): Unknown database 'nope'", 401) })
+    await expect(openMySqlSession(URL, 'nope')).rejects.toMatchObject({ kind: 'config' })
+    expect(driver.executes.map((e) => e.sql)).toEqual(['USE `nope`'])
+  })
+
+  it('falls back to a bare select 1 when neither the URL nor the session names a database', async () => {
+    seed()
+    await openMySqlSession(`mysql://3Kx9aBcD.root:${PASSWORD}@${HOST}:4000`, '  ')
+    expect(driver.executes.map((e) => e.sql)).toEqual(['select 1'])
+  })
+
   it('falls back to a bare select 1 when the URL names no database', async () => {
     seed()
     await openMySqlSession(`mysql://3Kx9aBcD.root:${PASSWORD}@${HOST}:4000`)

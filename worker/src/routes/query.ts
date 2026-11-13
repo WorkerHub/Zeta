@@ -33,6 +33,8 @@ import type { DatabaseRow, Env, Variables } from '../types'
 
 const MAX_RESULT_ROWS = 5000
 const MAX_SQL_LENGTH = 100_000
+// A MySQL database name is at most 64 characters; the session's chosen database is such a name.
+const MAX_SESSION_DATABASE_LENGTH = 64
 
 const query = new Hono<{ Bindings: Env; Variables: Variables }>()
 query.use('*', requireAuth)
@@ -193,12 +195,15 @@ function payloadUrl(payload: Record<string, unknown>, fail: (message: string) =>
 // only place it is unwrapped), normalises it again, and proves the connection before any statement
 // runs. `connectTest` asks a Spark target for the longer connection-check budget (20 s health probe,
 // 120 s hard cap): the admin's test step and POST /api/query/probe use it, a query does not.
+// `sessionDatabase` is the database a MySQL request chose for its session (see
+// resolveSessionDatabase); it overrides the registered default as the pin target of that one session
+// and means nothing to the other engines, which never open a stateful session of their own.
 // Failures throw the engine's classified error, which the routes report as a target error.
 async function openExecutor(
   env: Env,
   db: DatabaseRow,
   target: QueryTarget,
-  opts: { connectTest?: boolean } = {}
+  opts: { connectTest?: boolean; sessionDatabase?: string | null } = {}
 ): Promise<Executor> {
   if (target.kind === 'http') {
     return {
@@ -225,7 +230,7 @@ async function openExecutor(
     const fail = (m: string) => new MySqlQueryError(m, 'config')
     const normalized = normalizeMySqlUrl(payloadUrl(await readStoredPayload(env, db, fail), fail))
     if (!normalized.ok) throw new MySqlQueryError(normalized.error, 'config')
-    const session: MySqlSession = await openMySqlSession(normalized.url)
+    const session: MySqlSession = await openMySqlSession(normalized.url, opts.sessionDatabase)
     return {
       run: (sql, kind) => session.run(sql, kind, MAX_RESULT_ROWS),
       close: () => session.close(),
@@ -261,6 +266,27 @@ function dialectOf(db: DatabaseRow): SqlDialect {
   return 'sqlite'
 }
 
+// The database a MySQL request asks its session to start on — a "current database" picker, sent as
+// `sessionDatabase`. Only MySQL has such a choice: its endpoint keeps one server-side session per
+// credentials, so without a pin each request would inherit whatever an earlier one left there (see
+// lib/mysql-executor.ts). Absent, null or blank keeps the behaviour every row had before the field
+// existed (pin the registered database), and the other engines refuse the field instead of ignoring
+// it, so a client cannot believe it took effect when it did not.
+function resolveSessionDatabase(
+  db: DatabaseRow,
+  raw: unknown
+): { ok: true; value: string | null } | { ok: false; error: string } {
+  if (raw === undefined || raw === null) return { ok: true, value: null }
+  if (typeof raw !== 'string') return { ok: false, error: 'sessionDatabase must be a string' }
+  const value = raw.trim()
+  if (!value) return { ok: true, value: null }
+  if (value.length > MAX_SESSION_DATABASE_LENGTH) return { ok: false, error: 'sessionDatabase is too long' }
+  if (dialectOf(db) !== 'mysql') {
+    return { ok: false, error: 'sessionDatabase is only supported for MySQL databases' }
+  }
+  return { ok: true, value }
+}
+
 // The app-DB guardrails for one database row, applied right after permission resolution (see
 // lib/app-db-guard.ts): the effective permission is capped at write — which makes destructive
 // statements fail the ordinary checkSqlAccess — and write-class statements must resolve to a
@@ -280,7 +306,9 @@ function appDbStatementError(env: Env, db: DatabaseRow, kind: SqlClass, sql: str
 // ── POST /api/query ────────────────────────────────────────────────────────────
 
 query.post('/', async (c) => {
-  const body = await c.req.json<{ databaseId?: string; sql?: string; notebookId?: unknown }>().catch(() => null)
+  const body = await c.req
+    .json<{ databaseId?: string; sql?: string; notebookId?: unknown; sessionDatabase?: unknown }>()
+    .catch(() => null)
   if (typeof body?.databaseId !== 'string' || typeof body.sql !== 'string' || !body.sql.trim()) {
     return c.json({ error: 'databaseId and sql are required' }, 400)
   }
@@ -325,6 +353,11 @@ query.post('/', async (c) => {
   const appDbDenied = appDbStatementError(c.env, db, kind, runSql)
   if (appDbDenied) return c.json({ error: appDbDenied }, 403)
 
+  // The request's own session state is checked before the target is resolved: an unusable value is a
+  // bad request whatever state the registration is in.
+  const session = resolveSessionDatabase(db, body.sessionDatabase)
+  if (!session.ok) return c.json({ error: session.error }, 400)
+
   const resolved = resolveQueryTarget(c.env, db)
   if (!resolved.ok) return queryError(c, resolved.error)
 
@@ -334,7 +367,7 @@ query.post('/', async (c) => {
   const executedAt = Date.now()
   let executor: Executor
   try {
-    executor = await openExecutor(c.env, db, resolved.target)
+    executor = await openExecutor(c.env, db, resolved.target, { sessionDatabase: session.value })
   } catch (err) {
     return openExecutorError(c, err)
   }
@@ -409,7 +442,7 @@ query.post('/', async (c) => {
 
 query.post('/batch', async (c) => {
   const body = await c.req
-    .json<{ databaseId?: string; statements?: string[]; notebookId?: unknown }>()
+    .json<{ databaseId?: string; statements?: string[]; notebookId?: unknown; sessionDatabase?: unknown }>()
     .catch(() => null)
   if (
     typeof body?.databaseId !== 'string' ||
@@ -452,6 +485,11 @@ query.post('/batch', async (c) => {
 
   const dialect = dialectOf(db)
 
+  // Refuse a session database this target cannot use before a run number is used up or a connection
+  // is opened, exactly like a rejected statement set.
+  const session = resolveSessionDatabase(db, body.sessionDatabase)
+  if (!session.ok) return c.json({ error: session.error }, 400)
+
   // Resolve the execution target (D1 HTTP API or one PostgreSQL connection for the whole batch)
   const resolved = resolveQueryTarget(c.env, db)
   if (!resolved.ok) return queryError(c, resolved.error)
@@ -479,7 +517,7 @@ query.post('/batch', async (c) => {
 
   let executor: Executor
   try {
-    executor = await openExecutor(c.env, db, resolved.target)
+    executor = await openExecutor(c.env, db, resolved.target, { sessionDatabase: session.value })
   } catch (err) {
     return openExecutorError(c, err)
   }

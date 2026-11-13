@@ -2,6 +2,7 @@ import { Hono } from 'hono'
 import { capAppDbPermission } from '../lib/app-db-guard'
 import { isAppDb } from '../lib/d1-http'
 import { tables } from '../lib/db'
+import { effectiveProvider } from '../lib/provider'
 import type { Permission } from '../lib/sql-guard'
 import { requireAuth } from '../middleware/auth'
 import type { DatabaseRow, Env, Variables } from '../types'
@@ -52,11 +53,16 @@ databases.get('/', async (c) => {
       // The application database's permission is capped at write: the admin's implicit write_drop
       // and any stored write_drop are reported at their effective level, never as write_drop.
       const base: Permission = role === 'admin' ? 'write_drop' : ((permMap.get(db.id) ?? 'read') as Permission)
+      const kind = db.kind ?? 'sqlite'
       return {
         id: db.id,
         name: db.name,
         description: db.description,
-        kind: db.kind ?? 'sqlite',
+        kind,
+        // `provider` is the label to show (the registration's own, or the engine's), `provider_custom`
+        // the text it is editing — see lib/provider.ts.
+        provider: effectiveProvider(kind, db.provider),
+        provider_custom: db.provider ?? null,
         ...(role === 'admin' ? { binding_name: db.binding_name, cf_database_id: db.cf_database_id } : {}),
         is_app_db: appDb,
         permission: appDb ? capAppDbPermission(base) : base,
