@@ -32,11 +32,15 @@ import { useNotebooks } from '../hooks/useNotebooks'
 import { useNotebookRuns } from '../hooks/useNotebookRuns'
 import QueryResults from '../components/QueryResults'
 import DbKindMeta from '../components/DbKindMeta'
+import ConnectButton from '../components/ConnectButton'
 import RunHistoryDrawer from '../components/RunHistoryDrawer'
 import ConfirmDialog from '../components/ConfirmDialog'
 import Logo from '../components/Logo'
+import { useConnections } from '../hooks/useConnections'
+import { knocksBack } from '../lib/connection-state'
+import { errorCodeText } from '../lib/error-copy'
 import { splitSqlStatements } from '../lib/sql'
-import type { Database as DbType, NotebookRunSummary, StatementResult } from '../types'
+import type { Database as DbType, DbKind, NotebookRunSummary, StatementResult } from '../types'
 
 const THEME_ICONS = { auto: Monitor, light: Sun, dark: Moon }
 
@@ -63,6 +67,13 @@ export default function QueryPage() {
   const activeNotebook = notebooks.find((n) => n.id === activeId) ?? null
   const sqlText = activeNotebook?.sql_content ?? ''
   const selectedDb = databases.find((d) => d.id === activeNotebook?.database_id) ?? null
+  // Connection state of the current target (see hooks/useConnections): per target, this browser
+  // session only. A target that has not answered a probe cannot be queried.
+  const knownDbIds = useMemo(() => databases.map((d) => d.id), [databases])
+  const { isConnected, busyId, connect, disconnect, knockBack } = useConnections(knownDbIds)
+  const connected = selectedDb ? isConnected(selectedDb.id) : false
+  // The engine the run in flight targets: the Spark cancellation caveat is engine-specific
+  const [runningKind, setRunningKind] = useState<DbKind>('sqlite')
   // Saved runs per notebook; what the results panel shows comes from here
   const runs = useNotebookRuns(activeId)
   const {
@@ -144,11 +155,22 @@ export default function QueryPage() {
     return () => document.removeEventListener('mousedown', handleClick)
   }, [])
 
+  // The sentence shown for a failure: a classified Spark failure has copy of its own, everything
+  // else keeps the message the worker sent.
+  const describeError = useCallback(
+    (err: unknown) =>
+      (err instanceof ApiError ? errorCodeText(t, err.body) : null) ??
+      (err instanceof Error ? err.message : t('errors.query_failed')),
+    [t]
+  )
+
   const runQuery = useCallback(async () => {
     const sqlToRun = selectedSqlRef.current.trim() || sqlText.trim()
     const nbId = activeId
     const db = selectedDb
     if (!db || !nbId || !sqlToRun) return
+    // The keyboard shortcut runs this too, so the gate cannot live on the button alone
+    if (!isConnected(db.id)) return
 
     const statements = splitSqlStatements(sqlToRun)
     if (statements.length === 0) return
@@ -160,6 +182,7 @@ export default function QueryPage() {
     const controller = new AbortController()
     runControllers.current.set(nbId, controller)
     startRun(nbId, db.name, statements[0]!, statements.length)
+    setRunningKind(db.kind ?? 'sqlite')
     setActiveResultIdx(0)
 
     // A saved run (one the server names and numbers) goes into the notebook's run list
@@ -203,10 +226,11 @@ export default function QueryPage() {
         } catch (err) {
           // Cancelled: the panel keeps what it showed, this response is not an error to report
           if (controller.signal.aborted) return
-          const message = err instanceof Error ? err.message : t('errors.query_failed')
-          const entry: StatementResult = { sql: stmt, results: [], duration_ms: 0, error: message }
+          const entry: StatementResult = { sql: stmt, results: [], duration_ms: 0, error: describeError(err) }
           // A statement that ran and failed is saved too; the error response names the run
           finishRun(nbId, { run: summary(err instanceof ApiError ? err.body : {}, [entry]), results: [entry] })
+          // The target itself is no longer usable (auth/transport): the next click has to prove it
+          if (err instanceof ApiError && knocksBack(err.status)) knockBack(db.id)
         }
       } else {
         // Multiple statements — use batch endpoint
@@ -215,11 +239,12 @@ export default function QueryPage() {
       }
     } catch (err) {
       if (controller.signal.aborted) return
-      finishRun(nbId, { error: err instanceof Error ? err.message : t('errors.query_failed') })
+      finishRun(nbId, { error: describeError(err) })
+      if (err instanceof ApiError && knocksBack(err.status)) knockBack(db.id)
     } finally {
       if (runControllers.current.get(nbId) === controller) runControllers.current.delete(nbId)
     }
-  }, [activeId, selectedDb, sqlText, t, startRun, finishRun])
+  }, [activeId, selectedDb, sqlText, describeError, isConnected, startRun, finishRun, knockBack])
 
   // The temporary run tab's X: abort the request, ahead of its response, and drop the run
   const cancelRun = useCallback(() => {
@@ -229,6 +254,22 @@ export default function QueryPage() {
     runControllers.current.delete(nbId)
     cancelNotebookRun(nbId)
   }, [activeId, cancelNotebookRun])
+
+  // The connect button: probe the current target and report a failure in the page banner
+  const connectTarget = useCallback(
+    async (db: DbType) => {
+      setPageError('')
+      const result = await connect(db.id)
+      if (result.ok) return
+      // A classified Spark failure carries copy for both locales; a network failure has none
+      setPageError(
+        result.error instanceof ApiError
+          ? (errorCodeText(t, result.error.body) ?? result.error.message)
+          : t('query.connect_failed')
+      )
+    },
+    [connect, t]
+  )
 
   // Nothing is left to show once the page goes away
   useEffect(() => {
@@ -333,43 +374,56 @@ export default function QueryPage() {
           <span className="text-body-strong text-ink-900 hidden sm:block">{t('app.name')}</span>
         </div>
 
-        {/* Database selector — hidden on mobile (shown in bottom bar) */}
-        <div className="relative hidden sm:block" ref={dbMenuDesktopRef}>
-          <button
-            type="button"
-            onClick={() => setShowDbMenu(!showDbMenu)}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-ink-100 hover:bg-ink-200 border border-ink-200 text-body-strong text-ink-700 transition-colors duration-(--duration-base) max-w-[280px]"
-          >
-            <span className="truncate min-w-0">{selectedDb?.name ?? t('query.select_db')}</span>
-            {selectedDb && <DbKindMeta kind={selectedDb.kind} className="shrink-0" />}
-            <ChevronDown size={13} className="text-ink-400 shrink-0 ml-0.5" />
-          </button>
-          {showDbMenu && (
-            <div className="absolute left-0 top-full mt-1 w-80 bg-ink-0 border border-ink-200 rounded-lg shadow-md z-(--z-dropdown) overflow-hidden animate-overlay-enter">
-              {databases.length === 0 ? (
-                <p className="px-4 py-3 text-body text-ink-500">{t('query.no_databases')}</p>
-              ) : (
-                databases.map((db) => (
-                  <button
-                    type="button"
-                    key={db.id}
-                    onClick={() => {
-                      if (activeId) updateDatabase(activeId, db.id)
-                      setShowDbMenu(false)
-                    }}
-                    className={`w-full text-left px-4 py-2.5 text-body hover:bg-ink-100 transition-colors duration-(--duration-base) ${
-                      selectedDb?.id === db.id ? 'text-brand-600 dark:text-brand-400 font-medium' : 'text-ink-700'
-                    }`}
-                  >
-                    <span className="flex items-center gap-2 min-w-0">
-                      <span className="truncate">{db.name}</span>
-                      {db.is_app_db && <span className="badge badge-brand shrink-0">{t('admin_db.app_db_badge')}</span>}
-                      <DbKindMeta kind={db.kind} className="shrink-0" />
-                    </span>
-                  </button>
-                ))
-              )}
-            </div>
+        {/* Target switcher and its connect button — hidden on mobile (shown in the bottom bar) */}
+        <div className="hidden sm:flex items-center gap-1.5">
+          <div className="relative" ref={dbMenuDesktopRef}>
+            <button
+              type="button"
+              onClick={() => setShowDbMenu(!showDbMenu)}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-ink-100 hover:bg-ink-200 border border-ink-200 text-body-strong text-ink-700 transition-colors duration-(--duration-base) max-w-[280px]"
+            >
+              <span className="truncate min-w-0">{selectedDb?.name ?? t('query.select_db')}</span>
+              {selectedDb && <DbKindMeta kind={selectedDb.kind} className="shrink-0" />}
+              <ChevronDown size={13} className="text-ink-400 shrink-0 ml-0.5" />
+            </button>
+            {showDbMenu && (
+              <div className="absolute left-0 top-full mt-1 w-80 bg-ink-0 border border-ink-200 rounded-lg shadow-md z-(--z-dropdown) overflow-hidden animate-overlay-enter">
+                {databases.length === 0 ? (
+                  <p className="px-4 py-3 text-body text-ink-500">{t('query.no_databases')}</p>
+                ) : (
+                  databases.map((db) => (
+                    <button
+                      type="button"
+                      key={db.id}
+                      onClick={() => {
+                        if (activeId) updateDatabase(activeId, db.id)
+                        setShowDbMenu(false)
+                      }}
+                      className={`w-full text-left px-4 py-2.5 text-body hover:bg-ink-100 transition-colors duration-(--duration-base) ${
+                        selectedDb?.id === db.id ? 'text-brand-600 dark:text-brand-400 font-medium' : 'text-ink-700'
+                      }`}
+                    >
+                      <span className="flex items-center gap-2 min-w-0">
+                        <span className="truncate">{db.name}</span>
+                        {db.is_app_db && (
+                          <span className="badge badge-brand shrink-0">{t('admin_db.app_db_badge')}</span>
+                        )}
+                        <DbKindMeta kind={db.kind} className="shrink-0" />
+                      </span>
+                    </button>
+                  ))
+                )}
+              </div>
+            )}
+          </div>
+
+          {selectedDb && (
+            <ConnectButton
+              connected={connected}
+              busy={busyId === selectedDb.id}
+              onConnect={() => connectTarget(selectedDb)}
+              onDisconnect={() => disconnect(selectedDb.id)}
+            />
           )}
         </div>
 
@@ -604,7 +658,8 @@ export default function QueryPage() {
                 <button
                   type="button"
                   onClick={runQuery}
-                  disabled={running || !selectedDb}
+                  disabled={running || !selectedDb || !connected}
+                  title={selectedDb && !connected ? t('query.connect_first') : undefined}
                   className="btn-primary btn-sm gap-1.5 hidden sm:flex"
                 >
                   {running ? <Loader2 size={13} className="animate-spin" /> : <Play size={13} />}
@@ -663,6 +718,7 @@ export default function QueryPage() {
               runningDatabaseName={runningDatabaseName}
               runningSql={runningSql}
               runningStatementCount={runningStatementCount}
+              runningHint={runningKind === 'spark' ? t('query.spark_cancel_hint') : ''}
               runError={runError}
               transient={transient}
               selectedRun={selectedRun}
@@ -721,11 +777,22 @@ export default function QueryPage() {
           )}
         </div>
 
+        {/* Connect button — the bar's second control, right beside the target */}
+        {selectedDb && (
+          <ConnectButton
+            connected={connected}
+            busy={busyId === selectedDb.id}
+            onConnect={() => connectTarget(selectedDb)}
+            onDisconnect={() => disconnect(selectedDb.id)}
+          />
+        )}
+
         {/* Run button */}
         <button
           type="button"
           onClick={runQuery}
-          disabled={running || !selectedDb}
+          disabled={running || !selectedDb || !connected}
+          title={selectedDb && !connected ? t('query.connect_first') : undefined}
           className="btn-primary gap-1.5 px-4 py-2"
         >
           {running ? <Loader2 size={14} className="animate-spin" /> : <Play size={14} />}

@@ -1,18 +1,31 @@
 import { useState, useEffect, useCallback } from 'react'
 import { Plus, Trash2, Power, Users, Link2, ChevronDown } from 'lucide-react'
-import { adminApi } from '../../lib/api'
+import { adminApi, ApiError } from '../../lib/api'
 import { useLocale } from '../../hooks/useLocale'
 import ConfirmDialog from '../../components/ConfirmDialog'
 import ConnectionStringFields from '../../components/ConnectionStringFields'
-import { canSaveConnectionString, describeTestResult } from '../../lib/connection-string'
-import type { ConnectionTestState } from '../../lib/connection-string'
+import { canSaveConnection, connectionSignature, describeTestResult } from '../../lib/connection-string'
+import type { ConnectionKind, ConnectionTestState } from '../../lib/connection-string'
+import { errorCodeText } from '../../lib/error-copy'
 import type { AdminDatabase, CfD1Database, DatabaseGrant, DbKind } from '../../types'
 
-// The engines that are registered from a connection string rather than from a Cloudflare database.
-type ConnectionKind = Extract<DbKind, 'postgres' | 'mysql'>
-
+// The engines that are registered from pasted values rather than from a Cloudflare database.
 function isConnectionKind(kind: DbKind): kind is ConnectionKind {
-  return kind === 'postgres' || kind === 'mysql'
+  return kind === 'postgres' || kind === 'mysql' || kind === 'spark'
+}
+
+// Title and description of the registration card, per engine.
+function registerCopy(kind: DbKind): { title: string; desc: string } {
+  switch (kind) {
+    case 'postgres':
+      return { title: 'admin_db.register_title_pg', desc: 'admin_db.register_desc_pg' }
+    case 'mysql':
+      return { title: 'admin_db.register_title_mysql', desc: 'admin_db.register_desc_mysql' }
+    case 'spark':
+      return { title: 'admin_db.register_title_spark', desc: 'admin_db.register_desc_spark' }
+    default:
+      return { title: 'admin_db.register_title', desc: 'admin_db.register_desc' }
+  }
 }
 
 export default function AdminDatabases() {
@@ -24,12 +37,14 @@ export default function AdminDatabases() {
   const [showAdd, setShowAdd] = useState(false)
   const [newDb, setNewDb] = useState({ name: '', description: '', cf_database_id: '' })
   const [addError, setAddError] = useState('')
-  // Connection-string targets (PostgreSQL, MySQL/TiDB Cloud Starter): the string, and the last
-  // test connection's outcome
+  // Pasted-value targets (PostgreSQL, MySQL/TiDB Cloud Starter, SparkSQL): what goes into the live
+  // test, and that test's outcome
   const [kind, setKind] = useState<DbKind>('sqlite')
   const [connectionUrl, setConnectionUrl] = useState('')
+  const [platformToken, setPlatformToken] = useState('')
+  const [appToken, setAppToken] = useState('')
   const [testState, setTestState] = useState<ConnectionTestState>('idle')
-  const [testedUrl, setTestedUrl] = useState<string | null>(null)
+  const [testedSignature, setTestedSignature] = useState<string | null>(null)
   const [testError, setTestError] = useState('')
   const [testInfo, setTestInfo] = useState('')
   const [linking, setLinking] = useState<AdminDatabase | null>(null)
@@ -86,12 +101,14 @@ export default function AdminDatabases() {
     }
   }
 
-  // A passing test only vouches for the string it ran against: editing the field or switching
+  // A passing test only vouches for the values it ran against: editing any field or switching
   // engine drops it, so the save button cannot outlive what was actually verified.
   function resetConnection() {
     setConnectionUrl('')
+    setPlatformToken('')
+    setAppToken('')
     setTestState('idle')
-    setTestedUrl(null)
+    setTestedSignature(null)
     setTestError('')
     setTestInfo('')
   }
@@ -105,28 +122,53 @@ export default function AdminDatabases() {
     setAddError('')
   }
 
-  function changeConnectionUrl(next: string) {
-    setConnectionUrl(next)
+  // Any edit invalidates the last test, whatever the field
+  function invalidateTest() {
     setTestState('idle')
-    setTestedUrl(null)
+    setTestedSignature(null)
     setTestError('')
     setTestInfo('')
   }
 
+  function changeConnectionUrl(next: string) {
+    setConnectionUrl(next)
+    invalidateTest()
+  }
+
+  function changePlatformToken(next: string) {
+    setPlatformToken(next)
+    invalidateTest()
+  }
+
+  function changeAppToken(next: string) {
+    setAppToken(next)
+    invalidateTest()
+  }
+
   async function testConnection() {
-    const url = connectionUrl.trim()
-    if (!url || testState === 'testing' || !isConnectionKind(kind)) return
+    if (testState === 'testing' || !isConnectionKind(kind)) return
+    const signature = connectionSignature({ kind, url: connectionUrl, platformToken, appToken })
+    if (!signature) return
     setTestState('testing')
-    setTestedUrl(null)
+    setTestedSignature(null)
     setTestError('')
     setTestInfo('')
     try {
-      const res = await adminApi.testConnection({ connection_url: url, kind })
+      const res = await adminApi.testConnection({
+        connection_url: connectionUrl.trim(),
+        kind,
+        ...(kind === 'spark' ? { platform_token: platformToken.trim(), app_token: appToken.trim() } : {}),
+      })
       setTestInfo(describeTestResult(res))
-      setTestedUrl(url)
+      setTestedSignature(signature)
       setTestState('passed')
     } catch (err) {
-      setTestError(err instanceof Error ? err.message : t('admin_db.test_failed'))
+      // A classified Spark failure arrives with a code, and the UI has the copy for it; anything
+      // else shows the worker's own message (which never contains the pasted secret).
+      const message =
+        errorCodeText(t, err instanceof ApiError ? err.body : null) ??
+        (err instanceof Error ? err.message : t('admin_db.test_failed'))
+      setTestError(message)
       setTestState('failed')
     }
   }
@@ -138,6 +180,7 @@ export default function AdminDatabases() {
         await adminApi.createDatabase({
           kind,
           connection_url: connectionUrl.trim(),
+          ...(kind === 'spark' ? { platform_token: platformToken.trim(), app_token: appToken.trim() } : {}),
           name: newDb.name || undefined,
           description: newDb.description || undefined,
         })
@@ -228,10 +271,11 @@ export default function AdminDatabases() {
   }
 
   const availableOptions = available.filter((d) => !d.added)
-  // A connection-string target is saved only after this exact string tested successfully
-  const canSave = isConnectionKind(kind)
-    ? canSaveConnectionString(connectionUrl, testedUrl)
-    : Boolean(newDb.cf_database_id)
+  // A pasted-value target is saved only after exactly these values tested successfully
+  const signature = isConnectionKind(kind)
+    ? connectionSignature({ kind, url: connectionUrl, platformToken, appToken })
+    : null
+  const canSave = isConnectionKind(kind) ? canSaveConnection(signature, testedSignature) : Boolean(newDb.cf_database_id)
   // Rows written before the kind column exist are D1 registrations
   const isD1 = (db: AdminDatabase) => (db.kind ?? 'sqlite') === 'sqlite'
   // Every kind gets its own label: an unknown engine must never be shown as D1
@@ -267,24 +311,8 @@ export default function AdminDatabases() {
       {/* Add form */}
       {showAdd && (
         <div className="card p-5 space-y-4">
-          <h2 className="text-heading text-ink-900">
-            {t(
-              kind === 'postgres'
-                ? 'admin_db.register_title_pg'
-                : kind === 'mysql'
-                  ? 'admin_db.register_title_mysql'
-                  : 'admin_db.register_title'
-            )}
-          </h2>
-          <p className="text-caption text-ink-500">
-            {t(
-              kind === 'postgres'
-                ? 'admin_db.register_desc_pg'
-                : kind === 'mysql'
-                  ? 'admin_db.register_desc_mysql'
-                  : 'admin_db.register_desc'
-            )}
-          </p>
+          <h2 className="text-heading text-ink-900">{t(registerCopy(kind).title)}</h2>
+          <p className="text-caption text-ink-500">{t(registerCopy(kind).desc)}</p>
           <div className="grid sm:grid-cols-2 gap-4">
             <div className="sm:col-span-2">
               <label htmlFor="db-kind" className="label">
@@ -300,6 +328,7 @@ export default function AdminDatabases() {
                   <option value="sqlite">{t('admin_db.kind_sqlite')}</option>
                   <option value="postgres">{t('admin_db.kind_postgres')}</option>
                   <option value="mysql">{t('admin_db.kind_mysql')}</option>
+                  <option value="spark">{t('admin_db.kind_spark')}</option>
                 </select>
                 <ChevronDown
                   size={14}
@@ -308,14 +337,18 @@ export default function AdminDatabases() {
                 />
               </div>
             </div>
-            {kind === 'postgres' || kind === 'mysql' ? (
+            {isConnectionKind(kind) ? (
               <ConnectionStringFields
                 kind={kind}
                 url={connectionUrl}
+                platformToken={platformToken}
+                appToken={appToken}
                 testState={testState}
                 testError={testError}
                 testInfo={testInfo}
                 onUrlChange={changeConnectionUrl}
+                onPlatformTokenChange={changePlatformToken}
+                onAppTokenChange={changeAppToken}
                 onTest={testConnection}
               />
             ) : (
