@@ -5,8 +5,21 @@ import { THEME_COLORS, isMissingThemeColorColumn, isThemeColor } from '../theme-
 // (web/src/lib/theme-color.ts). Pinning the list here makes a drift a failing test, not a PUT that
 // silently starts answering 400 for a preset the picker offers.
 describe('THEME_COLORS', () => {
-  it('is the six contracted presets, in the picker’s order', () => {
-    expect(THEME_COLORS).toEqual(['terracotta', 'ocean', 'teal', 'forest', 'grape', 'rose'])
+  it('is the twelve contracted presets, in the picker’s order', () => {
+    expect(THEME_COLORS).toEqual([
+      'terracotta',
+      'ocean',
+      'teal',
+      'forest',
+      'grape',
+      'rose',
+      'royal',
+      'violet',
+      'tangerine',
+      'cyan',
+      'magenta',
+      'emerald',
+    ])
   })
 
   it('accepts only those ids, exactly as written', () => {
