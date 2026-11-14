@@ -279,6 +279,38 @@ describe('query a SparkSQL target', () => {
     expect(spark.opened[0]!.runs).toHaveLength(2)
   })
 
+  it('carries a rejected profile key on a batch entry with its code and key', async () => {
+    const { env } = await sparkEnv()
+    spark.queue.push({
+      error: { message: 'x', kind: 'profile', code: 'invalid_key', detail: { key: 'spark.sql.nope' } },
+    })
+    const res = await post(
+      env,
+      '/api/query/batch',
+      { databaseId: 'sp1', statements: ['SELECT 1'] },
+      await bearer(env, 'u1')
+    )
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as { results: Array<Record<string, unknown>> }
+    expect(body.results[0]).toMatchObject({ error: 'x', code: 'invalid_key', key: 'spark.sql.nope' })
+  })
+
+  it('carries a draining state on a batch entry with its in-flight count', async () => {
+    const { env } = await sparkEnv()
+    spark.queue.push({
+      error: { message: 'x', kind: 'context', code: 'context_draining', detail: { inflight: 3 } },
+    })
+    const res = await post(
+      env,
+      '/api/query/batch',
+      { databaseId: 'sp1', statements: ['SELECT 1'] },
+      await bearer(env, 'u1')
+    )
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as { results: Array<Record<string, unknown>> }
+    expect(body.results[0]).toMatchObject({ error: 'x', code: 'context_draining', inflight: 3 })
+  })
+
   it('refuses a spark row whose stored payload is missing', async () => {
     const { env } = await sparkEnv()
     await env.DB.prepare(`UPDATE d1_databases SET connection_secret = NULL WHERE id = 'sp1'`).run()
