@@ -182,12 +182,15 @@ export default function QueryPage() {
     return () => document.removeEventListener('mousedown', handleClick)
   }, [])
 
-  // The sentence shown for a failure: a classified Spark failure has copy of its own, everything
-  // else keeps the message the worker sent.
+  // The sentence shown for a failure: offline (a rejected fetch, which is a TypeError in every
+  // browser) has copy of its own, a classified Spark failure has copy of its own, everything else
+  // keeps the message the worker sent.
   const describeError = useCallback(
     (err: unknown) =>
-      (err instanceof ApiError ? errorCodeText(t, err.body) : null) ??
-      (err instanceof Error ? err.message : t('errors.query_failed')),
+      err instanceof TypeError
+        ? t('errors.network_offline')
+        : ((err instanceof ApiError ? errorCodeText(t, err.body) : null) ??
+          (err instanceof Error ? err.message : t('errors.query_failed'))),
     [t]
   )
 

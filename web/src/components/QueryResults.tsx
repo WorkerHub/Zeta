@@ -67,12 +67,13 @@ export default function QueryResults({
   const { t } = useLocale()
 
   // What the run in flight is executing: its first statement, with how many it submitted. The old
-  // results stay mounted underneath; this is the only text the mask (and the first-run notice)
-  // shows while they are hidden. The statement itself, not the comments above it.
-  const runningLabel = t(runningStatementCount > 1 ? 'results.running_sql_statements' : 'results.running_sql', {
-    sql: stripLeadingCommentsForDisplay(runningSql),
+  // results stay mounted underneath; the heading and the SQL block below it are what the mask (and
+  // the first-run notice) show while they are hidden. The statement itself, not the comments above
+  // it.
+  const runningTitle = t(runningStatementCount > 1 ? 'results.running_sql_statements' : 'results.running_sql', {
     n: runningStatementCount,
   })
+  const runningSqlDisplay = stripLeadingCommentsForDisplay(runningSql)
 
   // Results the server did not store (a run it did not name) take the saved run's place in the
   // panel, so the strip steps aside. A failure is different: it must be visible *and* leave the run
@@ -135,19 +136,21 @@ export default function QueryResults({
                 activeIndex={activeIndex}
                 onSelectIndex={onSelectIndex}
                 running={running}
-                runningLabel={runningLabel}
+                runningTitle={runningTitle}
+                runningSqlDisplay={runningSqlDisplay}
               />
             ) : running ? (
               <div
                 role="status"
                 className="flex flex-col items-center justify-center h-full gap-1.5 overflow-hidden px-4 text-ink-500"
               >
-                <span className="flex items-center gap-2 min-w-0">
+                <span className="flex shrink-0 items-center gap-2">
                   <Loader2 size={18} className="animate-spin shrink-0" aria-hidden="true" />
-                  <span className="min-w-0 text-body truncate" title={runningLabel}>
-                    {runningLabel}
-                  </span>
+                  <span className="text-body">{runningTitle}</span>
                 </span>
+                <pre className="w-full max-h-[40vh] overflow-y-auto text-left text-caption font-mono whitespace-pre-wrap break-words">
+                  {runningSqlDisplay}
+                </pre>
               </div>
             ) : selectedResults && selectedResults.status !== 'ready' ? (
               <div className="flex items-center justify-center h-full gap-2 px-4 text-center text-body text-ink-400">
