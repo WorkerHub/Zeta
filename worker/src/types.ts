@@ -90,7 +90,7 @@ export interface PermissionRow {
   id: string
   user_id: string
   database_id: string
-  permission: 'read' | 'write' | 'write_drop'
+  permission: 'read' | 'write' | 'write_drop' | 'manage'
   granted_by: string | null
   granted_at: number
 }

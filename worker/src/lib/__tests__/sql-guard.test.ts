@@ -395,6 +395,13 @@ describe('checkSqlAccess', () => {
     expect(checkSqlAccess('destructive', 'write_drop')).toBeNull()
     expect(checkSqlAccess('forbidden', 'write_drop')).toMatch(/not allowed/)
   })
+  it('lets manage run everything write_drop can, and still refuses forbidden/multiple/empty', () => {
+    expect(checkSqlAccess('destructive', 'manage')).toBeNull()
+    expect(checkSqlAccess('write', 'manage')).toBeNull()
+    expect(checkSqlAccess('forbidden', 'manage')).toMatch(/not allowed/)
+    expect(checkSqlAccess('multiple', 'manage')).not.toBeNull()
+    expect(checkSqlAccess('empty', 'manage')).not.toBeNull()
+  })
   it('rejects multiple statements and empty SQL for everyone', () => {
     expect(checkSqlAccess('multiple', 'write_drop')).not.toBeNull()
     expect(checkSqlAccess('empty', 'write_drop')).not.toBeNull()

@@ -12,7 +12,11 @@ import { tables } from './db'
 //     run it again;
 //   * migrations must be additive (CREATE TABLE/INDEX IF NOT EXISTS, ALTER TABLE ADD COLUMN,
 //     INSERT OR IGNORE) — no drops, renames or rewrites of existing data; destructive changes need
-//     their own specification;
+//     their own specification. The ONE sanctioned exception is schema_v7: it rebuilds
+//     user_database_permissions to widen the `permission` CHECK to include 'manage' (SQLite cannot
+//     alter a CHECK constraint). That rebuild is authorised by SPEC §3 ("有则在本版 schema 一并放宽")
+//     and runs as an `atomic` migration — one D1 batch, i.e. one SQL transaction — so a failure
+//     rolls the whole rebuild back and re-running setup replays it idempotently;
 //   * statements are separated by `;` and executed with D1's `exec()`, which needs a single line
 //     (see lib/migrations-runner.ts) — keep SQL line comments out of migrations;
 //   * write the SQL with the prefix helper below (`t('users')`), never with a hardcoded name.
@@ -24,9 +28,14 @@ import { tables } from './db'
 export interface Migration {
   name: string
   sql: string
+  // When true, the migration's statements run in one D1 batch (a single SQL transaction) instead
+  // of exec(): a failure part-way rolls the whole migration back. Only migrations whose statements
+  // are not independently idempotent (a table rebuild) opt in; the ledger still records the
+  // migration only after the whole batch succeeds.
+  atomic?: boolean
 }
 
-// The current final schema: 11 tables and their indexes, prefix-aware and idempotent
+// The baseline schema (schema_v1): 11 tables and their indexes, prefix-aware and idempotent
 // (IF NOT EXISTS — the ledger guarantees a migration runs once, the clauses only make a failed,
 // half-applied run safe to retry).
 function schemaV1(T: ReturnType<typeof tables>): string[] {
@@ -251,6 +260,57 @@ export function getMigrations(env: Pick<Env, 'TABLE_PREFIX'>): Migration[] {
       // the two the reads answer null and writes answer 503 instead of failing on a missing column.
       name: 'schema_v6',
       sql: `ALTER TABLE ${T.users} ADD COLUMN theme_color TEXT`,
+    },
+    {
+      // Spark configuration (§3) and the `manage` permission level (§4).
+      //
+      // `spark_config_profiles` holds the per-user saved Spark config profiles;
+      // `spark_instance_configs` holds the *expected* instance config of a Spark target — applied
+      // to the service, never a record of its effective state, which lives in the service's §1.2
+      // status and is not stored here (hence no status column).
+      //
+      // `manage` widens the permission CHECK. SQLite cannot alter a CHECK constraint, so the
+      // permissions table is rebuilt (new → copy → drop → rename) as this migration's only
+      // non-additive step — authorised in the header above, and run `atomic` so the whole rebuild
+      // is one transaction. The temp table is created WITHOUT `IF NOT EXISTS` on purpose: the
+      // consistency guard (migrations-runner.ts) counts `CREATE TABLE IF NOT EXISTS` names, and a
+      // renamed-away temp table must not be counted as a persistent one.
+      name: 'schema_v7',
+      atomic: true,
+      sql: [
+        `CREATE TABLE ${T.user_database_permissions}__new (
+          id TEXT PRIMARY KEY,
+          user_id TEXT NOT NULL REFERENCES ${T.users}(id) ON DELETE CASCADE,
+          database_id TEXT NOT NULL REFERENCES ${T.d1_databases}(id) ON DELETE CASCADE,
+          permission TEXT NOT NULL DEFAULT 'read' CHECK (permission IN ('read', 'write', 'write_drop', 'manage')),
+          granted_by TEXT REFERENCES ${T.users}(id),
+          granted_at INTEGER NOT NULL,
+          UNIQUE (user_id, database_id)
+        )`,
+        `INSERT INTO ${T.user_database_permissions}__new (id, user_id, database_id, permission, granted_by, granted_at)
+           SELECT id, user_id, database_id, permission, granted_by, granted_at FROM ${T.user_database_permissions}`,
+        `DROP TABLE ${T.user_database_permissions}`,
+        `ALTER TABLE ${T.user_database_permissions}__new RENAME TO ${T.user_database_permissions}`,
+        `CREATE INDEX IF NOT EXISTS idx_${T.user_database_permissions}_user ON ${T.user_database_permissions}(user_id)`,
+        `CREATE INDEX IF NOT EXISTS idx_${T.user_database_permissions}_db ON ${T.user_database_permissions}(database_id)`,
+        `CREATE TABLE IF NOT EXISTS ${T.spark_config_profiles} (
+          id TEXT PRIMARY KEY,
+          user_id TEXT NOT NULL REFERENCES ${T.users}(id) ON DELETE CASCADE,
+          database_id TEXT NOT NULL REFERENCES ${T.d1_databases}(id) ON DELETE CASCADE,
+          name TEXT NOT NULL,
+          entries TEXT NOT NULL,
+          created_at INTEGER NOT NULL,
+          updated_at INTEGER NOT NULL
+        )`,
+        `CREATE INDEX IF NOT EXISTS idx_${T.spark_config_profiles}_user_db ON ${T.spark_config_profiles}(user_id, database_id)`,
+        `CREATE TABLE IF NOT EXISTS ${T.spark_instance_configs} (
+          database_id TEXT PRIMARY KEY REFERENCES ${T.d1_databases}(id) ON DELETE CASCADE,
+          entries TEXT NOT NULL,
+          jars TEXT NOT NULL,
+          updated_by TEXT REFERENCES ${T.users}(id) ON DELETE SET NULL,
+          updated_at INTEGER NOT NULL
+        )`,
+      ].join(';\n'),
     },
   ]
 }

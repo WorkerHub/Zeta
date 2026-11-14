@@ -50,9 +50,9 @@ databases.get('/', async (c) => {
   return c.json(
     rows.map((db) => {
       const appDb = isAppDb(c.env, db.cf_database_id)
-      // The application database's permission is capped at write: the admin's implicit write_drop
-      // and any stored write_drop are reported at their effective level, never as write_drop.
-      const base: Permission = role === 'admin' ? 'write_drop' : ((permMap.get(db.id) ?? 'read') as Permission)
+      // The application database's permission is capped at write: the admin's implicit manage
+      // and any stored write_drop/manage are reported at their effective level, never above write.
+      const base: Permission = role === 'admin' ? 'manage' : ((permMap.get(db.id) ?? 'read') as Permission)
       const kind = db.kind ?? 'sqlite'
       return {
         id: db.id,
