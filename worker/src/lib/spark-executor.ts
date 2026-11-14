@@ -1,6 +1,7 @@
 import { toJsonSafeRows } from './json-safe'
-import { isWriteClass, type SqlClass } from './sql-guard'
 import type { SparkAccess } from './spark-access'
+import type { JarRef, ServerJar, SparkConfigStatus } from './spark-config'
+import { isWriteClass, type SqlClass } from './sql-guard'
 
 // ── Spark executor (third-phase SparkSQL targets) ─────────────────────────────────────────────
 // A Spark target is one published HTTPS port in front of a long-lived SparkSession (the service
@@ -535,4 +536,136 @@ export async function testSparkConnection(access: SparkAccess, session?: string)
   } finally {
     await opened.close()
   }
+}
+
+// ── Spark instance-config admin endpoints (SPEC §1.2) ─────────────────────────────────────────
+// Three management endpoints next to /query and /cancel, speaking the same two auth headers and the
+// same small JSON contract. They are reached only by the instance-config routes (routes/databases.ts),
+// which carry the expected config and pass the service's answers through unchanged — Zeta never
+// infers success or failure from them: an extension class that does not exist is skipped with a
+// warning, a missing catalog class fails and rolls back, and only the service's `state` / `lastError`
+// says which.
+
+// One admin request's ceiling. Apply answers immediately (draining/restarting are async) and
+// status/jars are fast reads; the budget only bounds a wedged service.
+const CONFIG_TIMEOUT_MS = 15_000
+
+// `GET /admin/config/status` shape check: the four known states plus the numeric counters and the
+// effective block. `effective.jars` is an array of *names* (strings), unlike the expected config's
+// structured jar list — both are passed through as-is, never reshaped.
+function parseSparkConfigStatus(json: unknown): SparkConfigStatus | null {
+  if (!json || typeof json !== 'object') return null
+  const s = json as Record<string, unknown>
+  if (s.state !== 'running' && s.state !== 'draining' && s.state !== 'restarting' && s.state !== 'failed_fallback') {
+    return null
+  }
+  if (typeof s.epoch !== 'number' || typeof s.inflight !== 'number') return null
+
+  const effective = s.effective as { entries?: unknown; jars?: unknown } | null | undefined
+  const entries = effective?.entries
+  const jars = effective?.jars
+  if (!entries || typeof entries !== 'object' || Array.isArray(entries)) return null
+  if (!Array.isArray(jars) || !jars.every((j) => typeof j === 'string')) return null
+  const entriesOut: Record<string, string> = {}
+  for (const [k, v] of Object.entries(entries as Record<string, unknown>)) {
+    if (typeof v !== 'string') return null
+    entriesOut[k] = v
+  }
+  return {
+    state: s.state,
+    epoch: s.epoch,
+    inflight: s.inflight,
+    effective: { entries: entriesOut, jars: jars as string[] },
+    lastError: typeof s.lastError === 'string' ? s.lastError : null,
+  }
+}
+
+// The service's current apply state, or null when it cannot be reached or answers unusably. Null is
+// deliberate: the GET route degrades to "status unknown" and still returns the expected config — a
+// service outage must never read as a configuration error.
+export async function fetchSparkConfigStatus(access: SparkAccess): Promise<SparkConfigStatus | null> {
+  let res: Response
+  try {
+    res = await fetch(`${access.url}/admin/config/status`, {
+      headers: {
+        Authorization: `Bearer ${access.platform_token}`,
+        'X-Auth-Token': access.app_token,
+        Accept: 'application/json',
+      },
+      signal: AbortSignal.timeout(CONFIG_TIMEOUT_MS),
+    })
+  } catch {
+    return null
+  }
+  if (!res.ok) return null
+  return parseSparkConfigStatus(parseJson(await res.text().catch(() => '')))
+}
+
+// The files currently in the service's jars directory, or null when it cannot be reached. Same
+// degrade-on-unreachable contract as the status read.
+export async function fetchSparkJars(access: SparkAccess): Promise<ServerJar[] | null> {
+  let res: Response
+  try {
+    res = await fetch(`${access.url}/admin/jars`, {
+      headers: {
+        Authorization: `Bearer ${access.platform_token}`,
+        'X-Auth-Token': access.app_token,
+        Accept: 'application/json',
+      },
+      signal: AbortSignal.timeout(CONFIG_TIMEOUT_MS),
+    })
+  } catch {
+    return null
+  }
+  if (!res.ok) return null
+  const jars = (parseJson(await res.text().catch(() => '')) as { jars?: unknown } | null)?.jars
+  if (!Array.isArray(jars)) return null
+  const out: ServerJar[] = []
+  for (const item of jars) {
+    const jar = item as { name?: unknown; sizeBytes?: unknown } | null
+    if (!jar || typeof jar !== 'object' || typeof jar.name !== 'string' || typeof jar.sizeBytes !== 'number')
+      return null
+    out.push({ name: jar.name, sizeBytes: jar.sizeBytes })
+  }
+  return out
+}
+
+// Applies the expected config and returns the state the service entered. A 400 is the service
+// rejecting the applied config (a missing jar file, a bad key, …) and is surfaced as a `sql` error
+// — the caller answers 400 with the service's own sentence. Anything else goes through the shared
+// classifier (transport/stopped/starting/auth) and the caller answers "service unreachable".
+export async function applySparkConfig(
+  access: SparkAccess,
+  body: { entries: Record<string, string>; jars: JarRef[] }
+): Promise<'draining' | 'restarting'> {
+  let res: Response
+  try {
+    res = await fetch(`${access.url}/admin/config/apply`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${access.platform_token}`,
+        'X-Auth-Token': access.app_token,
+        'Content-Type': 'application/json',
+        Accept: 'application/json',
+      },
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(CONFIG_TIMEOUT_MS),
+    })
+  } catch (err) {
+    throw transportError(err, access)
+  }
+
+  const text = await res.text().catch(() => '')
+  const json = parseJson(text)
+  if (res.status === 202) {
+    const state = (json as { state?: unknown } | null)?.state
+    if (state === 'draining' || state === 'restarting') return state
+    throw new SparkQueryError('The Spark service returned an unexpected response.', 'transport', 'spark_transport')
+  }
+  if (res.status === 400) {
+    const message = (json as { error?: unknown } | null)?.error
+    const detail = typeof message === 'string' && message ? sanitize(message, access) : sanitize(text, access)
+    throw new SparkQueryError(detail || 'The configuration was rejected by the Spark service.', 'sql', 'spark_sql')
+  }
+  throw classifyFailure(res, text, json, access, 'query')
 }
