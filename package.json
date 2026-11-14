@@ -19,6 +19,6 @@
   },
   "packageManager": "pnpm@12.16.1",
   "devDependencies": {
-    "@biomejs/biome": "^2.5.0"
+    "@biomejs/biome": "^2.6.6"
   }
 }
