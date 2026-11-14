@@ -80,7 +80,7 @@ export interface ExistingTableFamily {
 // Scans sqlite_master for an initialised Zeta table family under any prefix. This is the eyes of
 // the anti-silent-switch guard: runSetup() refuses to initialise when it finds a family whose
 // prefix differs from the resolved one, instead of silently stranding the existing data under a
-// new set of tables. Only table NAMES are read, and only the 12 Zeta family names are ever
+// new set of tables. Only table NAMES are read, and only the 14 Zeta family names are ever
 // matched — other projects' tables (SL_*, eNotify_*, …) are neither counted nor interpreted.
 export async function detectExistingTableFamily(db: D1Database): Promise<ExistingTableFamily | null> {
   const rows = await db.prepare("SELECT name FROM sqlite_master WHERE type = 'table'").all<{ name: string }>()

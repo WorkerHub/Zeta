@@ -35,7 +35,7 @@ export interface Migration {
   atomic?: boolean
 }
 
-// The current final schema: 11 tables and their indexes, prefix-aware and idempotent
+// The baseline schema (schema_v1): 11 tables and their indexes, prefix-aware and idempotent
 // (IF NOT EXISTS — the ledger guarantees a migration runs once, the clauses only make a failed,
 // half-applied run safe to retry).
 function schemaV1(T: ReturnType<typeof tables>): string[] {

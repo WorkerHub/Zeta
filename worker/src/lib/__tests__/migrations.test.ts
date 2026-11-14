@@ -361,7 +361,9 @@ describe('schema_v7 (Spark config tables + the manage permission)', () => {
     const upToV7 = migrations.slice(0, migrations.findIndex((m) => m.name === 'schema_v7') + 1)
     expect(upToV7[upToV7.length - 1]!.name).toBe('schema_v7')
 
-    // A deployment whose grants predate the manage level
+    // A deployment whose grants predate the manage level. The seed runs BETWEEN the two
+    // runMigrations calls on purpose: the v1–v6 ledger rows make the second call skip them and
+    // apply only schema_v7, exactly like a real "check & upgrade" over an existing database.
     await runMigrations(env, upToV7.slice(0, -1))
     sqlite.exec(`
       INSERT INTO users (id, email, name, role, created_at, updated_at)
