@@ -8,6 +8,7 @@ import {
   defaultHistoryDrawerWidth,
   historyDrawerBounds,
 } from '../lib/drawerWidth'
+import { stripLeadingCommentsForDisplay } from '../lib/sql'
 import { timeAgo } from '../lib/time'
 import type { RunResults } from '../hooks/useNotebookRuns'
 import type { NotebookRunSummary } from '../types'
@@ -382,7 +383,9 @@ export default function RunHistoryDrawer({
                             <span className="mt-0.5 block truncate text-micro text-ink-500">
                               {outcome(run)} · {run.duration_ms}ms
                             </span>
-                            <span className="mt-0.5 block truncate font-mono text-micro text-ink-400">{run.sql}</span>
+                            <span className="mt-0.5 block truncate font-mono text-micro text-ink-400">
+                              {stripLeadingCommentsForDisplay(run.sql)}
+                            </span>
                           </button>
                           <button
                             type="button"
@@ -462,7 +465,7 @@ export default function RunHistoryDrawer({
                   <div className="shrink-0 border-b border-ink-200 px-4 py-2">
                     <p className="mb-1 text-micro uppercase text-ink-400">{t('runs.sql')}</p>
                     <pre className="max-h-32 overflow-auto whitespace-pre-wrap break-words rounded-lg bg-ink-50 p-2 font-mono text-caption text-ink-700">
-                      {selectedRun.sql}
+                      {stripLeadingCommentsForDisplay(selectedRun.sql)}
                     </pre>
                   </div>
 

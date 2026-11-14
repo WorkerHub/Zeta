@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef } from 'react'
 import type { KeyboardEvent } from 'react'
 import { AlertCircle, CheckCircle2, CircleSlash, History, Loader2, X } from 'lucide-react'
 import { useLocale } from '../hooks/useLocale'
+import { stripLeadingCommentsForDisplay } from '../lib/sql'
 import { timeAgo } from '../lib/time'
 import type { NotebookRunSummary } from '../types'
 
@@ -101,15 +102,19 @@ export default function RunHistoryBar({
       : run.cancelled
         ? t('results.cancelled_short')
         : t(run.row_count === 1 ? 'results.row' : 'results.rows', { n: run.row_count })
-  const tooltip = (run: NotebookRunSummary) =>
-    [
+  // The statement first, not the comments above it: a header of a few lines must not eat the
+  // tooltip's whole budget either
+  const tooltip = (run: NotebookRunSummary) => {
+    const sql = stripLeadingCommentsForDisplay(run.sql)
+    return [
       `#${run.seq} · ${new Date(run.executed_at).toLocaleString()}`,
       run.database_name && t('runs.database', { name: run.database_name }),
       outcome(run),
-      run.sql.length > TOOLTIP_SQL_LENGTH ? `${run.sql.slice(0, TOOLTIP_SQL_LENGTH)}…` : run.sql,
+      sql.length > TOOLTIP_SQL_LENGTH ? `${sql.slice(0, TOOLTIP_SQL_LENGTH)}…` : sql,
     ]
       .filter(Boolean)
       .join('\n')
+  }
 
   // Left = newer, right = older, as on screen
   function onTabKeyDown(e: KeyboardEvent<HTMLButtonElement>, index: number) {
