@@ -8,12 +8,37 @@
 
 export const THEME_COLOR_STORAGE_KEY = 'theme-color'
 
-export type ThemeColor = 'terracotta' | 'ocean' | 'teal' | 'forest' | 'grape' | 'rose'
+export type ThemeColor =
+  | 'terracotta'
+  | 'ocean'
+  | 'teal'
+  | 'forest'
+  | 'grape'
+  | 'rose'
+  | 'royal'
+  | 'violet'
+  | 'tangerine'
+  | 'cyan'
+  | 'magenta'
+  | 'emerald'
 
 export const DEFAULT_THEME_COLOR: ThemeColor = 'terracotta'
 
 // Display order of the picker; terracotta first because it is the default
-export const THEME_COLORS: readonly ThemeColor[] = ['terracotta', 'ocean', 'teal', 'forest', 'grape', 'rose']
+export const THEME_COLORS: readonly ThemeColor[] = [
+  'terracotta',
+  'ocean',
+  'teal',
+  'forest',
+  'grape',
+  'rose',
+  'royal',
+  'violet',
+  'tangerine',
+  'cyan',
+  'magenta',
+  'emerald',
+]
 
 export function isThemeColor(value: unknown): value is ThemeColor {
   return typeof value === 'string' && (THEME_COLORS as readonly string[]).includes(value)

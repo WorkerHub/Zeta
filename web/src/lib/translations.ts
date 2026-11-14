@@ -130,6 +130,12 @@ export const translations: Record<Locale, Record<string, string>> = {
     'theme_color.forest': 'Forest',
     'theme_color.grape': 'Grape',
     'theme_color.rose': 'Rose',
+    'theme_color.royal': 'Royal',
+    'theme_color.violet': 'Violet',
+    'theme_color.tangerine': 'Tangerine',
+    'theme_color.cyan': 'Cyan',
+    'theme_color.magenta': 'Magenta',
+    'theme_color.emerald': 'Emerald',
 
     // User menu
     'user.profile_security': 'Profile & Security',
@@ -581,6 +587,12 @@ export const translations: Record<Locale, Record<string, string>> = {
     'theme_color.forest': '森绿',
     'theme_color.grape': '葡萄紫',
     'theme_color.rose': '玫瑰',
+    'theme_color.royal': '宝蓝',
+    'theme_color.violet': '紫罗兰',
+    'theme_color.tangerine': '蜜橙',
+    'theme_color.cyan': '湖青',
+    'theme_color.magenta': '品红',
+    'theme_color.emerald': '翠绿',
 
     // User menu
     'user.profile_security': '个人资料与安全',

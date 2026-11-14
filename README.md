@@ -356,7 +356,7 @@ All endpoints live under `/api/`. Authentication uses short-lived JWT access tok
 | `GET/POST/PATCH/DELETE /api/notebooks` | CRUD for SQL notebooks (per-user, max 20) |
 | `GET/DELETE /api/notebooks/:id/runs[/:runId]` | A notebook's saved runs: list (highest number `seq` first, `limit` plus `before=<seq>` or `offset`), read one with its results, delete one, or clear all |
 | `GET/PUT /api/profile/run-settings` | The user's own run limit (`run_limit`, `null` follows the admin limit) and storage usage |
-| `GET/PUT /api/profile/theme-color` | The account's brand-colour preset (`theme_color`, one of the six presets; `null` = never set, shown as the default terracotta). Until the database has run the schema upgrade, GET answers `null` and PUT answers `503` |
+| `GET/PUT /api/profile/theme-color` | The account's brand-colour preset (`theme_color`, one of the twelve presets; `null` = never set, shown as the default terracotta). Until the database has run the schema upgrade, GET answers `null` and PUT answers `503` |
 | `GET/POST/PATCH/DELETE /api/admin/*` | Admin-only: users, databases, permissions, settings |
 | `POST /api/admin/setup` | Admin-only: runs the same schema initialisation/upgrade as POST /api/setup without SETUP_SECRET — the admin session is the credential |
 | `POST /api/setup` | Idempotent schema migration: applies the pending ledger entries and returns `tablePrefix` plus each migration's `applied`/`skipped` result (JSON body `{"secret": "<SETUP_SECRET>"}`). Rate-limited to 3 attempts / 10 min per IP |

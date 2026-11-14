@@ -18,8 +18,21 @@ import {
 const initScript = readFileSync(new URL('../../../public/theme-init.js', import.meta.url), 'utf8')
 
 describe('theme colour presets', () => {
-  it('lists the six presets in picker order, terracotta first as the default', () => {
-    expect(THEME_COLORS).toEqual(['terracotta', 'ocean', 'teal', 'forest', 'grape', 'rose'])
+  it('lists the twelve presets in picker order, terracotta first as the default', () => {
+    expect(THEME_COLORS).toEqual([
+      'terracotta',
+      'ocean',
+      'teal',
+      'forest',
+      'grape',
+      'rose',
+      'royal',
+      'violet',
+      'tangerine',
+      'cyan',
+      'magenta',
+      'emerald',
+    ])
     expect(THEME_COLORS[0]).toBe(DEFAULT_THEME_COLOR)
     expect(THEME_COLOR_STORAGE_KEY).toBe('theme-color')
   })
