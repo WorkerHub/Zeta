@@ -23,7 +23,17 @@ import type { SparkAccess } from './spark-access'
 //   * a stopped machine and a booting one both answer with a 5xx, and only the body's wording says
 //     which. A stopped machine is not started by a visit, so it is never retried.
 
-export type SparkErrorKind = 'sql' | 'stopped' | 'starting' | 'auth' | 'transport' | 'config'
+export type SparkErrorKind =
+  | 'sql'
+  | 'stopped'
+  | 'starting'
+  | 'auth'
+  | 'transport'
+  | 'config'
+  // A rejected profile key (shown to everyone, 400): the caller's own mistake, never a SQL error.
+  | 'profile'
+  // A draining / restarting / rebuilt environment (shown to everyone, 503/409).
+  | 'context'
 
 // Stable identifiers for the four failures the UI shows with its own copy (SPEC v2.6), plus one per
 // remaining class. The web app maps a code to the reader's language; the message stays the fallback.
@@ -35,6 +45,13 @@ export type SparkErrorCode =
   | 'spark_publish_token'
   | 'spark_transport'
   | 'spark_config'
+  // The five codes the service returns for profile/context states (§1.1/§1.3), passed through
+  // verbatim so the UI can point at the offending key or reset its connection state.
+  | 'startup_key_in_profile'
+  | 'invalid_key'
+  | 'context_draining'
+  | 'context_restarting'
+  | 'context_rebuilt'
 
 // A failure that already carries a caller-safe classification:
 //   sql       → the statement was rejected by Spark (show it, HTTP 400)
@@ -47,7 +64,10 @@ export class SparkQueryError extends Error {
   constructor(
     message: string,
     public readonly kind: SparkErrorKind,
-    public readonly code: SparkErrorCode
+    public readonly code: SparkErrorCode,
+    // Extra caller-safe data a state error carries — the rejected key (`key`), the in-flight count
+    // (`inflight`) or the new environment generation (`epoch`) — spread into the response body.
+    public readonly detail?: Record<string, unknown>
   ) {
     super(message)
     this.name = 'SparkQueryError'
@@ -63,6 +83,16 @@ export const SPARK_APP_TOKEN_MESSAGE =
   'The Spark application token was rejected. Ask an admin to check the saved registration.'
 export const SPARK_PUBLISH_TOKEN_MESSAGE =
   "The publish address's access token was rejected. Ask an admin to publish it again and update the registration."
+
+// The five service state sentences of SPEC §1.1/§1.3 (English fallback; the UI maps `code` to the
+// reader's language). The key/epoch/inflight values ride in the error's `detail`, not the sentence.
+export const SPARK_STARTUP_KEY_MESSAGE =
+  'This Spark configuration key is a startup-level parameter. Change it in the instance configuration.'
+export const SPARK_INVALID_KEY_MESSAGE = 'This Spark configuration key or value was rejected.'
+export const SPARK_CONTEXT_DRAINING_MESSAGE =
+  'The Spark environment is draining its workload. Please try again shortly.'
+export const SPARK_CONTEXT_RESTARTING_MESSAGE = 'The Spark environment is restarting. Please try again shortly.'
+export const SPARK_CONTEXT_REBUILT_MESSAGE = 'The Spark environment was rebuilt. Please reconnect.'
 
 // Spark's structured exceptions carry the logical plan, which runs to several KB; runs.ts stores at
 // most 2000 characters, and nothing a user reads needs more than this.
@@ -86,6 +116,28 @@ function readSession(value: string | undefined): string | undefined {
     )
   }
   return session
+}
+
+// The runtime config a request may carry (§1.1): an object of non-empty string→string entries. It is
+// this deployment's own bug if anything else reaches here — the routes resolve it from a validated
+// profile — so a malformed value is refused before any request is sent, exactly like `readSession`.
+function readConfig(value: Record<string, string> | undefined): Record<string, string> | undefined {
+  if (!value) return undefined
+  if (typeof value !== 'object' || Array.isArray(value)) {
+    throw new SparkQueryError('The Spark runtime config must be an object.', 'config', 'spark_config')
+  }
+  const entries = Object.entries(value)
+  if (entries.length === 0) return undefined
+  for (const [key, val] of entries) {
+    if (!key || !val || typeof key !== 'string' || typeof val !== 'string') {
+      throw new SparkQueryError(
+        'The Spark runtime config must map non-empty string keys to non-empty string values.',
+        'config',
+        'spark_config'
+      )
+    }
+  }
+  return value
 }
 
 const HEALTH_ATTEMPT_TIMEOUT_MS = 10_000
@@ -159,6 +211,11 @@ export interface SparkOpenOptions {
    * (see lib/executions.ts). Omitted → the service groups by session, as before the field existed.
    */
   execution?: string
+  /**
+   * The runtime Spark SQLConf entries applied to this session (§1.1), resolved from the caller's
+   * selected profile by the routes. Omitted → the service's defaults (no `config` field is sent).
+   */
+  config?: Record<string, string>
 }
 
 /** What a connection check runs with: the 20 s health budget and the 120 s hard cap, in one place. */
@@ -207,6 +264,39 @@ function classifyFailure(
 ): SparkQueryError {
   const detail = sanitize(text, access)
   const status = res.status
+
+  // The service's structured state answers carry a `code` (§1.1/§1.3). These must be surfaced
+  // verbatim — never folded into a generic SQL or transport failure — so the UI can point at the
+  // offending key or reset its connection state. `/health` never carries one, so the query path is
+  // the only one that sees them.
+  const code = (json as { code?: unknown } | null)?.code
+  if (code === 'startup_key_in_profile' || code === 'invalid_key') {
+    const key = (json as { key?: unknown } | null)?.key
+    return new SparkQueryError(
+      code === 'startup_key_in_profile' ? SPARK_STARTUP_KEY_MESSAGE : SPARK_INVALID_KEY_MESSAGE,
+      'profile',
+      code,
+      typeof key === 'string' && key ? { key } : undefined
+    )
+  }
+  if (code === 'context_draining' || code === 'context_restarting') {
+    const inflight = (json as { inflight?: unknown } | null)?.inflight
+    return new SparkQueryError(
+      code === 'context_draining' ? SPARK_CONTEXT_DRAINING_MESSAGE : SPARK_CONTEXT_RESTARTING_MESSAGE,
+      'context',
+      code,
+      typeof inflight === 'number' ? { inflight } : undefined
+    )
+  }
+  if (code === 'context_rebuilt') {
+    const epoch = (json as { epoch?: unknown } | null)?.epoch
+    return new SparkQueryError(
+      SPARK_CONTEXT_REBUILT_MESSAGE,
+      'context',
+      code,
+      typeof epoch === 'number' ? { epoch } : undefined
+    )
+  }
 
   if (status === 502 || status === 503) {
     // Verbatim from the spike: "Sandbox offline: it is stopped, and a visit does not start it."
@@ -294,7 +384,8 @@ async function postQuery(
   maxRows: number,
   timeoutMs: number,
   session?: string,
-  execution?: string
+  execution?: string,
+  config?: Record<string, string>
 ): Promise<SparkResponse> {
   let res: Response
   try {
@@ -313,6 +404,7 @@ async function postQuery(
         maxRows,
         ...(session ? { session } : {}),
         ...(execution ? { execution } : {}),
+        ...(config ? { config } : {}),
       }),
       signal: AbortSignal.timeout(Math.max(1, timeoutMs)),
     })
@@ -349,6 +441,7 @@ export async function openSparkSession(access: SparkAccess, opts: SparkOpenOptio
   // spend a request on the machine.
   const session = readSession(opts.session)
   const execution = readSession(opts.execution)
+  const config = readConfig(opts.config)
   const deadline = opts.hardCapMs ? Date.now() + opts.hardCapMs : Number.POSITIVE_INFINITY
   const health = await probeSparkHealth(access, opts.health ?? QUERY_HEALTH, deadline)
   const statementTimeout = opts.statementTimeoutMs ?? QUERY_TIMEOUT_MS
@@ -365,7 +458,8 @@ export async function openSparkSession(access: SparkAccess, opts: SparkOpenOptio
         maxRows,
         Math.min(statementTimeout, remaining),
         session,
-        execution
+        execution,
+        config
       )
 
       // A write's result table is not returned, and the service's rowCount is 0 for DDL/DML — an
