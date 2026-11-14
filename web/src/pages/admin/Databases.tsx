@@ -7,25 +7,21 @@ import DatabaseForm from '../../components/DatabaseForm'
 import { effectiveProvider, engineLabelKey } from '../../lib/db-provider'
 import type { AdminDatabase, CfD1Database, DatabaseGrant } from '../../types'
 
-// The desktop data-source list is a full-width table: the table stretches to its card (100%), and
-// the name column is the one flexible column — a 200px floor, it takes the width the card leaves
-// over. The name is plain text and left-aligned, so a wider name column only adds air after the
-// text, unlike the database-ID code block, which must not be stretched and keeps its fixed width.
+// The desktop data-source list is a full-width table whose columns are locked by a `<colgroup>`:
+// `table-layout: fixed` (`md:table-fixed` on the table) makes the browser take each column's width
+// from its `<col>` definition instead of sizing from cell content. The one flexible column — the
+// name — has no `<col>` width, so it absorbs whatever the card leaves over; every other column is
+// pinned, and a wide card therefore adds no gaps between columns (an automatic layout would spread
+// that slack across every column, measured in round one as a ~7px drift on the pinned columns and
+// far more when no name has a description to widen it).
 //
-// The width lives on a block inside each cell rather than on the `<td>` or a `<col>`: a table cell
-// in an automatic layout lets a long value overrule its own width, and `table-layout: fixed` only
-// honours column widths when the table itself has a definite width — with `width: auto` the browser
-// still sizes the table from its content (measured: a 200px column came out 427px wide). A block
-// with a fixed width and its own padding cannot be overruled, so a column measures exactly its
-// width. The padding lives on that block for the same reason.
-//
-// The actions column keeps no width: it is as wide as its buttons, and the extra "Link" button of a
-// legacy row simply widens it. Below `md` nothing is pinned — the table keeps its natural columns
-// and scrolls horizontally inside its card, as before. Every number is a class literal because
-// Tailwind only emits the utilities it can see in the source.
+// The cell padding lives on a block inside each cell, not on the `<td>`, so a pinned column
+// measures exactly its `<col>` width. Below `md` none of this applies — the table keeps its natural
+// auto columns and scrolls horizontally inside its card, as before. Every number is a class literal
+// because Tailwind only emits the utilities it can see in the source.
 export const COL_WIDTH = {
-  // The one flexible column: a 200px floor, it absorbs the card's remaining width on desktop
-  name: 'md:min-w-[200px]',
+  // The one flexible column: no width, so it takes the card's remaining width on desktop
+  name: '',
   engine: 'md:w-[140px]',
   provider: 'md:w-[120px]',
   // 268px of content after the 32px padding: a 36-character UUID measures 263.5px in this font, so
@@ -35,13 +31,22 @@ export const COL_WIDTH = {
   // button: left-aligned, the air after the badge would be 58px and the 40px budget unreachable
   // without narrowing the column below what the widest badge ("Inactive", 60.8px) needs.
   status: 'md:w-[112px]',
-  actions: '',
+  // The widest action row — English labels plus a legacy row's "Link" button — measures 331.7px;
+  // 332px keeps that row from overflowing in either locale (a Chinese row leaves ~44px of air at
+  // the right edge, which reads as the table's trailing padding).
+  actions: 'md:w-[332px]',
 } as const
 
-// The table's one cell box: the column's width, and the cell padding that belongs with it
-export function cellClass(col: keyof typeof COL_WIDTH, extra?: string): string {
-  const width = COL_WIDTH[col]
-  return ['px-4 py-3', width, extra].filter(Boolean).join(' ')
+// The table's minimum width at `md` and up: the name column's 200px floor plus every pinned width
+// (140 + 120 + 300 + 112 + 332). `table-layout: fixed` hands the card's slack to the flexible name
+// column whenever the table is wider than this; below it the table overflows and scrolls inside its
+// card (as it did before the fixed layout), so the name column is never squeezed out of existence.
+export const TABLE_MIN_WIDTH = 'md:min-w-[1204px]'
+
+// The table's one cell box: the cell padding that belongs with it. The column's width now lives on
+// the `<col>` in the table's `<colgroup>`, not here.
+export function cellClass(extra?: string): string {
+  return ['px-4 py-3', extra].filter(Boolean).join(' ')
 }
 
 // The database-ID header hint. The project has no tooltip component and no floating-layer
@@ -296,20 +301,28 @@ export default function AdminDatabases() {
         ) : databases.length === 0 ? (
           <p className="px-4 py-8 text-center text-body text-ink-500">{t('admin_db.no_databases')}</p>
         ) : (
-          <table className="w-full text-body">
+          <table className={`w-full md:table-fixed ${TABLE_MIN_WIDTH} text-body`}>
+            <colgroup>
+              <col className={COL_WIDTH.name || undefined} />
+              <col className={COL_WIDTH.engine} />
+              <col className={COL_WIDTH.provider} />
+              <col className={COL_WIDTH.databaseId} />
+              <col className={COL_WIDTH.status} />
+              <col className={COL_WIDTH.actions} />
+            </colgroup>
             <thead>
               <tr className="border-b border-ink-200 bg-ink-50">
                 <th className="text-left text-label text-ink-500">
-                  <div className={cellClass('name')}>{t('admin_db.name')}</div>
+                  <div className={cellClass()}>{t('admin_db.name')}</div>
                 </th>
                 <th className="text-left text-label text-ink-500">
-                  <div className={cellClass('engine', 'whitespace-nowrap')}>{t('admin_db.engine')}</div>
+                  <div className={cellClass('whitespace-nowrap')}>{t('admin_db.engine')}</div>
                 </th>
                 <th className="text-left text-label text-ink-500">
-                  <div className={cellClass('provider', 'whitespace-nowrap')}>{t('admin_db.provider')}</div>
+                  <div className={cellClass('whitespace-nowrap')}>{t('admin_db.provider')}</div>
                 </th>
                 <th className="text-left text-label text-ink-500 hidden md:table-cell">
-                  <div className={cellClass('databaseId', 'whitespace-nowrap')}>
+                  <div className={cellClass('whitespace-nowrap')}>
                     <span className="inline-flex items-center gap-1.5">
                       {t('admin_db.cf_database_id')}
                       <DatabaseIdHint text={t('admin_db.cf_database_id_hint')} />
@@ -317,10 +330,10 @@ export default function AdminDatabases() {
                   </div>
                 </th>
                 <th className="text-left text-label text-ink-500">
-                  <div className={cellClass('status', 'whitespace-nowrap text-right')}>{t('admin_db.status')}</div>
+                  <div className={cellClass('whitespace-nowrap text-right')}>{t('admin_db.status')}</div>
                 </th>
                 <th>
-                  <div className={cellClass('actions', 'pr-2')} />
+                  <div className={cellClass('pr-2')} />
                 </th>
               </tr>
             </thead>
@@ -331,7 +344,7 @@ export default function AdminDatabases() {
                   className="border-b border-ink-100 hover:bg-ink-50 transition-colors duration-(--duration-base)"
                 >
                   <td>
-                    <div className={cellClass('name')}>
+                    <div className={cellClass()}>
                       <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-body-strong text-ink-900">
                         <span className="min-w-0 truncate" title={db.name}>
                           {db.name}
@@ -348,34 +361,31 @@ export default function AdminDatabases() {
                     </div>
                   </td>
                   <td>
-                    <div className={cellClass('engine', 'whitespace-nowrap text-ink-700')}>
-                      {t(engineLabelKey(db.kind))}
-                    </div>
+                    <div className={cellClass('whitespace-nowrap text-ink-700')}>{t(engineLabelKey(db.kind))}</div>
                   </td>
                   <td>
                     <div
-                      className={cellClass('provider', 'whitespace-nowrap text-ink-700 truncate')}
+                      className={cellClass('whitespace-nowrap text-ink-700 truncate')}
                       title={effectiveProvider(db.kind, db.provider) ?? undefined}
                     >
                       {effectiveProvider(db.kind, db.provider) ?? '—'}
                     </div>
                   </td>
                   <td className="hidden md:table-cell">
-                    <div className={cellClass('databaseId', 'whitespace-nowrap')}>
+                    <div className={cellClass('whitespace-nowrap')}>
                       <DatabaseIdCell db={db} />
                     </div>
                   </td>
                   <td>
-                    <div className={cellClass('status', 'whitespace-nowrap text-right')}>
+                    <div className={cellClass('whitespace-nowrap text-right')}>
                       <span className={`badge ${db.is_active ? 'badge-green' : 'badge-neutral'}`}>
                         {db.is_active ? t('admin_db.active') : t('admin_db.inactive')}
                       </span>
                     </div>
                   </td>
                   <td>
-                    {/* 8px on the right, not 16: the delete button carries its own, and the
-                        whole table then stays inside the card at 1440 in Chinese */}
-                    <div className={cellClass('actions', 'whitespace-nowrap pr-2')}>
+                    {/* 8px on the right, not 16: the delete button carries its own */}
+                    <div className={cellClass('whitespace-nowrap pr-2')}>
                       <div className="flex items-center gap-1">
                         <button type="button" onClick={() => startEdit(db)} className="btn-ghost btn-sm gap-1">
                           <Pencil size={13} /> {t('admin_db.edit')}
