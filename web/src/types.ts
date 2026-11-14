@@ -83,6 +83,28 @@ export interface StatementResult {
   error?: string
   stored_rows?: number // a saved run kept only this many of the rows
   cancelled?: boolean // the user cancelled this statement while it ran (never an error)
+  // Spark state codes the worker rides along on a batch entry (§7.6): a rejected profile key
+  // (`startup_key_in_profile` / `invalid_key`) or a draining/restarting/rebuilt environment.
+  // A plain SQL error carries none of these.
+  code?: string
+  key?: string
+  inflight?: number
+  epoch?: number
+}
+
+// A single Spark profile entry (key = value), kept in order so blank lines and their order survive
+// an edit (SPEC §5.1/§5.2).
+export interface ProfileEntry {
+  key: string
+  value: string
+}
+
+// A personal Spark config profile as the API returns it.
+export interface SparkProfile {
+  id: string
+  name: string
+  entries: ProfileEntry[]
+  updated_at: number
 }
 
 export interface Notebook {

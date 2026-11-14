@@ -11,6 +11,7 @@ import {
   User as UserIcon,
   History,
   AlertCircle,
+  AlertTriangle,
   Shield,
   Monitor,
   Sun,
@@ -31,13 +32,25 @@ import { useNotebookRuns } from '../hooks/useNotebookRuns'
 import QueryResults from '../components/QueryResults'
 import DbKindMeta from '../components/DbKindMeta'
 import ConnectButton from '../components/ConnectButton'
+import SparkGearMenu from '../components/SparkGearMenu'
+import SparkProfilesDialog from '../components/SparkProfilesDialog'
 import RunActionButton from '../components/RunActionButton'
 import RunHistoryDrawer from '../components/RunHistoryDrawer'
 import ConfirmDialog from '../components/ConfirmDialog'
 import Logo from '../components/Logo'
 import { useConnections } from '../hooks/useConnections'
+import { useSparkProfiles } from '../hooks/useSparkProfiles'
 import { knocksBack } from '../lib/connection-state'
-import { errorCodeText } from '../lib/error-copy'
+import {
+  connectedProfileOf,
+  forgetConnectedProfile,
+  needsReconnect,
+  readConnectedProfiles,
+  rememberConnectedProfile,
+  writeConnectedProfiles,
+  type SparkProfileMap,
+} from '../lib/spark-profile'
+import { errorCodeText, sparkErrorKind } from '../lib/error-copy'
 import { splitSqlStatements, usedDatabaseOf } from '../lib/sql'
 import { sqlLightFunctionCalls, sqlLightHighlighting } from '../lib/editor-highlight'
 import { haltNotice, cancelNotice } from '../lib/runs'
@@ -69,6 +82,7 @@ export default function QueryPage() {
   const activeNotebook = notebooks.find((n) => n.id === activeId) ?? null
   const sqlText = activeNotebook?.sql_content ?? ''
   const selectedDb = databases.find((d) => d.id === activeNotebook?.database_id) ?? null
+  const selectedDbId = selectedDb?.id ?? null
   // Connection state of the current target (see hooks/useConnections): per target, this browser
   // session only. A target that has not answered a probe cannot be queried.
   const knownDbIds = useMemo(() => databases.map((d) => d.id), [databases])
@@ -83,6 +97,40 @@ export default function QueryPage() {
     forgetSessionDatabase,
   } = useConnections(knownDbIds)
   const connected = selectedDb ? isConnected(selectedDb.id) : false
+  // Spark profile selection for the current target (§5.3). The hook holds no list for a non-Spark
+  // target, so `selectedProfileId` is null there and the page never sends a `profileId`.
+  const spark = useSparkProfiles(selectedDb?.kind === 'spark' ? selectedDb.id : null)
+  const selectedProfileId = spark.selectedProfileId
+  // The profile a live connection was made with (sessionStorage, per target): when the selection
+  // moves off it while connected, the connect button turns into "reconnect" (SPEC §5.3).
+  const [connectedProfiles, setConnectedProfiles] = useState<SparkProfileMap>(() => readConnectedProfiles())
+  useEffect(() => {
+    writeConnectedProfiles(connectedProfiles)
+  }, [connectedProfiles])
+  const connectedProfileId = selectedDb ? connectedProfileOf(connectedProfiles, selectedDb.id) : null
+  const reconnectNeeded =
+    !!selectedDb && selectedDb.kind === 'spark' && needsReconnect(connected, selectedProfileId, connectedProfileId)
+  // The selected profile name shown in the Spark data-source button's second line.
+  const selectedProfileName =
+    selectedDb?.kind === 'spark' ? (spark.profiles.find((p) => p.id === selectedProfileId)?.name ?? null) : null
+  // §7.6: a rebuilt Spark environment disconnects the target and shows a thin banner above the editor.
+  const [contextRebuilt, setContextRebuilt] = useState(false)
+  const [profilesDialogOpen, setProfilesDialogOpen] = useState(false)
+
+  // A target that is no longer connected has no "connected profile" to compare against. The id is
+  // read into a local first, so the effect never holds a stale `selectedDb` object across a target
+  // switch that lands in the same render batch.
+  useEffect(() => {
+    if (selectedDbId && !connected) {
+      setConnectedProfiles((m) => forgetConnectedProfile(m, selectedDbId))
+    }
+  }, [connected, selectedDbId])
+
+  // A different target's environment state is unknown: the rebuilt banner is per-target.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: the target id is the trigger, not an input
+  useEffect(() => {
+    setContextRebuilt(false)
+  }, [selectedDbId])
   // Saved runs per notebook; what the results panel shows comes from here
   const runs = useNotebookRuns(activeId)
   const {
@@ -269,6 +317,7 @@ export default function QueryPage() {
               sql: stmt,
               notebookId: nbId,
               ...(sessionDatabase ? { sessionDatabase } : {}),
+              ...(selectedProfileId ? { profileId: selectedProfileId } : {}),
               executionId,
             },
             controller.signal
@@ -294,11 +343,31 @@ export default function QueryPage() {
           // The request was dropped by teardown (page left, notebook deleted): there is nobody left
           // to report it to. A user's cancel is not this path — its response carries `cancelled`.
           if (controller.signal.aborted) return
-          const entry: StatementResult = { sql: stmt, results: [], duration_ms: 0, error: describeError(err) }
+          const body = err instanceof ApiError ? err.body : {}
+          const entry: StatementResult = {
+            sql: stmt,
+            results: [],
+            duration_ms: 0,
+            error: describeError(err),
+            ...(typeof body.code === 'string' ? { code: body.code } : {}),
+            ...(typeof body.key === 'string' ? { key: body.key } : {}),
+            ...(typeof body.inflight === 'number' ? { inflight: body.inflight } : {}),
+            ...(typeof body.epoch === 'number' ? { epoch: body.epoch } : {}),
+          }
           // A statement that ran and failed is saved too; the error response names the run
-          finishRun(nbId, { run: summary(err instanceof ApiError ? err.body : {}, [entry]), results: [entry] })
-          // The target itself is no longer usable (auth/transport): the next click has to prove it
-          if (err instanceof ApiError && knocksBack(err.status)) knockBack(db.id)
+          finishRun(nbId, { run: summary(body, [entry]), results: [entry] })
+          // A rebuilt environment loses the session: drop the connection and ask to reconnect. A
+          // draining/restarting environment is transient — never knocked back. Anything else with a
+          // 5xx status means the target is no longer usable: the next click has to prove it.
+          if (err instanceof ApiError) {
+            const code = typeof body.code === 'string' ? body.code : null
+            if (code === 'context_rebuilt') {
+              knockBack(db.id)
+              setContextRebuilt(true)
+            } else if (sparkErrorKind(code) !== 'context' && knocksBack(err.status)) {
+              knockBack(db.id)
+            }
+          }
           // The remembered database is gone: forget it, or every run keeps failing on the same pin
           if (
             err instanceof ApiError &&
@@ -316,6 +385,7 @@ export default function QueryPage() {
             statements,
             notebookId: nbId,
             ...(sessionDatabase ? { sessionDatabase } : {}),
+            ...(selectedProfileId ? { profileId: selectedProfileId } : {}),
             executionId,
           },
           controller.signal
@@ -327,11 +397,25 @@ export default function QueryPage() {
           cancelled: res.cancelled ? cancelNotice(db.kind ?? 'sqlite') : null,
         })
         rememberSessionUse(res.results)
+        // A batch's entries carry the state codes one by one; a rebuilt environment ends the
+        // session exactly as a single statement does.
+        if (res.results.some((r) => r.code === 'context_rebuilt')) {
+          knockBack(db.id)
+          setContextRebuilt(true)
+        }
       }
     } catch (err) {
       if (controller.signal.aborted) return
       finishRun(nbId, { error: describeError(err) })
-      if (err instanceof ApiError && knocksBack(err.status)) knockBack(db.id)
+      if (err instanceof ApiError) {
+        const code = typeof err.body.code === 'string' ? err.body.code : null
+        if (code === 'context_rebuilt') {
+          knockBack(db.id)
+          setContextRebuilt(true)
+        } else if (sparkErrorKind(code) !== 'context' && knocksBack(err.status)) {
+          knockBack(db.id)
+        }
+      }
       // A batch's own statements report their failures one by one, so a failed request is the pin
       if (err instanceof ApiError && db.kind === 'mysql' && missingSessionDatabase({ message: err.message })) {
         forgetSessionDatabase(db.id)
@@ -351,6 +435,7 @@ export default function QueryPage() {
     sessionDatabaseOf,
     rememberSessionDatabase,
     forgetSessionDatabase,
+    selectedProfileId,
   ])
 
   // The run button and the run tab's X ask the worker to cancel the execution in flight (the
@@ -377,20 +462,40 @@ export default function QueryPage() {
   // The execution button: start a run, or cancel the one in flight (it stays clickable meanwhile)
   const primaryAction = running ? cancelActiveRun : runQuery
 
-  // The connect button: probe the current target and report a failure in the page banner
+  // The connect button: probe the current target and report a failure in the page banner. A Spark
+  // connect carries the selected profile (§5.3); on success the page remembers which profile the
+  // live connection used (the reconnect check) and clears any rebuilt-environment banner.
   const connectTarget = useCallback(
     async (db: DbType) => {
       setPageError('')
-      const result = await connect(db.id)
-      if (result.ok) return
-      // A classified Spark failure carries copy for both locales; a network failure has none
+      const profileId = db.kind === 'spark' ? selectedProfileId : null
+      const result = await connect(db.id, profileId)
+      if (result.ok) {
+        if (db.kind === 'spark') {
+          setConnectedProfiles((m) => rememberConnectedProfile(m, db.id, profileId))
+          setContextRebuilt(false)
+        }
+        return
+      }
+      // A classified Spark failure carries copy for both locales (a rejected key names the key); a
+      // network failure has none.
       setPageError(
         result.error instanceof ApiError
           ? (errorCodeText(t, result.error.body) ?? result.error.message)
           : t('query.connect_failed')
       )
     },
-    [connect, t]
+    [connect, t, selectedProfileId]
+  )
+
+  // Connected while the selected profile changed: drop the old connection and connect again with
+  // the new profile (§5.3).
+  const reconnectTarget = useCallback(
+    async (db: DbType) => {
+      disconnect(db.id)
+      await connectTarget(db)
+    },
+    [disconnect, connectTarget]
   )
 
   // Nothing is left to show once the page goes away: drop the requests (not a cancel signal —
@@ -500,30 +605,45 @@ export default function QueryPage() {
         {/* Target switcher and its connect button — hidden on mobile (shown in the bottom bar) */}
         <div className="hidden sm:flex items-center gap-1.5">
           <div className="relative" ref={dbMenuDesktopRef}>
-            {/* The name alone, and only as wide as it needs (120–280px), so a short name leaves
-                no blank stretch inside the button. Exactly as tall as the connect button beside
-                it — 36px from sm up, 40px in the mobile bar. */}
+            {/* The fixed-size target button (150×46, SPEC §7.1): the name alone, left-aligned and
+                truncated, with the chevron absolutely positioned (11px from the right edge) so no
+                label change moves it. A Spark target adds a second 9px line naming the selected
+                profile; every other engine stays a single centered line, the same size. */}
             <button
               type="button"
               onClick={() => setShowDbMenu(!showDbMenu)}
-              className="flex h-9 w-fit min-w-[120px] max-w-[280px] items-center gap-2 rounded-md border border-ink-200 bg-ink-100 px-3 text-left transition-colors duration-(--duration-base) hover:bg-ink-200"
+              className="relative flex h-[46px] w-[150px] items-center rounded-md border border-ink-200 bg-ink-100 pl-3 pr-8 text-left transition-colors duration-(--duration-base) hover:bg-ink-200"
             >
-              <span className="flex min-w-0 items-center gap-1.5">
-                <span
-                  className="min-w-0 truncate text-body-strong leading-tight text-ink-900"
-                  title={selectedDb?.name ?? t('query.select_db')}
-                >
-                  {selectedDb?.name ?? t('query.select_db')}
-                </span>
-                {/* The badge yields to the name instead of covering it: on a narrow bar the two
-                    truncate together, and the chevron stays clear */}
-                {selectedDb?.is_app_db && (
-                  <span className="badge badge-brand min-w-0">
-                    <span className="truncate">{t('admin_db.app_db_badge')}</span>
+              {selectedDb?.kind === 'spark' ? (
+                <span className="flex min-w-0 flex-col justify-center gap-0.5">
+                  <span
+                    className="min-w-0 truncate text-body-strong leading-tight text-ink-900"
+                    title={selectedDb?.name ?? t('query.select_db')}
+                  >
+                    {selectedDb?.name ?? t('query.select_db')}
                   </span>
-                )}
-              </span>
-              <ChevronDown size={13} className="text-ink-400 shrink-0" />
+                  <span className="min-w-0 truncate text-[9px] leading-tight text-ink-400 opacity-80">
+                    {selectedProfileName ?? t('spark.default_profile')}
+                  </span>
+                </span>
+              ) : (
+                <span className="flex min-w-0 items-center gap-1.5">
+                  <span
+                    className="min-w-0 truncate text-body-strong leading-tight text-ink-900"
+                    title={selectedDb?.name ?? t('query.select_db')}
+                  >
+                    {selectedDb?.name ?? t('query.select_db')}
+                  </span>
+                  {/* The badge yields to the name instead of covering it: on a narrow bar the two
+                      truncate together, and the chevron stays clear */}
+                  {selectedDb?.is_app_db && (
+                    <span className="badge badge-brand min-w-0">
+                      <span className="truncate">{t('admin_db.app_db_badge')}</span>
+                    </span>
+                  )}
+                </span>
+              )}
+              <ChevronDown size={13} className="absolute right-[11px] top-1/2 -translate-y-1/2 text-ink-400" />
             </button>
             {showDbMenu && (
               <div className="absolute left-0 top-full mt-1 w-80 bg-ink-0 border border-ink-200 rounded-lg shadow-md z-(--z-dropdown) overflow-hidden animate-overlay-enter">
@@ -556,11 +676,23 @@ export default function QueryPage() {
             )}
           </div>
 
+          {selectedDb?.kind === 'spark' && (
+            <SparkGearMenu
+              profiles={spark.profiles}
+              selectedProfileId={selectedProfileId}
+              onSelectProfile={spark.select}
+              onOpenManage={() => setProfilesDialogOpen(true)}
+              triggerClassName="flex h-[46px] w-[46px] shrink-0 items-center justify-center rounded-md border border-ink-200 bg-ink-100 text-ink-500 transition-colors duration-(--duration-base) hover:bg-ink-200 hover:text-ink-900"
+            />
+          )}
+
           {selectedDb && (
             <ConnectButton
               connected={connected}
               busy={busyId === selectedDb.id}
+              reconnect={reconnectNeeded}
               onConnect={() => connectTarget(selectedDb)}
+              onReconnect={() => reconnectTarget(selectedDb)}
               onDisconnect={() => disconnect(selectedDb.id)}
             />
           )}
@@ -808,6 +940,12 @@ export default function QueryPage() {
                 />
               </div>
             </div>
+            {contextRebuilt && (
+              <div className="flex shrink-0 items-center gap-1.5 border-b border-warning-200 bg-warning-50 px-4 py-1.5 text-caption text-warning-700">
+                <AlertTriangle size={13} className="shrink-0" aria-hidden="true" />
+                <span>{t('spark_error.context_rebuilt')}</span>
+              </div>
+            )}
             <div className="flex-1 overflow-hidden">
               <CodeMirror
                 value={sqlText}
@@ -932,12 +1070,25 @@ export default function QueryPage() {
           )}
         </div>
 
-        {/* Connect button — the bar's second control, right beside the target */}
+        {/* Spark config gear — for a Spark target, the same menu as the desktop header */}
+        {selectedDb?.kind === 'spark' && (
+          <SparkGearMenu
+            profiles={spark.profiles}
+            selectedProfileId={selectedProfileId}
+            onSelectProfile={spark.select}
+            onOpenManage={() => setProfilesDialogOpen(true)}
+            triggerClassName="flex h-10 w-10 shrink-0 items-center justify-center rounded-md border border-ink-200 bg-ink-100 text-ink-500 transition-colors duration-(--duration-base) hover:bg-ink-200 hover:text-ink-900"
+          />
+        )}
+
+        {/* Connect button — the bar's next control, right beside the target */}
         {selectedDb && (
           <ConnectButton
             connected={connected}
             busy={busyId === selectedDb.id}
+            reconnect={reconnectNeeded}
             onConnect={() => connectTarget(selectedDb)}
+            onReconnect={() => reconnectTarget(selectedDb)}
             onDisconnect={() => disconnect(selectedDb.id)}
           />
         )}
@@ -990,6 +1141,18 @@ export default function QueryPage() {
           onDelete={runs.deleteRun}
           onClear={runs.clearRuns}
           onClose={() => setShowRunHistory(false)}
+        />
+      )}
+      {/* Spark manage-config dialog (§7.3) */}
+      {selectedDb?.kind === 'spark' && (
+        <SparkProfilesDialog
+          open={profilesDialogOpen}
+          onOpenChange={setProfilesDialogOpen}
+          databaseId={selectedDb.id}
+          profiles={spark.profiles}
+          selectedProfileId={selectedProfileId}
+          onSelectProfile={spark.select}
+          onSaved={spark.reload}
         />
       )}
     </div>

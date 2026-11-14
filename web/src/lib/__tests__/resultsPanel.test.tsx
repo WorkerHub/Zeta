@@ -39,6 +39,34 @@ describe('ResultsPanel SQL source header', () => {
   })
 })
 
+describe('ResultsPanel Spark state errors (§7.6)', () => {
+  const failed = (error: string, extra: Partial<StatementResult> = {}): StatementResult => ({
+    sql: 'SELECT 1',
+    results: [],
+    duration_ms: 3,
+    error,
+    ...extra,
+  })
+
+  it('renders a draining/restarting environment amber, never red', () => {
+    const html = render([failed('the worker sentence', { code: 'context_draining', inflight: 2 })])
+    expect(html).toContain('text-warning-600')
+    expect(html).not.toContain('text-danger-600')
+  })
+
+  it('renders a rejected profile key red, with the key named', () => {
+    const html = render([failed('x', { code: 'startup_key_in_profile', key: 'spark.sql.extensions' })])
+    expect(html).toContain('text-danger-600')
+    expect(html).toContain('spark.sql.extensions')
+  })
+
+  it('renders a plain SQL error red and keeps the worker message', () => {
+    const html = render([failed('Unknown table "nope"')])
+    expect(html).toContain('text-danger-600')
+    expect(html).toContain('Unknown table &quot;nope&quot;')
+  })
+})
+
 describe('ResultsPanel statement list', () => {
   it('previews every statement from its own first line, without the comments above it', () => {
     const html = render([statement('-- 用户量\nSELECT 1'), statement('# 订单量\nSELECT 2')], 0)

@@ -45,4 +45,18 @@ describe('ConnectButton', () => {
     expect(render({ connected: true })).toContain('已连接')
     expect(render({ connected: true })).toContain('取消连接')
   })
+
+  it('offers reconnect when connected but the selected profile changed', () => {
+    const html = render({ connected: true, reconnect: true })
+    expect(html).toContain('btn-primary')
+    expect(html).toContain(t('query.reconnect'))
+    expect(html).not.toContain(t('query.connected'))
+    expect(html).not.toContain(t('query.disconnect'))
+  })
+
+  it('reconnect is inert without the connected state', () => {
+    const html = render({ connected: false, reconnect: true })
+    expect(html).toContain(t('query.connect'))
+    expect(html).not.toContain(t('query.reconnect'))
+  })
 })
