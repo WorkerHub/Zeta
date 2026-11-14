@@ -117,7 +117,6 @@ export const translations: Record<Locale, Record<string, string>> = {
     'spark.name_taken': 'A config with this name already exists',
     'spark.add_row': '+ Add row',
     'spark.save': 'Save',
-    'spark.limit_reached': 'Maximum 20 configs per data source reached',
 
     // Spark failures the worker classifies with a code (report §2.6)
     'spark_error.spark_stopped':
@@ -602,7 +601,6 @@ export const translations: Record<Locale, Record<string, string>> = {
     'spark.name_taken': '已有同名配置',
     'spark.add_row': '＋ 添加一行',
     'spark.save': '保存',
-    'spark.limit_reached': '每个数据源最多 20 份配置',
 
     // 后端按 code 分类的 Spark 失败（报告 §2.6 定稿文案）
     'spark_error.spark_stopped': 'Spark 机器已停止运行，需要管理员在 Instabox 启动后才能查询。',
