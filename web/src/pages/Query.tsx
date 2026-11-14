@@ -39,7 +39,7 @@ import { useConnections } from '../hooks/useConnections'
 import { knocksBack } from '../lib/connection-state'
 import { errorCodeText } from '../lib/error-copy'
 import { splitSqlStatements, usedDatabaseOf } from '../lib/sql'
-import { sqlLightHighlighting } from '../lib/editor-highlight'
+import { sqlLightFunctionCalls, sqlLightHighlighting } from '../lib/editor-highlight'
 import { haltNotice, cancelNotice } from '../lib/runs'
 import { missingSessionDatabase } from '../lib/session-database'
 import type { Database as DbType, NotebookRunSummary, StatementResult } from '../types'
@@ -818,7 +818,7 @@ export default function QueryPage() {
                   setSelectedSql(selected)
                 }}
                 theme={isDark ? oneDark : 'light'}
-                extensions={[sql(), runShortcutExtension, sqlLightHighlighting]}
+                extensions={[sql(), runShortcutExtension, sqlLightHighlighting, sqlLightFunctionCalls]}
                 height="100%"
                 style={{ height: '100%', fontFamily: 'JetBrains Mono, monospace' }}
                 basicSetup={{ lineNumbers: true, foldGutter: false, autocompletion: true }}
