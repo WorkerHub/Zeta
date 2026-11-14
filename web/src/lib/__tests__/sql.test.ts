@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { splitSqlStatements, usedDatabaseOf } from '../sql'
+import { splitSqlStatements, stripLeadingCommentsForDisplay, usedDatabaseOf } from '../sql'
 
 describe('splitSqlStatements', () => {
   it('returns empty array for empty string', () => {
@@ -57,6 +57,57 @@ describe('splitSqlStatements', () => {
     expect(result[0]).toBe('SELECT * FROM users')
     expect(result[1]).toBe("INSERT INTO logs (msg) VALUES ('hello')")
     expect(result[2]).toBe('SELECT count(*) FROM logs')
+  })
+})
+
+describe('stripLeadingCommentsForDisplay', () => {
+  it('starts at the statement, dropping the comment lines above it and their blank lines', () => {
+    expect(stripLeadingCommentsForDisplay('-- 取用户量\n\n\nSELECT 1')).toBe('SELECT 1')
+    expect(stripLeadingCommentsForDisplay('-- 第一行\n-- 第二行\nSELECT 1')).toBe('SELECT 1')
+    expect(stripLeadingCommentsForDisplay('\n\n  -- 说明\n  SELECT 1')).toBe('SELECT 1')
+  })
+
+  it("drops a block comment, whether it spans lines or sits on the statement's own line", () => {
+    expect(stripLeadingCommentsForDisplay('/* 说明\n第二行 */\nSELECT 1')).toBe('SELECT 1')
+    expect(stripLeadingCommentsForDisplay('/* 说明 */ SELECT 1')).toBe('SELECT 1')
+  })
+
+  it('leaves the text alone when there is nothing to strip', () => {
+    expect(stripLeadingCommentsForDisplay('SELECT 1')).toBe('SELECT 1')
+    expect(stripLeadingCommentsForDisplay('SELECT 1; SELECT 2')).toBe('SELECT 1; SELECT 2')
+    expect(stripLeadingCommentsForDisplay('SELECT a,\n       b\nFROM t')).toBe('SELECT a,\n       b\nFROM t')
+  })
+
+  it('keeps a comment that belongs to a statement', () => {
+    expect(stripLeadingCommentsForDisplay('SELECT 1 -- 只取一行')).toBe('SELECT 1 -- 只取一行')
+    expect(stripLeadingCommentsForDisplay('SELECT 1\n-- 过滤条件\nFROM t')).toBe('SELECT 1\n-- 过滤条件\nFROM t')
+  })
+
+  it('never takes a comment marker inside a string or an identifier for a comment', () => {
+    expect(stripLeadingCommentsForDisplay("SELECT '-- not a comment'")).toBe("SELECT '-- not a comment'")
+    expect(stripLeadingCommentsForDisplay("SELECT '/* not a comment */'")).toBe("SELECT '/* not a comment */'")
+    expect(stripLeadingCommentsForDisplay("SELECT 'a;-- b' FROM t")).toBe("SELECT 'a;-- b' FROM t")
+    expect(stripLeadingCommentsForDisplay('SELECT "--" FROM t')).toBe('SELECT "--" FROM t')
+    expect(stripLeadingCommentsForDisplay('SELECT `--` FROM t')).toBe('SELECT `--` FROM t')
+  })
+
+  it('strips the comments in front of every statement of a batch', () => {
+    expect(stripLeadingCommentsForDisplay('-- 用户量\nSELECT 1;\n\n-- 订单量\nSELECT 2;')).toBe('SELECT 1;\nSELECT 2;')
+    expect(stripLeadingCommentsForDisplay('SELECT 1;\n/* 订单量 */ SELECT 2')).toBe('SELECT 1;\nSELECT 2')
+    expect(stripLeadingCommentsForDisplay('SELECT 1;\n-- 尾注')).toBe('SELECT 1;')
+  })
+
+  it('falls back to the stored text when nothing but comments is left', () => {
+    expect(stripLeadingCommentsForDisplay('-- 只有注释')).toBe('-- 只有注释')
+    expect(stripLeadingCommentsForDisplay('/* 只有注释 */')).toBe('/* 只有注释 */')
+    expect(stripLeadingCommentsForDisplay('-- a\n/* b */\n')).toBe('-- a\n/* b */\n')
+    expect(stripLeadingCommentsForDisplay('/* 没有闭合')).toBe('/* 没有闭合')
+    expect(stripLeadingCommentsForDisplay('')).toBe('')
+  })
+
+  it('reads a leading # as MySQL writes its comments, and a # inside a statement as text', () => {
+    expect(stripLeadingCommentsForDisplay('# 说明\nSELECT 1')).toBe('SELECT 1')
+    expect(stripLeadingCommentsForDisplay('SELECT a # b;\n-- 下一条\nSELECT 2')).toBe('SELECT a # b;\nSELECT 2')
   })
 })
 
