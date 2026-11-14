@@ -95,6 +95,16 @@ export interface PermissionRow {
   granted_at: number
 }
 
+export interface SparkConfigProfileRow {
+  id: string
+  user_id: string
+  database_id: string
+  name: string
+  entries: string
+  created_at: number
+  updated_at: number
+}
+
 export interface QueryHistoryRow {
   id: string
   user_id: string
