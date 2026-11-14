@@ -420,9 +420,15 @@
   .safe-b {
     padding-bottom: env(safe-area-inset-bottom);
   }
-  /* Clearance for content sitting above the fixed mobile bar (bar ≈ 3rem + inset) */
-  .clear-mobile-bar {
-    padding-bottom: calc(3rem + env(safe-area-inset-bottom));
+  /* Clearance for content sitting above the fixed mobile bar (bar ≈ 3rem + inset).
+     The bar is fixed only below the sm breakpoint (sm:hidden), so the clearance is scoped to
+     that same 640px line — the editor text size below uses the identical query. Scoping the rule
+     instead of cancelling it on desktop is what keeps ≥640px at exactly 0: a `sm:pb-0` utility
+     loses to this rule, since both live in @layer utilities and this one comes later. */
+  @media (width < 40rem) {
+    .clear-mobile-bar {
+      padding-bottom: calc(3rem + env(safe-area-inset-bottom));
+    }
   }
 
   /*
