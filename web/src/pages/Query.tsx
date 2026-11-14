@@ -819,7 +819,7 @@ export default function QueryPage() {
                 theme={isDark ? oneDark : 'light'}
                 extensions={[sql(), runShortcutExtension]}
                 height="100%"
-                style={{ height: '100%', fontSize: 13, fontFamily: 'JetBrains Mono, monospace' }}
+                style={{ height: '100%', fontFamily: 'JetBrains Mono, monospace' }}
                 basicSetup={{ lineNumbers: true, foldGutter: false, autocompletion: true }}
               />
             </div>
