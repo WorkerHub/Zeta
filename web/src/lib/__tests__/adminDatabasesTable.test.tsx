@@ -29,8 +29,8 @@ const widthPx = (col: keyof typeof COL_WIDTH): number => {
 }
 
 describe('data-source list columns', () => {
-  it('pins every column and stays inside the agreed limits', () => {
-    // Name 200 / engine 140 / provider 120 / database ID 300 / status 112
+  it('makes the name the one flexible column and pins the rest inside the agreed limits', () => {
+    // Name min 200 (flexible) / engine 140 / provider 120 / database ID 300 / status 112
     expect(widthPx('name')).toBe(200)
     expect(widthPx('engine')).toBe(140)
     expect(widthPx('provider')).toBe(120)
@@ -43,14 +43,16 @@ describe('data-source list columns', () => {
     expect(widthPx('databaseId')).toBeLessThanOrEqual(320)
   })
 
-  it('leaves the actions column unpinned and keeps the cell padding with the width', () => {
+  it('keeps the actions column unpinned, the name column flexible and the cell padding with the width', () => {
     // The actions column is as wide as its buttons: a legacy row adds a Link button
     expect(COL_WIDTH.actions).toBe('')
     expect(cellClass('actions')).toBe('px-4 py-3')
-    expect(cellClass('name')).toBe('px-4 py-3 md:w-[200px]')
+    // The name column is the flexible one: a minimum width, so it takes the card's remaining width
+    expect(COL_WIDTH.name).toBe('md:min-w-[200px]')
+    expect(cellClass('name')).toBe('px-4 py-3 md:min-w-[200px]')
     expect(cellClass('status', 'whitespace-nowrap')).toBe('px-4 py-3 md:w-[112px] whitespace-nowrap')
-    // The width is pinned at `md` and up only: below that the table keeps its natural columns
-    for (const col of ['name', 'engine', 'provider', 'databaseId', 'status'] as const) {
+    // Every other column keeps a hard width at `md` and up only: below that the table keeps its natural columns
+    for (const col of ['engine', 'provider', 'databaseId', 'status'] as const) {
       expect(COL_WIDTH[col].startsWith('md:w-')).toBe(true)
     }
   })

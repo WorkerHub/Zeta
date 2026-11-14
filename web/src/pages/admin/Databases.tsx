@@ -7,10 +7,10 @@ import DatabaseForm from '../../components/DatabaseForm'
 import { effectiveProvider, engineLabelKey } from '../../lib/db-provider'
 import type { AdminDatabase, CfD1Database, DatabaseGrant } from '../../types'
 
-// The desktop data-source list is a fixed-width table: every column but the actions one is pinned,
-// the table is exactly as wide as their sum (it is neither stretched to the card nor stretched by
-// its content), and the spare width of a wide window stays to the right of the table instead of
-// being handed to a column.
+// The desktop data-source list is a full-width table: the table stretches to its card (100%), and
+// the name column is the one flexible column — a 200px floor, it takes the width the card leaves
+// over. The name is plain text and left-aligned, so a wider name column only adds air after the
+// text, unlike the database-ID code block, which must not be stretched and keeps its fixed width.
 //
 // The width lives on a block inside each cell rather than on the `<td>` or a `<col>`: a table cell
 // in an automatic layout lets a long value overrule its own width, and `table-layout: fixed` only
@@ -24,8 +24,8 @@ import type { AdminDatabase, CfD1Database, DatabaseGrant } from '../../types'
 // and scrolls horizontally inside its card, as before. Every number is a class literal because
 // Tailwind only emits the utilities it can see in the source.
 export const COL_WIDTH = {
-  // A name plus its badge wraps inside 200px; longer names truncate, full text on hover
-  name: 'md:w-[200px]',
+  // The one flexible column: a 200px floor, it absorbs the card's remaining width on desktop
+  name: 'md:min-w-[200px]',
   engine: 'md:w-[140px]',
   provider: 'md:w-[120px]',
   // 268px of content after the 32px padding: a 36-character UUID measures 263.5px in this font, so
@@ -296,7 +296,7 @@ export default function AdminDatabases() {
         ) : databases.length === 0 ? (
           <p className="px-4 py-8 text-center text-body text-ink-500">{t('admin_db.no_databases')}</p>
         ) : (
-          <table className="w-full md:w-auto text-body">
+          <table className="w-full text-body">
             <thead>
               <tr className="border-b border-ink-200 bg-ink-50">
                 <th className="text-left text-label text-ink-500">
