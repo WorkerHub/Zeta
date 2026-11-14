@@ -33,6 +33,7 @@ import {
   type SparkOpenOptions,
   type SparkSession,
 } from '../lib/spark-executor'
+import { loadProfileConfig } from '../lib/spark-profile'
 import {
   checkSqlAccess,
   classifySql,
@@ -70,7 +71,12 @@ type Ctx = Context<{ Bindings: Env; Variables: Variables }>
 function openExecutorError(c: Ctx, err: unknown): Response {
   if (err instanceof SparkQueryError || err instanceof PostgresQueryError || err instanceof MySqlQueryError) {
     const mapped = resolveExecError(c, err)
-    return c.json(mapped.code ? { error: mapped.message, code: mapped.code } : { error: mapped.message }, mapped.status)
+    return c.json(
+      mapped.code
+        ? { error: mapped.message, code: mapped.code, ...(mapped.detail ?? {}) }
+        : { error: mapped.message, ...(mapped.detail ?? {}) },
+      mapped.status
+    )
   }
   return queryError(c, err instanceof Error ? err.message : String(err))
 }
@@ -80,8 +86,8 @@ function openExecutorError(c: Ctx, err: unknown): Response {
 // Spark failure also carries its stable `code`, which the UI renders in the reader's language — but
 // only alongside a message that may itself be shown, so a member never learns that a token was
 // rejected.
-type ErrorStatus = 400 | 429 | 500
-type ExecError = { message: string; status: ErrorStatus; code?: SparkErrorCode }
+type ErrorStatus = 400 | 409 | 429 | 500 | 503
+type ExecError = { message: string; status: ErrorStatus; code?: SparkErrorCode; detail?: Record<string, unknown> }
 function resolveExecError(c: Ctx, err: unknown): ExecError {
   if (err instanceof D1HttpError) {
     if (err.kind === 'sql') return { message: err.message, status: 400 }
@@ -96,6 +102,20 @@ function resolveExecError(c: Ctx, err: unknown): ExecError {
     // what the person running the query needs to hear (SPEC v2.6).
     if (err.kind === 'stopped' || err.kind === 'starting') {
       return { message: err.message, status: 500, code: err.code }
+    }
+    // A rejected profile key is the caller's own mistake (shown to everyone, 400), and a draining /
+    // restarting / rebuilt environment is the machine's own state (shown to everyone, 503/409) —
+    // neither is a deployment secret and neither is a SQL error the editor must mark red (§7.6).
+    if (err.kind === 'profile') {
+      return { message: err.message, status: 400, code: err.code, detail: err.detail }
+    }
+    if (err.kind === 'context') {
+      return {
+        message: err.message,
+        status: err.code === 'context_rebuilt' ? 409 : 503,
+        code: err.code,
+        detail: err.detail,
+      }
     }
     if (c.get('userRole') === 'admin') return { message: err.message, status: 500, code: err.code }
     console.error(`Query execution error: ${err.message}`)
@@ -211,10 +231,11 @@ function payloadUrl(payload: Record<string, unknown>, fail: (message: string) =>
 function sparkOpenOptions(
   connectTest: boolean | undefined,
   session: string | undefined,
-  execution: string | undefined
+  execution: string | undefined,
+  config: Record<string, string> | undefined
 ): SparkOpenOptions {
   const base: SparkOpenOptions = connectTest ? { ...CONNECT_TEST_OPEN, session } : { session }
-  return execution ? { ...base, execution } : base
+  return { ...base, ...(execution ? { execution } : {}), ...(config ? { config } : {}) }
 }
 
 // The decrypted Spark access of a registry row. Opening the executor and sending the cancel both need
@@ -255,6 +276,7 @@ async function openExecutor(
     session?: string
     sessionDatabase?: string | null
     execution?: string
+    config?: Record<string, string>
   } = {}
 ): Promise<Executor> {
   if (target.kind === 'http') {
@@ -267,7 +289,7 @@ async function openExecutor(
   if (target.kind === 'spark') {
     const session: SparkSession = await openSparkSession(
       await sparkAccessFor(env, db),
-      sparkOpenOptions(opts.connectTest, opts.session, opts.execution)
+      sparkOpenOptions(opts.connectTest, opts.session, opts.execution, opts.config)
     )
     return {
       run: (sql, kind) => session.run(sql, kind, MAX_RESULT_ROWS),
@@ -435,6 +457,7 @@ query.post('/', async (c) => {
       notebookId?: unknown
       sessionDatabase?: unknown
       executionId?: unknown
+      profileId?: unknown
     }>()
     .catch(() => null)
   if (typeof body?.databaseId !== 'string' || typeof body.sql !== 'string' || !body.sql.trim()) {
@@ -495,6 +518,10 @@ query.post('/', async (c) => {
   const resolved = resolveQueryTarget(c.env, db)
   if (!resolved.ok) return queryError(c, resolved.error)
 
+  // The caller's selected Spark profile, resolved to a runtime config. Only a Spark target has a
+  // config; an absent/unknown/foreign profileId resolves to null (default — no `config` is sent).
+  const config = db.kind === 'spark' ? await loadProfileConfig(c.env, userId, db.id, body.profileId) : null
+
   const notebook = await resolveNotebook(c, body.notebookId)
   if (notebook instanceof Response) return notebook
 
@@ -512,6 +539,7 @@ query.post('/', async (c) => {
       session: userId,
       sessionDatabase: session.value,
       execution: execution ?? undefined,
+      config: config ?? undefined,
     })
   } catch (err) {
     if (execution) await finishExecution(c.env, execution, 'error')
@@ -525,6 +553,7 @@ query.post('/', async (c) => {
     let errorMsg: string | null = null
     let errorStatus: ErrorStatus = 400
     let errorCode: SparkErrorCode | undefined
+    let errorDetail: Record<string, unknown> | undefined
 
     if (execution && (await cancelRequested(c.env, execution))) {
       // Cancelled while the request was still opening its target: the statement is not started.
@@ -543,6 +572,7 @@ query.post('/', async (c) => {
           errorMsg = mapped.message
           errorStatus = mapped.status
           errorCode = mapped.code
+          errorDetail = mapped.detail
           failed = true
         }
       }
@@ -598,7 +628,9 @@ query.post('/', async (c) => {
     // A Spark failure also names its code, so the UI can render the sentence in the reader's language
     // (SPEC v2.6). A batch's per-statement entries stay plain text.
     if (errorMsg || !result) {
-      const body = errorCode ? { error: errorMsg, code: errorCode, ...run } : { error: errorMsg, ...run }
+      const body = errorCode
+        ? { error: errorMsg, code: errorCode, ...(errorDetail ?? {}), ...run }
+        : { error: errorMsg, ...(errorDetail ?? {}), ...run }
       return c.json(body, errorStatus)
     }
     const payload = isWriteClass(kind)
@@ -623,6 +655,7 @@ query.post('/batch', async (c) => {
       notebookId?: unknown
       sessionDatabase?: unknown
       executionId?: unknown
+      profileId?: unknown
     }>()
     .catch(() => null)
   if (
@@ -680,6 +713,8 @@ query.post('/batch', async (c) => {
   const resolved = resolveQueryTarget(c.env, db)
   if (!resolved.ok) return queryError(c, resolved.error)
 
+  const config = db.kind === 'spark' ? await loadProfileConfig(c.env, userId, db.id, body.profileId) : null
+
   // A batch whose statements are all rejected before running is not saved, like a rejected single
   // one, and uses up no run number — and must not open a connection either. Rejections by the
   // app-DB guardrail count as rejected-before-running too, so the same predicate is used here and
@@ -714,6 +749,7 @@ query.post('/batch', async (c) => {
       session: userId,
       sessionDatabase: session.value,
       execution: execution ?? undefined,
+      config: config ?? undefined,
     })
   } catch (err) {
     if (execution) await finishExecution(c.env, execution, 'error')
@@ -772,6 +808,8 @@ query.post('/batch', async (c) => {
       let stmtResult: Record<string, unknown>[] = []
       let changes: number | undefined
       let errorMsg: string | undefined
+      let errorCode: SparkErrorCode | undefined
+      let errorDetail: Record<string, unknown> | undefined
       let truncated = false
 
       try {
@@ -783,7 +821,22 @@ query.post('/batch', async (c) => {
         // Same reasoning as the single-statement path: the registry row decides whether this was a
         // cancellation or a failure, never the engine's message.
         if (execution && (await cancelRequested(c.env, execution))) cancelled = true
-        else errorMsg = resolveExecError(c, err).message
+        else {
+          const mapped = resolveExecError(c, err)
+          errorMsg = mapped.message
+          // Only the new state codes (a rejected profile key, a draining/restarting/rebuilt
+          // environment) ride along on a batch entry; a SQL error stays plain text, as before.
+          if (
+            mapped.code === 'startup_key_in_profile' ||
+            mapped.code === 'invalid_key' ||
+            mapped.code === 'context_draining' ||
+            mapped.code === 'context_restarting' ||
+            mapped.code === 'context_rebuilt'
+          ) {
+            errorCode = mapped.code
+            errorDetail = mapped.detail
+          }
+        }
       }
 
       const duration = Date.now() - start
@@ -799,9 +852,16 @@ query.post('/batch', async (c) => {
           .run()
       )
 
-      const entry: (typeof results)[number] = { sql, results: stmtResult, duration_ms: duration }
+      const entry = { sql, results: stmtResult, duration_ms: duration } as RunStatement & {
+        code?: SparkErrorCode
+        key?: string
+        inflight?: number
+        epoch?: number
+      }
       if (changes !== undefined) entry.changes = changes
       if (errorMsg) entry.error = errorMsg
+      if (errorCode) entry.code = errorCode
+      if (errorDetail) Object.assign(entry, errorDetail)
       if (truncated) entry.truncated = true
       if (cancelled) entry.cancelled = true
       results.push(entry)
@@ -888,7 +948,7 @@ query.post('/cancel', async (c) => {
 // row and uses up no notebook run number. A D1 target is reached over Cloudflare's API rather than a
 // machine that boots, so there is no state to probe and no request is made at all.
 query.post('/probe', async (c) => {
-  const body = await c.req.json<{ databaseId?: unknown }>().catch(() => null)
+  const body = await c.req.json<{ databaseId?: unknown; profileId?: unknown }>().catch(() => null)
   if (typeof body?.databaseId !== 'string' || !body.databaseId) {
     return c.json({ error: 'databaseId is required' }, 400)
   }
@@ -918,12 +978,20 @@ query.post('/probe', async (c) => {
   const resolved = resolveQueryTarget(c.env, db)
   if (!resolved.ok) return queryError(c, resolved.error)
 
+  // A probe may carry the caller's selected profile (§5.3): the throwaway statement then runs under
+  // that config, so the connection check proves the session the caller's queries will actually use.
+  const config = db.kind === 'spark' ? await loadProfileConfig(c.env, userId, db.id, body.profileId) : null
+
   let executor: Executor
   try {
     // The connection-check budget: a Spark machine that is still booting (~17 s) still tests green,
     // which is exactly what the query path must not wait for. The caller's session rides along, so the
     // probe proves the session that caller's queries will use.
-    executor = await openExecutor(c.env, db, resolved.target, { connectTest: true, session: userId })
+    executor = await openExecutor(c.env, db, resolved.target, {
+      connectTest: true,
+      session: userId,
+      config: config ?? undefined,
+    })
   } catch (err) {
     return openExecutorError(c, err)
   }
@@ -933,7 +1001,12 @@ query.post('/probe', async (c) => {
     return c.json({ ok: true, kind, latency_ms: Date.now() - started })
   } catch (err) {
     const mapped = resolveExecError(c, err)
-    return c.json(mapped.code ? { error: mapped.message, code: mapped.code } : { error: mapped.message }, mapped.status)
+    return c.json(
+      mapped.code
+        ? { error: mapped.message, code: mapped.code, ...(mapped.detail ?? {}) }
+        : { error: mapped.message, ...(mapped.detail ?? {}) },
+      mapped.status
+    )
   } finally {
     await executor.close()
   }

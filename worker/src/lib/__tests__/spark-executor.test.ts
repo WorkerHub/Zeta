@@ -11,6 +11,7 @@ import {
   SPARK_APP_TOKEN_MESSAGE,
   SPARK_PUBLISH_TOKEN_MESSAGE,
   SPARK_STARTING_MESSAGE,
+  SPARK_STARTUP_KEY_MESSAGE,
   SPARK_STOPPED_MESSAGE,
   testSparkConnection,
   VERIFY_HEALTH,
@@ -160,6 +161,23 @@ describe('openSparkSession', () => {
     // One request is one session: a batch's statements must not straddle two of them
     expect(JSON.parse(String(calls[1]!.init.body))).toEqual({ sql: 'select 1', maxRows: 1, session: 'u1' })
     expect(JSON.parse(String(calls[2]!.init.body))).toEqual({ sql: 'select 2', maxRows: 1, session: 'u1' })
+  })
+
+  it('sends the runtime config with every statement when one is opened', async () => {
+    script.push(healthOk(), queryOk({ columns: ['n'], rows: [[1]] }), queryOk({ columns: ['n'], rows: [[2]] }))
+    const session = await openSparkSession(ACCESS, { config: { 'spark.sql.shuffle.partitions': '1000' } })
+    await session.run('select 1', 'read', 1)
+    await session.run('select 2', 'read', 1)
+    expect(JSON.parse(String(calls[1]!.init.body))).toEqual({
+      sql: 'select 1',
+      maxRows: 1,
+      config: { 'spark.sql.shuffle.partitions': '1000' },
+    })
+    expect(JSON.parse(String(calls[2]!.init.body))).toEqual({
+      sql: 'select 2',
+      maxRows: 1,
+      config: { 'spark.sql.shuffle.partitions': '1000' },
+    })
   })
 
   it('leaves the field out without a session, and drops a blank one', async () => {
@@ -341,5 +359,51 @@ describe('testSparkConnection', () => {
     // /health passes with only the platform token; the statement is what rejects a bad app token
     script.push(healthOk(), json({ error: 'unauthorized' }, 401))
     await expect(testSparkConnection(ACCESS)).rejects.toMatchObject({ code: 'spark_app_token' })
+  })
+})
+
+describe('service state codes (§1.1/§1.3)', () => {
+  it('classifies startup_key_in_profile as a profile error carrying the key', async () => {
+    script.push(healthOk(), json({ code: 'startup_key_in_profile', key: 'spark.sql.extensions' }, 400))
+    const session = await openSparkSession(ACCESS)
+    const error = await session.run('select 1', 'read', 1).catch((e) => e)
+    expect(error).toMatchObject({
+      kind: 'profile',
+      code: 'startup_key_in_profile',
+      detail: { key: 'spark.sql.extensions' },
+      message: SPARK_STARTUP_KEY_MESSAGE,
+    })
+  })
+
+  it('classifies invalid_key as a profile error carrying the key', async () => {
+    script.push(healthOk(), json({ code: 'invalid_key', key: 'spark.sql.nope' }, 400))
+    const session = await openSparkSession(ACCESS)
+    const error = await session.run('select 1', 'read', 1).catch((e) => e)
+    expect(error).toMatchObject({ kind: 'profile', code: 'invalid_key', detail: { key: 'spark.sql.nope' } })
+  })
+
+  it('classifies context_draining / context_restarting with their in-flight count', async () => {
+    script.push(healthOk(), json({ code: 'context_draining', inflight: 3 }, 503))
+    const draining = await openSparkSession(ACCESS)
+    expect(await draining.run('select 1', 'read', 1).catch((e) => e)).toMatchObject({
+      kind: 'context',
+      code: 'context_draining',
+      detail: { inflight: 3 },
+    })
+
+    script.push(healthOk(), json({ code: 'context_restarting', inflight: 0 }, 503))
+    const restarting = await openSparkSession(ACCESS)
+    expect(await restarting.run('select 1', 'read', 1).catch((e) => e)).toMatchObject({
+      kind: 'context',
+      code: 'context_restarting',
+      detail: { inflight: 0 },
+    })
+  })
+
+  it('classifies context_rebuilt with the new epoch', async () => {
+    script.push(healthOk(), json({ code: 'context_rebuilt', epoch: 7 }, 409))
+    const session = await openSparkSession(ACCESS)
+    const error = await session.run('select 1', 'read', 1).catch((e) => e)
+    expect(error).toMatchObject({ kind: 'context', code: 'context_rebuilt', detail: { epoch: 7 } })
   })
 })

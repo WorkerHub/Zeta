@@ -17,7 +17,7 @@ const spark = vi.hoisted(() => ({
   queue: [] as Array<{
     results?: unknown[]
     truncated?: boolean
-    error?: { message: string; kind: string; code: string }
+    error?: { message: string; kind: string; code: string; detail?: Record<string, unknown> }
   }>,
   openError: null as null | { message: string; kind: string; code: string },
 }))
@@ -40,7 +40,12 @@ vi.mock('../../lib/spark-executor', async (importOriginal) => {
           record.runs.push({ sql, kind })
           const next = spark.queue.shift()
           if (next?.error) {
-            throw new actual.SparkQueryError(next.error.message, next.error.kind as never, next.error.code as never)
+            throw new actual.SparkQueryError(
+              next.error.message,
+              next.error.kind as never,
+              next.error.code as never,
+              next.error.detail
+            )
           }
           return { results: next?.results ?? [], meta: {}, truncated: next?.truncated ?? false }
         },
@@ -113,6 +118,61 @@ describe('query a SparkSQL target', () => {
     expect(spark.opened[0]!.closed).toBe(true)
     // A query gets the short budget, never the connection check's — and carries the caller's session
     expect(spark.opened[0]!.opts).toStrictEqual({ session: 'u1' })
+  })
+
+  it('resolves a profileId to the runtime config the session opens with', async () => {
+    const { env, app } = await sparkEnv('read')
+    app.sqlite.exec(`
+      INSERT INTO spark_config_profiles (id, user_id, database_id, name, entries, created_at, updated_at)
+      VALUES ('p1', 'u1', 'sp1', 'mine', '[{"key":"spark.sql.shuffle.partitions","value":"1000"}]', 0, 0)
+    `)
+    spark.queue.push({ results: [{ n: 1 }] })
+    const res = await post(
+      env,
+      '/api/query',
+      { databaseId: 'sp1', sql: 'SELECT 1', profileId: 'p1' },
+      await bearer(env, 'u1')
+    )
+    expect(res.status).toBe(200)
+    expect(spark.opened[0]!.opts).toStrictEqual({
+      session: 'u1',
+      config: { 'spark.sql.shuffle.partitions': '1000' },
+    })
+  })
+
+  it('treats an unknown or foreign profileId as the default session', async () => {
+    const { env, app } = await sparkEnv('read')
+    app.sqlite.exec(`
+      INSERT INTO spark_config_profiles (id, user_id, database_id, name, entries, created_at, updated_at)
+      VALUES ('p1', 'a1', 'sp1', 'other', '[{"key":"spark.sql.shuffle.partitions","value":"999"}]', 0, 0)
+    `)
+    spark.queue.push({ results: [{ n: 1 }] })
+    const res = await post(
+      env,
+      '/api/query',
+      { databaseId: 'sp1', sql: 'SELECT 1', profileId: 'p1' },
+      await bearer(env, 'u1')
+    )
+    expect(res.status).toBe(200)
+    expect(spark.opened[0]!.opts).toStrictEqual({ session: 'u1' })
+  })
+
+  it('surfaces a rejected profile key with its code and key to everyone', async () => {
+    const { env } = await sparkEnv()
+    spark.queue.push({
+      error: { message: 'x', kind: 'profile', code: 'invalid_key', detail: { key: 'spark.sql.nope' } },
+    })
+    const res = await post(env, '/api/query', { databaseId: 'sp1', sql: 'SELECT 1' }, await bearer(env, 'u1'))
+    expect(res.status).toBe(400)
+    expect(await res.json()).toMatchObject({ code: 'invalid_key', key: 'spark.sql.nope' })
+  })
+
+  it('surfaces a rebuilt environment as 409 with the new epoch', async () => {
+    const { env } = await sparkEnv()
+    spark.queue.push({ error: { message: 'x', kind: 'context', code: 'context_rebuilt', detail: { epoch: 7 } } })
+    const res = await post(env, '/api/query', { databaseId: 'sp1', sql: 'SELECT 1' }, await bearer(env, 'u1'))
+    expect(res.status).toBe(409)
+    expect(await res.json()).toMatchObject({ code: 'context_rebuilt', epoch: 7 })
   })
 
   it('refuses the spark-forbidden statements before opening a session', async () => {
@@ -219,6 +279,38 @@ describe('query a SparkSQL target', () => {
     expect(spark.opened[0]!.runs).toHaveLength(2)
   })
 
+  it('carries a rejected profile key on a batch entry with its code and key', async () => {
+    const { env } = await sparkEnv()
+    spark.queue.push({
+      error: { message: 'x', kind: 'profile', code: 'invalid_key', detail: { key: 'spark.sql.nope' } },
+    })
+    const res = await post(
+      env,
+      '/api/query/batch',
+      { databaseId: 'sp1', statements: ['SELECT 1'] },
+      await bearer(env, 'u1')
+    )
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as { results: Array<Record<string, unknown>> }
+    expect(body.results[0]).toMatchObject({ error: 'x', code: 'invalid_key', key: 'spark.sql.nope' })
+  })
+
+  it('carries a draining state on a batch entry with its in-flight count', async () => {
+    const { env } = await sparkEnv()
+    spark.queue.push({
+      error: { message: 'x', kind: 'context', code: 'context_draining', detail: { inflight: 3 } },
+    })
+    const res = await post(
+      env,
+      '/api/query/batch',
+      { databaseId: 'sp1', statements: ['SELECT 1'] },
+      await bearer(env, 'u1')
+    )
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as { results: Array<Record<string, unknown>> }
+    expect(body.results[0]).toMatchObject({ error: 'x', code: 'context_draining', inflight: 3 })
+  })
+
   it('refuses a spark row whose stored payload is missing', async () => {
     const { env } = await sparkEnv()
     await env.DB.prepare(`UPDATE d1_databases SET connection_secret = NULL WHERE id = 'sp1'`).run()
@@ -242,6 +334,36 @@ describe('POST /api/query/probe', () => {
     expect(spark.opened[0]!.opts).toStrictEqual({ health: VERIFY_HEALTH, hardCapMs: 120_000, session: 'u1' })
     expect(spark.opened[0]!.runs).toEqual([{ sql: 'select 1', kind: 'read' }])
     expect(spark.opened[0]!.closed).toBe(true)
+  })
+
+  it('runs the probe under the selected profile', async () => {
+    const { env, app } = await sparkEnv()
+    app.sqlite.exec(`
+      INSERT INTO spark_config_profiles (id, user_id, database_id, name, entries, created_at, updated_at)
+      VALUES ('p1', 'u1', 'sp1', 'mine', '[{"key":"spark.sql.shuffle.partitions","value":"1000"}]', 0, 0)
+    `)
+    spark.queue.push({ results: [{ '1': 1 }] })
+    const res = await post(env, '/api/query/probe', { databaseId: 'sp1', profileId: 'p1' }, await bearer(env, 'u1'))
+    expect(res.status).toBe(200)
+    expect(spark.opened[0]!.opts).toStrictEqual({
+      health: VERIFY_HEALTH,
+      hardCapMs: 120_000,
+      session: 'u1',
+      config: { 'spark.sql.shuffle.partitions': '1000' },
+    })
+  })
+
+  it('ignores a profileId on a non-Spark target', async () => {
+    const { env } = await sparkEnv()
+    const res = await post(
+      env,
+      '/api/query/probe',
+      { databaseId: 'd1', profileId: 'p1' },
+      await bearer(env, 'a1', 'admin')
+    )
+    expect(res.status).toBe(200)
+    expect(await res.json()).toEqual({ ok: true, kind: 'sqlite', latency_ms: 0 })
+    expect(spark.opened).toHaveLength(0)
   })
 
   it('answers a D1 target without probing anything', async () => {
