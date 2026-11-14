@@ -533,6 +533,24 @@
   background-color: var(--color-ink-100);
 }
 
+/*
+ * Editor text size (pages/Query.tsx): 13px on desktop, 16px below the sm breakpoint — the same
+ * 640px line the mobile bottom bar hides at (sm:hidden). iOS Safari zooms the page when a focused
+ * editable's computed font-size is under 16px; at 16px it does not, so the fixed bottom bar
+ * (target / connect / run) stays exactly where it is while the user types, selects SQL and taps
+ * Run — nothing to pinch or pan. The code lines, the line-number gutter and the gutter's elements
+ * all inherit this one declaration, so the numbers keep their alignment with the code. Only the
+ * editor scales: the rest of the app keeps its own type scale.
+ */
+.cm-editor {
+  font-size: 13px;
+}
+@media (width < 40rem) {
+  .cm-editor {
+    font-size: 16px;
+  }
+}
+
 @layer components {
   /* Shared button base — repeated per variant because Tailwind v4 @apply
      cannot inline custom component classes. Focus ring (§3.1): ring-2 brand + offset. */
