@@ -403,8 +403,8 @@ export const translations: Record<Locale, Record<string, string>> = {
     'results.changes': '{n} changes',
     'results.truncated': '(showing the first {n} rows — add a LIMIT or narrow the query)',
     'results.no_rows': 'No rows returned',
-    'results.running_sql': 'Running SQL: {sql}',
-    'results.running_sql_statements': 'Running SQL: {sql} ({n} statements)',
+    'results.running_sql': 'Running SQL:',
+    'results.running_sql_statements': 'Running SQL ({n} statements):',
     'results.stored_rows': '(only the first {n} rows were saved — run again to see all)',
     'results.halted': 'Statement {n} failed — the batch stopped, so {m} statement(s) did not run',
     // A run the user cancelled (the caveat is only for D1 and TiDB, which cannot kill a statement)
@@ -847,8 +847,8 @@ export const translations: Record<Locale, Record<string, string>> = {
     'results.changes': '{n} 处变更',
     'results.truncated': '（仅显示前 {n} 行 — 请添加 LIMIT 或缩小查询范围）',
     'results.no_rows': '没有返回任何行',
-    'results.running_sql': '正在执行 SQL：{sql}',
-    'results.running_sql_statements': '正在执行 SQL：{sql}（共 {n} 条）',
+    'results.running_sql': '正在执行 SQL：',
+    'results.running_sql_statements': '正在执行 SQL（共 {n} 条）：',
     'results.stored_rows': '（仅保存了前 {n} 行 — 重新运行可查看全部）',
     'results.halted': '第 {n} 条语句出错，已停止，其余 {m} 条未执行',
     // 取消呈现（副提示仅 D1 与 TiDB：这两个引擎杀不掉在跑的那条语句）
