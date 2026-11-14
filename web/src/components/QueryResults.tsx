@@ -1,6 +1,7 @@
 import { AlertCircle, AlertTriangle, CircleSlash, Loader2 } from 'lucide-react'
 import { useLocale } from '../hooks/useLocale'
 import type { CancelNotice, HaltNotice } from '../lib/runs'
+import { stripLeadingCommentsForDisplay } from '../lib/sql'
 import type { RunResults } from '../hooks/useNotebookRuns'
 import type { NotebookRunSummary, StatementResult } from '../types'
 import ResultsPanel from './ResultsPanel'
@@ -67,9 +68,9 @@ export default function QueryResults({
 
   // What the run in flight is executing: its first statement, with how many it submitted. The old
   // results stay mounted underneath; this is the only text the mask (and the first-run notice)
-  // shows while they are hidden.
+  // shows while they are hidden. The statement itself, not the comments above it.
   const runningLabel = t(runningStatementCount > 1 ? 'results.running_sql_statements' : 'results.running_sql', {
-    sql: runningSql,
+    sql: stripLeadingCommentsForDisplay(runningSql),
     n: runningStatementCount,
   })
 

@@ -246,6 +246,24 @@ describe('QueryResults while a run is in flight', () => {
     expect(html).not.toContain(t('results.running_sql_statements', { sql: 'SELECT 1', n: 2 }))
   })
 
+  // The label is the same text on the mask and on the first-run notice: both start at the statement
+  it('names the statement it is running, not the comments above it', () => {
+    const runningSql = '-- 注释\nshow tables'
+    const props = { running: true, runningSql, runningStatementCount: 2 }
+    const masked = render(props)
+    expect(masked).toContain(t('results.running_sql_statements', { sql: 'show tables', n: 2 }))
+    expect(masked).not.toContain('-- 注释')
+    // The first-run notice (no results yet) carries the stripped label too
+    const first = render({ ...props, selectedRun: null, selectedResults: null, results: [], runList: [] })
+    expect(first).toContain(t('results.running_sql_statements', { sql: 'show tables', n: 2 }))
+    expect(first).not.toContain('-- 注释')
+  })
+
+  it('falls back to the stored text when the running statement is nothing but comments', () => {
+    const html = render({ running: true, runningSql: '-- 只有注释', runningStatementCount: 1 })
+    expect(html).toContain(t('results.running_sql', { sql: '-- 只有注释' }))
+  })
+
   it('replaces nothing when idle: no temporary tab, no running notice', () => {
     const html = render({})
     expect(html).toContain('id="run-tab-run-1"')

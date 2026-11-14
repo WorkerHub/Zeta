@@ -2,7 +2,7 @@ import { AlertCircle, CheckCircle2, CircleSlash, Loader2 } from 'lucide-react'
 import type { StatementResult } from '../types'
 import ResultTable from './ResultTable'
 import { useLocale } from '../hooks/useLocale'
-import { MAX_RESULT_ROWS } from '../lib/sql'
+import { MAX_RESULT_ROWS, stripLeadingCommentsForDisplay } from '../lib/sql'
 
 interface Props {
   results: StatementResult[]
@@ -67,7 +67,9 @@ export default function ResultsPanel({
                     #{i + 1} · {meta} · {r.duration_ms}ms
                   </span>
                 </div>
-                <div className="text-micro text-ink-400 truncate font-mono">{r.sql}</div>
+                <div className="text-micro text-ink-400 truncate font-mono">
+                  {stripLeadingCommentsForDisplay(r.sql)}
+                </div>
               </button>
             )
           })}
@@ -79,7 +81,9 @@ export default function ResultsPanel({
         {/* SQL source header */}
         <div className="px-3 py-2 border-b border-ink-200 shrink-0 flex items-center gap-2 min-w-0">
           <span className="text-micro uppercase text-ink-400 shrink-0">SQL</span>
-          <code className="text-caption text-ink-500 truncate font-mono">{active.sql}</code>
+          <code className="text-caption text-ink-500 truncate font-mono">
+            {stripLeadingCommentsForDisplay(active.sql)}
+          </code>
         </div>
 
         {/* Meta line */}
