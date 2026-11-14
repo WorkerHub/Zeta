@@ -736,8 +736,10 @@
  * visible height), the document scrollers are hidden while it is mounted
  * (`html.auth-locked`), and `overscroll-behavior: none` removes the bounce rather
  * than just hiding the bar. The card's own region (`.auth-scroll`) is the only
- * scroller and only on very short screens: `margin: auto` on its child centres
- * the card when it fits and top-aligns + scrolls when it does not
+ * scroller: its child is top-aligned (`margin-top: 12dvh`, see the rule below)
+ * instead of centred, so the form stays in the upper half and the on-screen
+ * keyboard never covers the password field or submit button. On very short
+ * screens the card is taller than the viewport and the region scrolls
  * (`align-items: center` would clip the top on overflow). `overflow-x: hidden` is
  * the horizontal fallback; the real horizontal drag was the rubber-band, removed
  * by `overscroll-behavior: none`.
@@ -761,13 +763,41 @@
   display: flex;
   padding: 1rem;
 }
-.auth-scroll > * {
-  margin: auto;
+.auth-scroll > *:not(.fixed) {
+  /* Signed-out pages top-align the card (Logo + card) instead of centring it, so the form
+     sits in the upper half and the on-screen keyboard (bottom half on iOS) never covers the
+     password field or the submit button. Top whitespace is ~12% of the viewport height (plus
+     the 1rem padding) — inside the 10–15% band; the horizontal `auto` margins keep it centred.
+     A fixed top margin keeps the short-screen behaviour the old `margin: auto` had: when the
+     card is taller than the viewport the region scrolls, so the form stays fully reachable.
+     `:not(.fixed)` keeps the 2FA modal overlay (a `fixed inset-0` sibling rendered by the
+     login page) filling the full viewport instead of inheriting the card's top margin. */
+  margin: 12vh auto 0;
+}
+@supports (height: 100dvh) {
+  .auth-scroll > *:not(.fixed) {
+    margin-top: 12dvh;
+  }
 }
 html.auth-locked,
 html.auth-locked body {
   overflow: hidden;
   overscroll-behavior: none;
+}
+
+/*
+ * Signed-out input fields (email / password / secret): iOS Safari zooms the page whenever a
+ * focused editable has a computed font-size under 16px. `.input` (`text-body`, 14px) would
+ * trigger that zoom — with the card now top-aligned and the keyboard opening, the zoom would
+ * reflow the whole shell. Below the sm breakpoint (the same 640px line the editor uses, see
+ * `.cm-editor` above) the signed-out fields are bumped to 16px so iOS does not zoom. Desktop
+ * stays at 14px, and signed-in pages (which share `.input`) are out of scope for this change:
+ * the selector is scoped to `.auth-shell`.
+ */
+@media (width < 40rem) {
+  .auth-shell .input {
+    font-size: 16px;
+  }
 }
 
 @layer components {
