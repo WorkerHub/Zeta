@@ -1,6 +1,6 @@
 import { describe, it, expect, afterEach } from 'vitest'
 import { renderToStaticMarkup } from 'react-dom/server'
-import { COL_WIDTH, DatabaseIdCell, cellClass } from '../../pages/admin/Databases'
+import { COL_WIDTH, DatabaseIdCell, cellClass, TABLE_MIN_WIDTH } from '../../pages/admin/Databases'
 import { setLocale, t } from '../translations'
 import type { AdminDatabase } from '../../types'
 
@@ -29,32 +29,34 @@ const widthPx = (col: keyof typeof COL_WIDTH): number => {
 }
 
 describe('data-source list columns', () => {
-  it('makes the name the one flexible column and pins the rest inside the agreed limits', () => {
-    // Name min 200 (flexible) / engine 140 / provider 120 / database ID 300 / status 112
-    expect(widthPx('name')).toBe(200)
+  it('locks every pinned column at the agreed width and leaves the name column flexible', () => {
+    // Engine 140 / provider 120 / database ID 300 / status 112 — the #28 values, unchanged
     expect(widthPx('engine')).toBe(140)
     expect(widthPx('provider')).toBe(120)
     expect(widthPx('databaseId')).toBe(300)
     expect(widthPx('status')).toBe(112)
-    expect(widthPx('name')).toBeLessThanOrEqual(220)
-    expect(widthPx('status')).toBeLessThanOrEqual(120)
     // 268px of content after the 32px padding: a 36-character UUID needs ~252px
     expect(widthPx('databaseId') - 32).toBeGreaterThanOrEqual(252)
     expect(widthPx('databaseId')).toBeLessThanOrEqual(320)
+    // The name column carries no width: it absorbs the card's remaining width on desktop
+    expect(COL_WIDTH.name).toBe('')
+    expect(widthPx('name')).toBe(0)
   })
 
-  it('keeps the actions column unpinned, the name column flexible and the cell padding with the width', () => {
-    // The actions column is as wide as its buttons: a legacy row adds a Link button
-    expect(COL_WIDTH.actions).toBe('')
-    expect(cellClass('actions')).toBe('px-4 py-3')
-    // The name column is the flexible one: a minimum width, so it takes the card's remaining width
-    expect(COL_WIDTH.name).toBe('md:min-w-[200px]')
-    expect(cellClass('name')).toBe('px-4 py-3 md:min-w-[200px]')
-    expect(cellClass('status', 'whitespace-nowrap')).toBe('px-4 py-3 md:w-[112px] whitespace-nowrap')
-    // Every other column keeps a hard width at `md` and up only: below that the table keeps its natural columns
-    for (const col of ['engine', 'provider', 'databaseId', 'status'] as const) {
+  it('pins the actions column at its measured width and keeps the padding off the width', () => {
+    // The widest action row — English labels plus a legacy row's Link button — measures 331.7px
+    expect(COL_WIDTH.actions).toBe('md:w-[332px]')
+    expect(widthPx('actions')).toBe(332)
+    // The column width now lives on the <col>, so the cell carries only its padding
+    expect(cellClass()).toBe('px-4 py-3')
+    expect(cellClass('whitespace-nowrap')).toBe('px-4 py-3 whitespace-nowrap')
+    // Every pinned column is a hard width at `md` and up only: below that the table keeps its natural columns
+    for (const col of ['engine', 'provider', 'databaseId', 'status', 'actions'] as const) {
       expect(COL_WIDTH[col].startsWith('md:w-')).toBe(true)
     }
+    // The table's desktop minimum holds the name column's 200px floor plus the pinned widths, so at
+    // narrow widths the table scrolls instead of squeezing the name column to nothing
+    expect(TABLE_MIN_WIDTH).toBe('md:min-w-[1204px]')
   })
 })
 
