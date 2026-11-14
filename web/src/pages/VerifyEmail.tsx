@@ -4,6 +4,7 @@ import { CheckCircle, XCircle } from 'lucide-react'
 import { authApi } from '../lib/api'
 import { useLocale } from '../hooks/useLocale'
 import Logo from '../components/Logo'
+import AuthShell from '../components/AuthShell'
 
 export default function VerifyEmail() {
   const { t } = useLocale()
@@ -31,7 +32,7 @@ export default function VerifyEmail() {
   }, [token, t])
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-4 bg-ink-50">
+    <AuthShell>
       <div className="w-full max-w-sm">
         <div className="flex items-center justify-center gap-2 mb-8">
           <Logo size="md" />
@@ -60,6 +61,6 @@ export default function VerifyEmail() {
           )}
         </div>
       </div>
-    </div>
+    </AuthShell>
   )
 }

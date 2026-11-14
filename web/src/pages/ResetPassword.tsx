@@ -3,6 +3,7 @@ import { Link, useSearchParams, useNavigate } from 'react-router-dom'
 import { authApi } from '../lib/api'
 import { useLocale } from '../hooks/useLocale'
 import Logo from '../components/Logo'
+import AuthShell from '../components/AuthShell'
 
 export default function ResetPassword() {
   const { t } = useLocale()
@@ -38,19 +39,19 @@ export default function ResetPassword() {
 
   if (!token) {
     return (
-      <div className="min-h-screen flex items-center justify-center p-4 bg-ink-50">
+      <AuthShell>
         <div className="card p-6 text-center">
           <p className="text-body text-danger-600 mb-4">{t('auth.invalid_reset')}</p>
           <Link to="/forgot-password" className="btn-primary">
             {t('auth.request_new')}
           </Link>
         </div>
-      </div>
+      </AuthShell>
     )
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-4 bg-ink-50">
+    <AuthShell>
       <div className="w-full max-w-sm">
         <div className="flex items-center justify-center gap-2 mb-8">
           <Logo size="md" />
@@ -97,6 +98,6 @@ export default function ResetPassword() {
           </form>
         </div>
       </div>
-    </div>
+    </AuthShell>
   )
 }
