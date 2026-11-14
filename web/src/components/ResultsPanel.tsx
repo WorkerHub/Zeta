@@ -1,7 +1,8 @@
-import { AlertCircle, CheckCircle2, CircleSlash, Loader2 } from 'lucide-react'
+import { AlertCircle, AlertTriangle, CheckCircle2, CircleSlash, Loader2 } from 'lucide-react'
 import type { StatementResult } from '../types'
 import ResultTable from './ResultTable'
 import { useLocale } from '../hooks/useLocale'
+import { errorCodeText, sparkErrorKind } from '../lib/error-copy'
 import { MAX_RESULT_ROWS, stripLeadingCommentsForDisplay } from '../lib/sql'
 
 interface Props {
@@ -25,6 +26,12 @@ export default function ResultsPanel({
   const active = results[activeIndex]
   if (!active) return null
 
+  // A Spark context error (draining/restarting/rebuilt) is the environment's own state, not a SQL
+  // failure: it renders amber, never red (§7.6). The copy is the localised sentence when the entry
+  // carries a known code; a plain SQL error keeps the worker's message.
+  const activeErrorText = active.error ? (errorCodeText(t, active) ?? active.error) : ''
+  const activeIsContext = sparkErrorKind(active.code) === 'context'
+
   return (
     <div className="relative flex h-full overflow-hidden">
       {/* Left sidebar — only shown when there are multiple results */}
@@ -36,6 +43,7 @@ export default function ResultsPanel({
           {results.map((r, i) => {
             const isActive = i === activeIndex
             const hasError = !!r.error
+            const isContext = sparkErrorKind(r.code) === 'context'
             // A statement the user cancelled: neither a failure nor a success, so it gets neither mark
             const isCancelled = !hasError && !!r.cancelled
             const meta = hasError
@@ -59,7 +67,11 @@ export default function ResultsPanel({
               >
                 <div className="flex items-center gap-1 mb-0.5">
                   {hasError ? (
-                    <AlertCircle size={10} className="text-danger-600 shrink-0" />
+                    isContext ? (
+                      <AlertTriangle size={10} className="text-warning-600 shrink-0" />
+                    ) : (
+                      <AlertCircle size={10} className="text-danger-600 shrink-0" />
+                    )
                   ) : isCancelled ? (
                     <CircleSlash size={10} className="text-ink-400 shrink-0" />
                   ) : (
@@ -92,8 +104,14 @@ export default function ResultsPanel({
         <div className="px-3 py-1.5 border-b border-ink-100 shrink-0 flex items-center gap-2">
           {active.error ? (
             <>
-              <AlertCircle size={12} className="text-danger-600 shrink-0" />
-              <span className="text-caption text-danger-600">{t('results.error')}</span>
+              {activeIsContext ? (
+                <AlertTriangle size={12} className="text-warning-600 shrink-0" />
+              ) : (
+                <AlertCircle size={12} className="text-danger-600 shrink-0" />
+              )}
+              <span className={`text-caption ${activeIsContext ? 'text-warning-600' : 'text-danger-600'}`}>
+                {t('results.error')}
+              </span>
               <span className="text-ink-300 text-caption">·</span>
               <span className="text-caption text-ink-500 tnum">{active.duration_ms}ms</span>
             </>
@@ -133,9 +151,21 @@ export default function ResultsPanel({
         {/* Result content */}
         <div className="flex-1 overflow-auto p-3">
           {active.error ? (
-            <div className="flex items-start gap-3 p-4 bg-danger-50 border border-danger-200 rounded-lg">
-              <AlertCircle size={16} className="text-danger-600 shrink-0 mt-0.5" />
-              <pre className="text-caption text-danger-600 whitespace-pre-wrap font-mono">{active.error}</pre>
+            <div
+              className={`flex items-start gap-3 p-4 rounded-lg ${
+                activeIsContext ? 'bg-warning-50 border border-warning-200' : 'bg-danger-50 border border-danger-200'
+              }`}
+            >
+              {activeIsContext ? (
+                <AlertTriangle size={16} className="text-warning-600 shrink-0 mt-0.5" />
+              ) : (
+                <AlertCircle size={16} className="text-danger-600 shrink-0 mt-0.5" />
+              )}
+              <pre
+                className={`text-caption whitespace-pre-wrap font-mono ${activeIsContext ? 'text-warning-700' : 'text-danger-600'}`}
+              >
+                {activeErrorText}
+              </pre>
             </div>
           ) : active.cancelled ? (
             <p className="py-4 text-center text-body text-ink-500">{t('results.cancelled')}</p>

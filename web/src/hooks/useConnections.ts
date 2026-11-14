@@ -59,13 +59,14 @@ export function useConnections(knownIds: string[]) {
   const isConnected = useCallback((id: string) => connected.includes(id), [connected])
 
   // Resolves ok when the target answered; the raw error otherwise, for the page to turn into copy
-  // (only Spark failures carry a code the UI can translate).
-  const connect = useCallback(async (id: string): Promise<ConnectResult> => {
+  // (only Spark failures carry a code the UI can translate). A Spark connect may carry the caller's
+  // selected profile (§5.3), so the probe proves the session the queries will actually use.
+  const connect = useCallback(async (id: string, profileId?: string | null): Promise<ConnectResult> => {
     if (busyRef.current !== null) return { ok: true }
     busyRef.current = id
     setBusyId(id)
     try {
-      await queryApi.probe(id)
+      await queryApi.probe(id, profileId ?? undefined)
       setConnected((current) => addConnected(current, id))
       return { ok: true }
     } catch (error) {

@@ -9,7 +9,9 @@ import type {
   Notebook,
   NotebookRun,
   NotebookRunSummary,
+  ProfileEntry,
   RunSettings,
+  SparkProfile,
   StatementResult,
   User,
 } from '../types'
@@ -239,6 +241,29 @@ export const databasesApi = {
   list: () => apiFetch<Database[]>('/databases'),
 }
 
+// ── Personal Spark config profiles (SPEC §5.1/§5.2) ─────────────────────────
+
+// Mounted under /api/databases/:id/spark-profiles. Only the owner sees or changes them; anyone with
+// ≥ read access to a Spark target may manage their own profiles. `entries` is an ordered
+// `{ key, value }[]` array, so blank lines and their order survive an edit round-trip.
+export const sparkProfilesApi = {
+  list: (databaseId: string) => apiFetch<{ results: SparkProfile[] }>(`/databases/${databaseId}/spark-profiles`),
+  create: (databaseId: string, body: { name: string; entries: ProfileEntry[] }) =>
+    apiFetch<SparkProfile>(`/databases/${databaseId}/spark-profiles`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+  update: (databaseId: string, profileId: string, body: { name?: string; entries?: ProfileEntry[] }) =>
+    apiFetch<{ message: string }>(`/databases/${databaseId}/spark-profiles/${profileId}`, {
+      method: 'PUT',
+      body: JSON.stringify(body),
+    }),
+  remove: (databaseId: string, profileId: string) =>
+    apiFetch<{ message: string }>(`/databases/${databaseId}/spark-profiles/${profileId}`, {
+      method: 'DELETE',
+    }),
+}
+
 // ── Query endpoints ───────────────────────────────────────────────────────────
 
 // Passing notebookId saves the run under that notebook; the response then names it
@@ -249,11 +274,12 @@ export const queryApi = {
   // Proves the target answers before the page lets a query run (the connect button). The worker runs
   // a fixed `select 1` and records nothing — no history row, no saved run — and a D1 target answers
   // without touching D1. Failures carry the worker's message and, for Spark, a `code` the UI
-  // translates (see lib/error-copy.ts).
-  probe: (databaseId: string) =>
+  // translates (see lib/error-copy.ts). A Spark probe may carry the caller's selected profile
+  // (§5.3), so the connection check proves the session the caller's queries will actually use.
+  probe: (databaseId: string, profileId?: string) =>
     apiFetch<{ ok: boolean; kind?: DbKind; latency_ms?: number }>('/query/probe', {
       method: 'POST',
-      body: JSON.stringify({ databaseId }),
+      body: JSON.stringify({ databaseId, ...(profileId ? { profileId } : {}) }),
     }),
   execute: (
     body: {
@@ -262,6 +288,8 @@ export const queryApi = {
       notebookId?: string
       sessionDatabase?: string
       executionId?: string
+      // The caller's selected Spark profile (§5.3); absent = the default configuration (no `config`).
+      profileId?: string
     },
     signal?: AbortSignal
   ) =>
@@ -289,6 +317,8 @@ export const queryApi = {
       notebookId?: string
       sessionDatabase?: string
       executionId?: string
+      // The caller's selected Spark profile (§5.3); absent = the default configuration (no `config`).
+      profileId?: string
     },
     signal?: AbortSignal
   ) =>

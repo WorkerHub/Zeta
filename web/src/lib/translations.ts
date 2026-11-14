@@ -100,6 +100,24 @@ export const translations: Record<Locale, Record<string, string>> = {
     'query.disconnect': 'Disconnect',
     'query.connect_first': 'Connect to this data source first',
     'query.connect_failed': 'Could not connect',
+    'query.reconnect': 'Reconnect',
+
+    // Spark config profiles (gear menu, manage-config dialog, row editor)
+    'spark.gear_label': 'Spark config',
+    'spark.manage_configs': 'Manage configs…',
+    'spark.instance_config': 'Instance config…',
+    'spark.default_profile': 'Default config',
+    'spark.dialog_title': 'Manage configs',
+    'spark.new_profile': '+ New',
+    'spark.delete_profile': 'Delete this config',
+    'spark.delete_confirm_title': 'Delete this config?',
+    'spark.delete_confirm_desc': 'This cannot be undone.',
+    'spark.name': 'Name',
+    'spark.name_required': 'Enter a name',
+    'spark.name_taken': 'A config with this name already exists',
+    'spark.add_row': '+ Add row',
+    'spark.save': 'Save',
+    'spark.limit_reached': 'Maximum 20 configs per data source reached',
 
     // Spark failures the worker classifies with a code (report §2.6)
     'spark_error.spark_stopped':
@@ -109,6 +127,12 @@ export const translations: Record<Locale, Record<string, string>> = {
     'spark_error.spark_app_token': 'The Spark app token was rejected. Ask an administrator to check the registration.',
     'spark_error.spark_publish_token':
       'The publish address rejected its access token. Ask an administrator to republish and update the registration.',
+    'spark_error.startup_key_in_profile': 'Parameter {key} is startup-level — change it in the instance configuration.',
+    'spark_error.invalid_key': 'Invalid Spark configuration key or value: {key}.',
+    'spark_error.context_draining':
+      'The Spark environment is draining ({n} queries in flight) — please try again shortly.',
+    'spark_error.context_restarting': 'The Spark environment is restarting — please try again shortly.',
+    'spark_error.context_rebuilt': 'The Spark environment was updated — please reconnect.',
 
     // Notebooks
     'notebook.untitled': 'Untitled',
@@ -561,12 +585,35 @@ export const translations: Record<Locale, Record<string, string>> = {
     'query.disconnect': '取消连接',
     'query.connect_first': '请先连接数据源',
     'query.connect_failed': '连接失败',
+    'query.reconnect': '重新连接',
+
+    // Spark 个人配置（齿轮菜单、管理弹窗、行编辑器）
+    'spark.gear_label': 'Spark 配置',
+    'spark.manage_configs': '管理配置…',
+    'spark.instance_config': '实例配置…',
+    'spark.default_profile': '默认配置',
+    'spark.dialog_title': '管理配置',
+    'spark.new_profile': '＋ 新建',
+    'spark.delete_profile': '删除此配置',
+    'spark.delete_confirm_title': '删除此配置？',
+    'spark.delete_confirm_desc': '删除后无法恢复。',
+    'spark.name': '名称',
+    'spark.name_required': '请输入名称',
+    'spark.name_taken': '已有同名配置',
+    'spark.add_row': '＋ 添加一行',
+    'spark.save': '保存',
+    'spark.limit_reached': '每个数据源最多 20 份配置',
 
     // 后端按 code 分类的 Spark 失败（报告 §2.6 定稿文案）
     'spark_error.spark_stopped': 'Spark 机器已停止运行，需要管理员在 Instabox 启动后才能查询。',
     'spark_error.spark_not_ready': 'Spark 机器正在启动或暂时不可达，请稍后重试。',
     'spark_error.spark_app_token': 'Spark 应用令牌被拒，请管理员检查登记信息。',
     'spark_error.spark_publish_token': '发布地址的访问令牌被拒，请管理员重新发布并更新登记信息。',
+    'spark_error.startup_key_in_profile': '参数 {key} 为启动级参数，请到实例配置中修改。',
+    'spark_error.invalid_key': '无效的 Spark 配置键或值：{key}。',
+    'spark_error.context_draining': 'Spark 环境正在排空（{n} 条查询待结束），请稍后重试。',
+    'spark_error.context_restarting': 'Spark 环境正在重启，请稍后重试。',
+    'spark_error.context_rebuilt': 'Spark 环境已更新，请重新连接。',
 
     // Notebooks
     'notebook.untitled': '未命名',
