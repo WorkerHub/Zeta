@@ -223,27 +223,29 @@ describe('QueryResults while a run is in flight', () => {
     expect(html).toContain(t('query.cancel_run'))
     expect(html).toContain(t('query.running')) // the strip's summary
     // The centered notice names the SQL it is running, like the mask does
-    expect(html).toContain(t('results.running_sql', { sql: 'SELECT 1' }))
+    expect(html).toContain(t('results.running_sql'))
+    expect(html).toContain('SELECT 1')
     expect(html).toContain('role="status"')
     expect(html).not.toContain('<table')
   })
 
   it('masks the whole panel with the SQL it is running, keeping the previous results underneath', () => {
     const html = render({ running: true, runningDatabaseName: 'one', runningSql: 'SELECT 1', runningStatementCount: 1 })
-    const label = t('results.running_sql', { sql: 'SELECT 1' })
-    expect(html).toContain(label)
+    const title = t('results.running_sql')
+    expect(html).toContain(title)
+    expect(html).toContain('SELECT 1')
     // A single status region on screen (the first-run notice is the other branch), and the mask
     // is drawn after the SQL header row it covers
     expect(html.match(/role="status"/g)?.length).toBe(1)
-    expect(html.indexOf(label)).toBeGreaterThan(html.indexOf('>SQL<'))
+    expect(html.indexOf(title)).toBeGreaterThan(html.indexOf('>SQL<'))
     // The results underneath are untouched, so the mask disappears onto them
     expect(table(html)).toBe(table(render({})))
   })
 
   it('names every statement when the run submitted several', () => {
     const html = render({ running: true, runningSql: 'SELECT 1', runningStatementCount: 3 })
-    expect(html).toContain(t('results.running_sql_statements', { sql: 'SELECT 1', n: 3 }))
-    expect(html).not.toContain(t('results.running_sql_statements', { sql: 'SELECT 1', n: 2 }))
+    expect(html).toContain(t('results.running_sql_statements', { n: 3 }))
+    expect(html).not.toContain(t('results.running_sql_statements', { n: 2 }))
   })
 
   // The label is the same text on the mask and on the first-run notice: both start at the statement
@@ -251,17 +253,20 @@ describe('QueryResults while a run is in flight', () => {
     const runningSql = '-- 注释\nshow tables'
     const props = { running: true, runningSql, runningStatementCount: 2 }
     const masked = render(props)
-    expect(masked).toContain(t('results.running_sql_statements', { sql: 'show tables', n: 2 }))
+    expect(masked).toContain(t('results.running_sql_statements', { n: 2 }))
+    expect(masked).toContain('show tables')
     expect(masked).not.toContain('-- 注释')
-    // The first-run notice (no results yet) carries the stripped label too
+    // The first-run notice (no results yet) carries the stripped SQL too
     const first = render({ ...props, selectedRun: null, selectedResults: null, results: [], runList: [] })
-    expect(first).toContain(t('results.running_sql_statements', { sql: 'show tables', n: 2 }))
+    expect(first).toContain(t('results.running_sql_statements', { n: 2 }))
+    expect(first).toContain('show tables')
     expect(first).not.toContain('-- 注释')
   })
 
   it('falls back to the stored text when the running statement is nothing but comments', () => {
     const html = render({ running: true, runningSql: '-- 只有注释', runningStatementCount: 1 })
-    expect(html).toContain(t('results.running_sql', { sql: '-- 只有注释' }))
+    expect(html).toContain(t('results.running_sql'))
+    expect(html).toContain('-- 只有注释')
   })
 
   it('replaces nothing when idle: no temporary tab, no running notice', () => {
@@ -286,7 +291,7 @@ describe('QueryResults after a run', () => {
       results: fresh,
       runList: [next, oldRun],
     })
-    expect(html).not.toContain(t('results.running_sql', { sql: 'SELECT 2' }))
+    expect(html).not.toContain(t('results.running_sql'))
     expect(html).not.toContain('role="status"')
     expect(html).toContain('>9<')
   })
@@ -304,7 +309,7 @@ describe('QueryResults after a run', () => {
       cancelled: notice,
       runList: [next, oldRun],
     })
-    expect(html).not.toContain(t('results.running_sql', { sql: 'SELECT SLEEP(30)' }))
+    expect(html).not.toContain(t('results.running_sql'))
     expect(html).not.toContain('role="status"')
     expect(html).toContain(t('results.cancelled'))
   })
