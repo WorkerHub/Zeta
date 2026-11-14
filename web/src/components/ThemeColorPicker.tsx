@@ -11,6 +11,12 @@ const SWATCH_CLASS: Record<ThemeColor, string> = {
   forest: 'bg-swatch-forest',
   grape: 'bg-swatch-grape',
   rose: 'bg-swatch-rose',
+  royal: 'bg-swatch-royal',
+  violet: 'bg-swatch-violet',
+  tangerine: 'bg-swatch-tangerine',
+  cyan: 'bg-swatch-cyan',
+  magenta: 'bg-swatch-magenta',
+  emerald: 'bg-swatch-emerald',
 }
 
 const LABEL_KEY: Record<ThemeColor, string> = {
@@ -20,6 +26,12 @@ const LABEL_KEY: Record<ThemeColor, string> = {
   forest: 'theme_color.forest',
   grape: 'theme_color.grape',
   rose: 'theme_color.rose',
+  royal: 'theme_color.royal',
+  violet: 'theme_color.violet',
+  tangerine: 'theme_color.tangerine',
+  cyan: 'theme_color.cyan',
+  magenta: 'theme_color.magenta',
+  emerald: 'theme_color.emerald',
 }
 
 /**

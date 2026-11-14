@@ -7,7 +7,20 @@
   // Brand colour preset (§2.1): painted with the theme, before first paint, so a stored preset
   // never shows a frame of terracotta. The default preset is the absence of the attribute, and
   // an unknown value leaves it unset too — index.css falls back to the terracotta tokens.
-  var themeColors = ['terracotta', 'ocean', 'teal', 'forest', 'grape', 'rose']
+  var themeColors = [
+    'terracotta',
+    'ocean',
+    'teal',
+    'forest',
+    'grape',
+    'rose',
+    'royal',
+    'violet',
+    'tangerine',
+    'cyan',
+    'magenta',
+    'emerald',
+  ]
   var c = localStorage.getItem('theme-color')
   if (c && c !== 'terracotta' && themeColors.indexOf(c) !== -1) {
     document.documentElement.setAttribute('data-theme-color', c)

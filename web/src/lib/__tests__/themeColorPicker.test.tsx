@@ -55,7 +55,8 @@ describe('ThemeColorPicker', () => {
     expect(t('profile.theme_color')).toBe('主题色')
     const html = render('rose')
     expect(html).toMatch(/aria-label="玫瑰"[^>]*checked=""/)
-    for (const name of ['陶土', '海蓝', '青碧', '森绿', '葡萄紫']) expect(html).toContain(`aria-label="${name}"`)
+    for (const name of ['陶土', '海蓝', '青碧', '森绿', '葡萄紫', '宝蓝', '紫罗兰', '蜜橙', '湖青', '品红', '翠绿'])
+      expect(html).toContain(`aria-label="${name}"`)
   })
 })
 
