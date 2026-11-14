@@ -9,7 +9,8 @@ interface Props {
   activeIndex: number
   onSelectIndex: (i: number) => void
   running?: boolean // a run is in flight: the mask covers the panel
-  runningLabel?: string // what it is executing, shown on the mask
+  runningTitle?: string // the heading line of the run in flight, shown on the mask
+  runningSqlDisplay?: string // its SQL with leading comments stripped, shown as a block below
 }
 
 export default function ResultsPanel({
@@ -17,7 +18,8 @@ export default function ResultsPanel({
   activeIndex,
   onSelectIndex,
   running = false,
-  runningLabel = '',
+  runningTitle = '',
+  runningSqlDisplay = '',
 }: Props) {
   const { t } = useLocale()
   const active = results[activeIndex]
@@ -146,17 +148,18 @@ export default function ResultsPanel({
       {/* A run in flight: the mask covers the whole panel — SQL header row, meta line and table —
           while the previous results stay mounted and scrolled underneath it. The run history strip
           and its cancel X sit outside this panel, so they stay usable. */}
-      {running && runningLabel && (
+      {running && runningTitle && (
         <div
           role="status"
           className="absolute inset-0 flex flex-col items-center justify-center gap-1.5 overflow-hidden px-4 bg-ink-0/90 backdrop-blur-[2px] cursor-progress"
         >
-          <span className="flex items-center gap-2 min-w-0">
+          <span className="flex shrink-0 items-center gap-2">
             <Loader2 size={18} className="animate-spin shrink-0 text-ink-500" aria-hidden="true" />
-            <span className="min-w-0 text-body text-ink-600 truncate" title={runningLabel}>
-              {runningLabel}
-            </span>
+            <span className="text-body text-ink-600">{runningTitle}</span>
           </span>
+          <pre className="w-full max-h-[40vh] overflow-y-auto text-left text-caption text-ink-600 font-mono whitespace-pre-wrap break-words">
+            {runningSqlDisplay}
+          </pre>
         </div>
       )}
     </div>
