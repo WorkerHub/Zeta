@@ -12,7 +12,7 @@ export interface User {
   passkeyCredentials?: Array<{ id: string; name: string | null; created_at: number }>
 }
 
-export type DbPermission = 'read' | 'write' | 'write_drop'
+export type DbPermission = 'read' | 'write' | 'write_drop' | 'manage'
 
 // The engine a registration targets. 'sqlite' is the existing D1 path; the others are
 // registered from a connection string. Absent on responses from before the kind column.
