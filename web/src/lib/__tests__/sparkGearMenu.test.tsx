@@ -25,16 +25,19 @@ const PROFILES: SparkProfile[] = [
 function renderMenu(props: Partial<Parameters<typeof SparkGearMenu>[0]> = {}) {
   const onSelectProfile = vi.fn()
   const onOpenManage = vi.fn()
+  const onOpenInstanceConfig = vi.fn()
   render(
     <SparkGearMenu
       profiles={PROFILES}
       selectedProfileId="p1"
       onSelectProfile={onSelectProfile}
       onOpenManage={onOpenManage}
+      canManageInstance={false}
+      onOpenInstanceConfig={onOpenInstanceConfig}
       {...props}
     />
   )
-  return { onSelectProfile, onOpenManage, user: userEvent.setup() }
+  return { onSelectProfile, onOpenManage, onOpenInstanceConfig, user: userEvent.setup() }
 }
 
 const openMenu = async (user: ReturnType<typeof userEvent.setup>) => {
@@ -74,13 +77,27 @@ describe('SparkGearMenu', () => {
     expect(onSelectProfile).toHaveBeenLastCalledWith(null)
   })
 
-  it('opens the manage dialog and ships no dead instance-config entry', async () => {
+  it('opens the manage dialog and reports the pick', async () => {
     const { onOpenManage, user } = renderMenu()
     await openMenu(user)
     await user.click(screen.getByRole('menuitem', { name: t('spark.manage_configs') }))
     expect(onOpenManage).toHaveBeenCalledTimes(1)
-    // §7.4 belongs to the instance-config dialog task: no entry until that dialog exists.
     await waitFor(() => expect(screen.queryByRole('menu')).toBeNull())
-    expect(screen.queryByText(/instance config/i)).toBeNull()
+  })
+
+  it('offers the instance config to an admin or a manage grant', async () => {
+    const { onOpenInstanceConfig, user } = renderMenu({ canManageInstance: true })
+    await openMenu(user)
+    await user.click(screen.getByRole('menuitem', { name: t('spark.instance_config') }))
+    expect(onOpenInstanceConfig).toHaveBeenCalledTimes(1)
+    await waitFor(() => expect(screen.queryByRole('menu')).toBeNull())
+  })
+
+  it('hides the instance config from a caller without manage', async () => {
+    const { user } = renderMenu({ canManageInstance: false })
+    await openMenu(user)
+    expect(screen.queryByRole('menuitem', { name: t('spark.instance_config') })).toBeNull()
+    // The entries the caller may use stay where they were.
+    expect(screen.getByRole('menuitem', { name: t('spark.manage_configs') })).toBeTruthy()
   })
 })

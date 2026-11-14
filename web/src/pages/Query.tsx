@@ -33,6 +33,7 @@ import QueryResults from '../components/QueryResults'
 import DbKindMeta from '../components/DbKindMeta'
 import ConnectButton from '../components/ConnectButton'
 import SparkGearMenu from '../components/SparkGearMenu'
+import SparkInstanceConfigDialog from '../components/SparkInstanceConfigDialog'
 import SparkProfilesDialog from '../components/SparkProfilesDialog'
 import RunActionButton from '../components/RunActionButton'
 import RunHistoryDrawer from '../components/RunHistoryDrawer'
@@ -116,6 +117,10 @@ export default function QueryPage() {
   // §7.6: a rebuilt Spark environment disconnects the target and shows a thin banner above the editor.
   const [contextRebuilt, setContextRebuilt] = useState(false)
   const [profilesDialogOpen, setProfilesDialogOpen] = useState(false)
+  const [instanceDialogOpen, setInstanceDialogOpen] = useState(false)
+  // §7.4: the instance config is admin/manage only — the same right the API requires (an admin, or
+  // an exact `manage` grant; `write_drop` does not include it).
+  const canManageInstance = user?.role === 'admin' || selectedDb?.permission === 'manage'
 
   // A target that is no longer connected has no "connected profile" to compare against. The id is
   // read into a local first, so the effect never holds a stale `selectedDb` object across a target
@@ -682,6 +687,8 @@ export default function QueryPage() {
               selectedProfileId={selectedProfileId}
               onSelectProfile={spark.select}
               onOpenManage={() => setProfilesDialogOpen(true)}
+              canManageInstance={canManageInstance}
+              onOpenInstanceConfig={() => setInstanceDialogOpen(true)}
               triggerClassName="flex h-[46px] w-[46px] shrink-0 items-center justify-center rounded-md border border-ink-200 bg-ink-100 text-ink-500 transition-colors duration-(--duration-base) hover:bg-ink-200 hover:text-ink-900"
             />
           )}
@@ -1077,6 +1084,8 @@ export default function QueryPage() {
             selectedProfileId={selectedProfileId}
             onSelectProfile={spark.select}
             onOpenManage={() => setProfilesDialogOpen(true)}
+            canManageInstance={canManageInstance}
+            onOpenInstanceConfig={() => setInstanceDialogOpen(true)}
             triggerClassName="flex h-10 w-10 shrink-0 items-center justify-center rounded-md border border-ink-200 bg-ink-100 text-ink-500 transition-colors duration-(--duration-base) hover:bg-ink-200 hover:text-ink-900"
           />
         )}
@@ -1153,6 +1162,14 @@ export default function QueryPage() {
           selectedProfileId={selectedProfileId}
           onSelectProfile={spark.select}
           onSaved={spark.reload}
+        />
+      )}
+      {/* Spark instance-config dialog (§7.4) */}
+      {selectedDb?.kind === 'spark' && (
+        <SparkInstanceConfigDialog
+          open={instanceDialogOpen}
+          onOpenChange={setInstanceDialogOpen}
+          databaseId={selectedDb.id}
         />
       )}
     </div>

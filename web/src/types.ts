@@ -107,6 +107,41 @@ export interface SparkProfile {
   updated_at: number
 }
 
+// One jar of a Spark instance config (SPEC §1.2/§6.2): a URL the service downloads, or a file name
+// already in its jars directory. Only a URL ref may pin a sha256.
+export interface JarRef {
+  type: 'url' | 'file'
+  value: string
+  sha256?: string
+}
+
+// The Spark service's own state (SPEC §1.2 `GET /admin/config/status`, passed through by Zeta).
+export type SparkConfigState = 'running' | 'draining' | 'restarting' | 'failed_fallback'
+
+export interface SparkConfigStatus {
+  state: SparkConfigState
+  epoch: number
+  inflight: number
+  // What the service is actually running — the jar list holds file names.
+  effective: { entries: Record<string, string>; jars: string[] }
+  lastError: string | null
+}
+
+// One file of the service's jars directory (SPEC §1.2 `GET /admin/jars`).
+export interface ServerJar {
+  name: string
+  sizeBytes: number
+}
+
+// `GET /api/databases/:id/spark-instance-config`: the stored expected config plus the service's
+// current status and jar listing, each null when the service cannot be reached (SPEC §6.1).
+export interface SparkInstanceConfigResponse {
+  entries: Record<string, string>
+  jars: JarRef[]
+  status: SparkConfigStatus | null
+  serverJars: ServerJar[] | null
+}
+
 export interface Notebook {
   id: string
   user_id: string

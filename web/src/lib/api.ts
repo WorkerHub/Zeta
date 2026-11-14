@@ -6,11 +6,13 @@ import type {
   Database,
   DatabaseGrant,
   DbKind,
+  JarRef,
   Notebook,
   NotebookRun,
   NotebookRunSummary,
   ProfileEntry,
   RunSettings,
+  SparkInstanceConfigResponse,
   SparkProfile,
   StatementResult,
   User,
@@ -261,6 +263,25 @@ export const sparkProfilesApi = {
   remove: (databaseId: string, profileId: string) =>
     apiFetch<{ message: string }>(`/databases/${databaseId}/spark-profiles/${profileId}`, {
       method: 'DELETE',
+    }),
+}
+
+// ── Spark instance configuration (SPEC §6.1) ─────────────────────────────────
+
+// Mounted under /api/databases/:id/spark-instance-config. Reading, saving and applying all require
+// a global admin or an exact `manage` grant on the target (the worker answers 403 otherwise). The
+// expected config is stored by PUT; apply hands that stored config to the service and starts a
+// drain/restart, so the caller polls GET until the status reaches a terminal state.
+export const sparkInstanceConfigApi = {
+  get: (databaseId: string) => apiFetch<SparkInstanceConfigResponse>(`/databases/${databaseId}/spark-instance-config`),
+  save: (databaseId: string, body: { entries: Record<string, string>; jars: JarRef[] }) =>
+    apiFetch<{ entries: Record<string, string>; jars: JarRef[] }>(`/databases/${databaseId}/spark-instance-config`, {
+      method: 'PUT',
+      body: JSON.stringify(body),
+    }),
+  apply: (databaseId: string) =>
+    apiFetch<{ state: 'draining' | 'restarting' }>(`/databases/${databaseId}/spark-instance-config/apply`, {
+      method: 'POST',
     }),
 }
 

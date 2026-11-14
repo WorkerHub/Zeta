@@ -19,21 +19,26 @@ interface Props {
   selectedProfileId: string | null
   onSelectProfile: (profileId: string | null) => void
   onOpenManage: () => void
+  /** §7.4: a global admin or an exact `manage` grant — the same right the API requires. */
+  canManageInstance: boolean
+  onOpenInstanceConfig: () => void
   /** The gear button's own sizing/placement classes (desktop 46×46, mobile 40×40). */
   triggerClassName?: string
 }
 
 /**
  * The Spark gear menu (§7.2): a single-select profile list ("default" + the caller's own profiles,
- * current one checked) and "manage configs…" (always, ≥ read). The "instance config…" entry belongs
- * to #56's dialog and is added there together with the dialog itself — it is not shipped as a dead
- * control here.
+ * current one checked), "manage configs…" (always, ≥ read) and — for a global admin or a `manage`
+ * grant — "instance config…" (§7.4). The instance entry only renders when the caller may open that
+ * dialog, so it is never a control that does nothing.
  */
 export default function SparkGearMenu({
   profiles,
   selectedProfileId,
   onSelectProfile,
   onOpenManage,
+  canManageInstance,
+  onOpenInstanceConfig,
   triggerClassName = '',
 }: Props) {
   const { t } = useLocale()
@@ -63,6 +68,12 @@ export default function SparkGearMenu({
         </DropdownMenuRadioGroup>
         <DropdownMenuSeparator />
         <DropdownMenuItem onSelect={onOpenManage}>{t('spark.manage_configs')}</DropdownMenuItem>
+        {canManageInstance && (
+          <>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onSelect={onOpenInstanceConfig}>{t('spark.instance_config')}</DropdownMenuItem>
+          </>
+        )}
       </DropdownMenuContent>
     </DropdownMenu>
   )

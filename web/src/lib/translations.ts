@@ -118,6 +118,39 @@ export const translations: Record<Locale, Record<string, string>> = {
     'spark.add_row': '+ Add row',
     'spark.save': 'Save',
 
+    // Spark instance configuration (§7.4 dialog, SPEC §6.1/§6.2)
+    'spark.instance_config': 'Instance config…',
+    'spark.instance_dialog_title': 'Instance config',
+    'spark.instance_entries': 'Parameters',
+    'spark.instance_jars': 'Jars',
+    'spark.instance_apply': 'Apply & restart',
+    'spark.instance_summary': 'driver {memory} · {count} jars',
+    'spark.instance_status_running': 'In effect',
+    'spark.instance_status_pending': 'Unapplied changes',
+    'spark.instance_status_draining': 'Applying: draining {n} queries',
+    'spark.instance_status_draining_unknown': 'Applying: draining',
+    'spark.instance_status_restarting': 'Applying: restarting',
+    'spark.instance_status_failed': 'Apply failed — rolled back',
+    'spark.instance_status_unknown': 'Status unknown',
+    'spark.instance_status_unknown_note': 'The Spark service could not be reached, so the live state is unknown.',
+    'spark.instance_poll_timeout':
+      'Still applying, past the wait limit — open this dialog again in a moment to see the result.',
+    'spark.instance_confirm_title': 'Apply and restart the Spark environment?',
+    'spark.instance_confirm_desc':
+      'Queries in flight right now: {n}. The restart waits for all of them to finish, and new queries are paused meanwhile.',
+    'spark.instance_confirm_desc_unknown':
+      'The number of queries in flight is unknown. The restart waits for running queries to finish, and new queries are paused meanwhile.',
+    'spark.instance_confirm_unsaved': ' Your current edits are saved first.',
+    'spark.instance_load_failed': 'Could not load the instance configuration.',
+    'spark.jar_add': '+ Add jar',
+    'spark.jar_placeholder': 'https://…/delta.jar or delta.jar',
+    'spark.jar_input_label': 'jar',
+    'spark.jar_sha256_label': 'jar sha256',
+    'spark.jar_sha256_placeholder': 'sha256 (optional)',
+    'spark.jar_state_download': 'Will be downloaded',
+    'spark.jar_state_present': 'On the server',
+    'spark.jar_state_missing': 'Not on the server',
+
     // Spark failures the worker classifies with a code (report §2.6)
     'spark_error.spark_stopped':
       'The Spark machine is stopped — an administrator must start it in Instabox before you can query.',
@@ -132,6 +165,14 @@ export const translations: Record<Locale, Record<string, string>> = {
       'The Spark environment is draining ({n} queries in flight) — please try again shortly.',
     'spark_error.context_restarting': 'The Spark environment is restarting — please try again shortly.',
     'spark_error.context_rebuilt': 'The Spark environment was updated — please reconnect.',
+    'spark_error.instance_runtime_key':
+      'Parameter {key} is a runtime parameter — set it in your personal connection config.',
+    'spark_error.instance_jars_key': '"spark.jars" cannot be set as a parameter — add jars in the jars section below.',
+    'spark_error.instance_bad_memory': '{key} needs a Spark memory size such as "4g".',
+    'spark_error.instance_bad_key': 'Not a valid Spark parameter: {key}.',
+    'spark_error.instance_too_long': 'Parameter {key} is too long.',
+    'spark_error.instance_bad_jar': 'A jar needs an http(s) URL, or a file name without slashes or "..".',
+    'spark_error.instance_bad_sha256': 'A sha256 is 64 hexadecimal characters, and only a URL jar takes one.',
 
     // Notebooks
     'notebook.untitled': 'Untitled',
@@ -602,6 +643,36 @@ export const translations: Record<Locale, Record<string, string>> = {
     'spark.add_row': '＋ 添加一行',
     'spark.save': '保存',
 
+    // 实例配置弹窗（SPEC §6.1/§6.2、§7.4）
+    'spark.instance_config': '实例配置…',
+    'spark.instance_dialog_title': '实例配置',
+    'spark.instance_entries': '参数',
+    'spark.instance_jars': 'Jar',
+    'spark.instance_apply': '应用并重启',
+    'spark.instance_summary': 'driver 内存 {memory} · jar {count} 个',
+    'spark.instance_status_running': '已生效',
+    'spark.instance_status_pending': '有未应用修改',
+    'spark.instance_status_draining': '应用中：排空 {n} 条',
+    'spark.instance_status_draining_unknown': '应用中：排空中',
+    'spark.instance_status_restarting': '应用中：重启中',
+    'spark.instance_status_failed': '应用失败已回退',
+    'spark.instance_status_unknown': '状态未知',
+    'spark.instance_status_unknown_note': 'Spark 服务暂时不可达，实时状态未知。',
+    'spark.instance_poll_timeout': '仍在应用中，已超过等待上限；稍后重新打开本弹窗查看结果。',
+    'spark.instance_confirm_title': '应用并重启 Spark 环境？',
+    'spark.instance_confirm_desc': '当前有 {n} 条查询在跑：将等其全部结束再重启，期间新查询暂停。',
+    'spark.instance_confirm_desc_unknown': '当前在跑查询数未知：将等其全部结束再重启，期间新查询暂停。',
+    'spark.instance_confirm_unsaved': '当前修改会先保存。',
+    'spark.instance_load_failed': '实例配置加载失败。',
+    'spark.jar_add': '＋ 添加 jar',
+    'spark.jar_placeholder': 'https://…/delta.jar 或 delta.jar',
+    'spark.jar_input_label': 'jar',
+    'spark.jar_sha256_label': 'jar sha256',
+    'spark.jar_sha256_placeholder': 'sha256（可选）',
+    'spark.jar_state_download': '将自动下载',
+    'spark.jar_state_present': '已在服务器',
+    'spark.jar_state_missing': '服务器上不存在',
+
     // 后端按 code 分类的 Spark 失败（报告 §2.6 定稿文案）
     'spark_error.spark_stopped': 'Spark 机器已停止运行，需要管理员在 Instabox 启动后才能查询。',
     'spark_error.spark_not_ready': 'Spark 机器正在启动或暂时不可达，请稍后重试。',
@@ -612,6 +683,13 @@ export const translations: Record<Locale, Record<string, string>> = {
     'spark_error.context_draining': 'Spark 环境正在排空（{n} 条查询待结束），请稍后重试。',
     'spark_error.context_restarting': 'Spark 环境正在重启，请稍后重试。',
     'spark_error.context_rebuilt': 'Spark 环境已更新，请重新连接。',
+    'spark_error.instance_runtime_key': '参数 {key} 为运行时参数，请到个人连接配置中设置。',
+    'spark_error.instance_jars_key': '「spark.jars」不能写在参数里，请在下方 Jar 区添加。',
+    'spark_error.instance_bad_memory': '{key} 需要 Spark 内存格式的值，例如「4g」。',
+    'spark_error.instance_bad_key': '不是有效的 Spark 参数：{key}。',
+    'spark_error.instance_too_long': '参数 {key} 过长。',
+    'spark_error.instance_bad_jar': 'jar 需要 http(s) 链接，或不含斜杠与「..」的文件名。',
+    'spark_error.instance_bad_sha256': 'sha256 为 64 位十六进制字符，且只有链接型 jar 可填。',
 
     // Notebooks
     'notebook.untitled': '未命名',
