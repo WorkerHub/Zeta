@@ -748,7 +748,7 @@ export default function QueryPage() {
       {/* Main content */}
       <div
         ref={containerRef}
-        className="flex flex-1 overflow-hidden clear-mobile-bar sm:pb-0"
+        className="flex flex-1 overflow-hidden clear-mobile-bar"
         onPointerMove={onDividerPointerMove}
         onPointerUp={onDividerPointerUp}
       >
