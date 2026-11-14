@@ -5,7 +5,7 @@ import { useLocale } from '../../hooks/useLocale'
 import ConfirmDialog from '../../components/ConfirmDialog'
 import DatabaseForm from '../../components/DatabaseForm'
 import { effectiveProvider, engineLabelKey } from '../../lib/db-provider'
-import type { AdminDatabase, CfD1Database, DatabaseGrant } from '../../types'
+import type { AdminDatabase, CfD1Database, DatabaseGrant, DbPermission } from '../../types'
 
 // The desktop data-source list is a full-width table whose columns are locked by a `<colgroup>`:
 // `table-layout: fixed` (`md:table-fixed` on the table) makes the browser take each column's width
@@ -67,6 +67,24 @@ export function DatabaseIdHint({ text }: { text: string }) {
 
 // Rows written before the kind column exist are D1 registrations
 const isD1 = (db: AdminDatabase) => (db.kind ?? 'sqlite') === 'sqlite'
+
+// The badge class and label key of each grant level. The ladder runs read < write < write_drop <
+// manage, and each rung gets a distinct badge colour (neutral → brand → yellow → red) so a grant
+// already made reads as the level it carries; `Record<DbPermission, …>` is exhaustive, so a new
+// level added to the type fails to compile here until it gets a badge and a label.
+export const PERMISSION_BADGE: Record<DbPermission, string> = {
+  read: 'badge-neutral',
+  write: 'badge-brand',
+  write_drop: 'badge-yellow',
+  manage: 'badge-red',
+}
+
+export const PERMISSION_LABEL_KEY: Record<DbPermission, string> = {
+  read: 'admin_db.perm_read',
+  write: 'admin_db.perm_write',
+  write_drop: 'admin_db.perm_write_drop',
+  manage: 'admin_db.perm_manage',
+}
 
 // The database-ID cell of one row: the UUID as plain monospaced text (the full ID in its title, no
 // tinted code block that painted the rest of the column), a dash for engines that have no database
@@ -207,8 +225,8 @@ export default function AdminDatabases() {
 
   async function fetchPermissions(db: AdminDatabase) {
     setSelectedDb(db)
-    // write_drop is never offered for the app database; clamp any stale selection.
-    if (db.is_app_db && permLevel === 'write_drop') setPermLevel('write')
+    // write_drop and manage are never offered for the app database; clamp any stale selection.
+    if (db.is_app_db && (permLevel === 'write_drop' || permLevel === 'manage')) setPermLevel('write')
     const [perms, users] = await Promise.all([adminApi.getPermissions(db.id), adminApi.users({ limit: 200 })])
     setPermissions(perms.results)
     setAllUsers(users.results.map((u) => ({ id: u.id, email: u.email, name: u.name })))
@@ -460,6 +478,7 @@ export default function AdminDatabases() {
               <option value="read">{t('admin_db.perm_read')}</option>
               <option value="write">{t('admin_db.perm_write')}</option>
               {!selectedDb.is_app_db && <option value="write_drop">{t('admin_db.perm_write_drop')}</option>}
+              {!selectedDb.is_app_db && <option value="manage">{t('admin_db.perm_manage')}</option>}
             </select>
             <button type="button" onClick={grantPerm} disabled={!permUserId} className="btn-primary btn-sm">
               {t('admin_db.grant')}
@@ -478,14 +497,8 @@ export default function AdminDatabases() {
                     <p className="text-caption text-ink-500">{p.email}</p>
                   </div>
                   <div className="flex items-center gap-2">
-                    <span
-                      className={`badge ${p.permission === 'write_drop' ? 'badge-yellow' : p.permission === 'write' ? 'badge-brand' : 'badge-neutral'}`}
-                    >
-                      {p.permission === 'write_drop'
-                        ? t('admin_db.perm_write_drop')
-                        : p.permission === 'write'
-                          ? t('admin_db.perm_write')
-                          : t('admin_db.perm_read')}
+                    <span className={`badge ${PERMISSION_BADGE[p.permission]}`}>
+                      {t(PERMISSION_LABEL_KEY[p.permission])}
                     </span>
                     <button
                       type="button"

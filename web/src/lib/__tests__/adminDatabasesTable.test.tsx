@@ -1,6 +1,13 @@
 import { describe, it, expect, afterEach } from 'vitest'
 import { renderToStaticMarkup } from 'react-dom/server'
-import { COL_WIDTH, DatabaseIdCell, cellClass, TABLE_MIN_WIDTH } from '../../pages/admin/Databases'
+import {
+  COL_WIDTH,
+  DatabaseIdCell,
+  PERMISSION_BADGE,
+  PERMISSION_LABEL_KEY,
+  cellClass,
+  TABLE_MIN_WIDTH,
+} from '../../pages/admin/Databases'
 import { setLocale, t } from '../translations'
 import type { AdminDatabase } from '../../types'
 
@@ -97,5 +104,23 @@ describe('application database badge', () => {
     expect(t('admin_db.app_db_badge')).toBe('App DB')
     setLocale('zh')
     expect(t('admin_db.app_db_badge')).toBe('应用库')
+  })
+})
+
+describe('permission badge', () => {
+  it('maps every grant level to a distinct badge class and its label key', () => {
+    expect(PERMISSION_BADGE.read).toBe('badge-neutral')
+    expect(PERMISSION_BADGE.write).toBe('badge-brand')
+    expect(PERMISSION_BADGE.write_drop).toBe('badge-yellow')
+    expect(PERMISSION_BADGE.manage).toBe('badge-red')
+    // manage is its own rung, visually distinct from write_drop
+    expect(PERMISSION_BADGE.manage).not.toBe(PERMISSION_BADGE.write_drop)
+    expect(PERMISSION_LABEL_KEY.manage).toBe('admin_db.perm_manage')
+  })
+
+  it('labels manage as Level 4 with the full capability surface, in both locales', () => {
+    expect(t('admin_db.perm_manage')).toBe('Level 4 - Read, Write, Drop & Manage')
+    setLocale('zh')
+    expect(t('admin_db.perm_manage')).toBe('Level 4 - 读、写、删除及管理')
   })
 })
