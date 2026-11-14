@@ -131,6 +131,19 @@ export function forgetConnectedProfile(map: SparkProfileMap, id: string): SparkP
   return rest
 }
 
+/**
+ * Whether the connect button should offer "reconnect": a connected target whose selection has moved
+ * off the profile the connection was made with (SPEC §5.3). A disconnected target, or one still on
+ * the same profile (default = null included), is not a reconnect.
+ */
+export function needsReconnect(
+  connected: boolean,
+  selectedProfileId: string | null,
+  connectedProfileId: string | null
+): boolean {
+  return connected && selectedProfileId !== connectedProfileId
+}
+
 // Selection state (the profile the next connect uses).
 export function readSelectedProfiles(): SparkProfileMap {
   return readMap(SELECTED_PROFILES_KEY)

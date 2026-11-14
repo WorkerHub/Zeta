@@ -19,25 +19,21 @@ interface Props {
   selectedProfileId: string | null
   onSelectProfile: (profileId: string | null) => void
   onOpenManage: () => void
-  onOpenInstanceConfig: () => void
-  /** Whether the "instance config…" entry is shown (manage/admin, SPEC §7.2). */
-  canManageInstance: boolean
   /** The gear button's own sizing/placement classes (desktop 46×46, mobile 40×40). */
   triggerClassName?: string
 }
 
 /**
  * The Spark gear menu (§7.2): a single-select profile list ("default" + the caller's own profiles,
- * current one checked), then "manage configs…" (always, ≥ read) and "instance config…" (manage/admin
- * only, opening #56's dialog).
+ * current one checked) and "manage configs…" (always, ≥ read). The "instance config…" entry belongs
+ * to #56's dialog and is added there together with the dialog itself — it is not shipped as a dead
+ * control here.
  */
 export default function SparkGearMenu({
   profiles,
   selectedProfileId,
   onSelectProfile,
   onOpenManage,
-  onOpenInstanceConfig,
-  canManageInstance,
   triggerClassName = '',
 }: Props) {
   const { t } = useLocale()
@@ -67,9 +63,6 @@ export default function SparkGearMenu({
         </DropdownMenuRadioGroup>
         <DropdownMenuSeparator />
         <DropdownMenuItem onSelect={onOpenManage}>{t('spark.manage_configs')}</DropdownMenuItem>
-        {canManageInstance && (
-          <DropdownMenuItem onSelect={onOpenInstanceConfig}>{t('spark.instance_config')}</DropdownMenuItem>
-        )}
       </DropdownMenuContent>
     </DropdownMenu>
   )

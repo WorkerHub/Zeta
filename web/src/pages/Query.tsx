@@ -44,6 +44,7 @@ import { knocksBack } from '../lib/connection-state'
 import {
   connectedProfileOf,
   forgetConnectedProfile,
+  needsReconnect,
   readConnectedProfiles,
   rememberConnectedProfile,
   writeConnectedProfiles,
@@ -81,6 +82,7 @@ export default function QueryPage() {
   const activeNotebook = notebooks.find((n) => n.id === activeId) ?? null
   const sqlText = activeNotebook?.sql_content ?? ''
   const selectedDb = databases.find((d) => d.id === activeNotebook?.database_id) ?? null
+  const selectedDbId = selectedDb?.id ?? null
   // Connection state of the current target (see hooks/useConnections): per target, this browser
   // session only. A target that has not answered a probe cannot be queried.
   const knownDbIds = useMemo(() => databases.map((d) => d.id), [databases])
@@ -107,7 +109,7 @@ export default function QueryPage() {
   }, [connectedProfiles])
   const connectedProfileId = selectedDb ? connectedProfileOf(connectedProfiles, selectedDb.id) : null
   const reconnectNeeded =
-    !!selectedDb && selectedDb.kind === 'spark' && connected && selectedProfileId !== connectedProfileId
+    !!selectedDb && selectedDb.kind === 'spark' && needsReconnect(connected, selectedProfileId, connectedProfileId)
   // The selected profile name shown in the Spark data-source button's second line.
   const selectedProfileName =
     selectedDb?.kind === 'spark' ? (spark.profiles.find((p) => p.id === selectedProfileId)?.name ?? null) : null
@@ -115,19 +117,20 @@ export default function QueryPage() {
   const [contextRebuilt, setContextRebuilt] = useState(false)
   const [profilesDialogOpen, setProfilesDialogOpen] = useState(false)
 
-  // A target that is no longer connected has no "connected profile" to compare against.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: connected and the target id are the inputs
+  // A target that is no longer connected has no "connected profile" to compare against. The id is
+  // read into a local first, so the effect never holds a stale `selectedDb` object across a target
+  // switch that lands in the same render batch.
   useEffect(() => {
-    if (selectedDb && !connected) {
-      setConnectedProfiles((m) => forgetConnectedProfile(m, selectedDb.id))
+    if (selectedDbId && !connected) {
+      setConnectedProfiles((m) => forgetConnectedProfile(m, selectedDbId))
     }
-  }, [connected, selectedDb?.id])
+  }, [connected, selectedDbId])
 
   // A different target's environment state is unknown: the rebuilt banner is per-target.
   // biome-ignore lint/correctness/useExhaustiveDependencies: the target id is the trigger, not an input
   useEffect(() => {
     setContextRebuilt(false)
-  }, [selectedDb?.id])
+  }, [selectedDbId])
   // Saved runs per notebook; what the results panel shows comes from here
   const runs = useNotebookRuns(activeId)
   const {
@@ -679,10 +682,6 @@ export default function QueryPage() {
               selectedProfileId={selectedProfileId}
               onSelectProfile={spark.select}
               onOpenManage={() => setProfilesDialogOpen(true)}
-              onOpenInstanceConfig={() => {
-                // §7.4 instance-config dialog is #56's; the entry renders so manage/admin sees it.
-              }}
-              canManageInstance={selectedDb.permission === 'manage'}
               triggerClassName="flex h-[46px] w-[46px] shrink-0 items-center justify-center rounded-md border border-ink-200 bg-ink-100 text-ink-500 transition-colors duration-(--duration-base) hover:bg-ink-200 hover:text-ink-900"
             />
           )}
@@ -1078,10 +1077,6 @@ export default function QueryPage() {
             selectedProfileId={selectedProfileId}
             onSelectProfile={spark.select}
             onOpenManage={() => setProfilesDialogOpen(true)}
-            onOpenInstanceConfig={() => {
-              // §7.4 instance-config dialog is #56's.
-            }}
-            canManageInstance={selectedDb.permission === 'manage'}
             triggerClassName="flex h-10 w-10 shrink-0 items-center justify-center rounded-md border border-ink-200 bg-ink-100 text-ink-500 transition-colors duration-(--duration-base) hover:bg-ink-200 hover:text-ink-900"
           />
         )}

@@ -27,6 +27,29 @@ describe('KeyValueEditor', () => {
     expect(html).toContain('参数为启动级参数')
   })
 
+  it('matches a server error keyed by the trimmed key against a padded row', () => {
+    // The dialog trims before sending, so the server answers with the trimmed key while the row's
+    // input may still carry surrounding whitespace.
+    const html = render([{ key: '  spark.sql.nope  ', value: '1' }], {
+      serverErrors: { 'spark.sql.nope': 'server said no' },
+    })
+    expect(html).toContain('server said no')
+  })
+
+  it('renders the injected validator message per row', () => {
+    const html = render(
+      [
+        { key: 'a', value: '1' },
+        { key: 'a', value: '2' },
+      ],
+      {
+        validate: (row, all) =>
+          row.key && all.filter((r) => r.key.trim() === row.key.trim()).length > 1 ? 'duplicate' : null,
+      }
+    )
+    expect(html.match(/duplicate/g)).toHaveLength(2)
+  })
+
   it('keeps at least one row by disabling the delete button on a single row', () => {
     const html = render([{ key: '', value: '' }])
     // The only delete button is disabled when there is one row.

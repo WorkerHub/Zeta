@@ -4,6 +4,7 @@ import {
   forgetConnectedProfile,
   forgetSelectedProfile,
   isStartupLevelKey,
+  needsReconnect,
   parseProfileMap,
   rememberConnectedProfile,
   rememberSelectedProfile,
@@ -73,5 +74,19 @@ describe('per-target profile maps', () => {
     const connected = rememberConnectedProfile({}, 'db1', 'p2')
     expect(connectedProfileOf(connected, 'db1')).toBe('p2')
     expect(connectedProfileOf(forgetConnectedProfile(connected, 'db1'), 'db1')).toBeNull()
+  })
+})
+
+describe('needsReconnect', () => {
+  it('is false when disconnected or when the selection is unchanged', () => {
+    expect(needsReconnect(false, 'p1', 'p1')).toBe(false)
+    expect(needsReconnect(true, null, null)).toBe(false)
+    expect(needsReconnect(true, 'p1', 'p1')).toBe(false)
+  })
+
+  it('is true when connected and the selection moved off the connected profile', () => {
+    expect(needsReconnect(true, 'p1', null)).toBe(true)
+    expect(needsReconnect(true, null, 'p1')).toBe(true)
+    expect(needsReconnect(true, 'p2', 'p1')).toBe(true)
   })
 })

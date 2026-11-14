@@ -105,7 +105,6 @@ export const translations: Record<Locale, Record<string, string>> = {
     // Spark config profiles (gear menu, manage-config dialog, row editor)
     'spark.gear_label': 'Spark config',
     'spark.manage_configs': 'Manage configs…',
-    'spark.instance_config': 'Instance config…',
     'spark.default_profile': 'Default config',
     'spark.dialog_title': 'Manage configs',
     'spark.new_profile': '+ New',
@@ -115,6 +114,7 @@ export const translations: Record<Locale, Record<string, string>> = {
     'spark.name': 'Name',
     'spark.name_required': 'Enter a name',
     'spark.name_taken': 'A config with this name already exists',
+    'spark.duplicate_key': 'Duplicate key in this config: {key}',
     'spark.add_row': '+ Add row',
     'spark.save': 'Save',
 
@@ -589,7 +589,6 @@ export const translations: Record<Locale, Record<string, string>> = {
     // Spark 个人配置（齿轮菜单、管理弹窗、行编辑器）
     'spark.gear_label': 'Spark 配置',
     'spark.manage_configs': '管理配置…',
-    'spark.instance_config': '实例配置…',
     'spark.default_profile': '默认配置',
     'spark.dialog_title': '管理配置',
     'spark.new_profile': '＋ 新建',
@@ -599,6 +598,7 @@ export const translations: Record<Locale, Record<string, string>> = {
     'spark.name': '名称',
     'spark.name_required': '请输入名称',
     'spark.name_taken': '已有同名配置',
+    'spark.duplicate_key': '同一配置内不能重复：{key}',
     'spark.add_row': '＋ 添加一行',
     'spark.save': '保存',
 

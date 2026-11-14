@@ -101,7 +101,7 @@ export default function SparkProfilesDialog({
     }
     const k = row.key.trim()
     if (k && all.filter((r) => r.key.trim() === k).length > 1) {
-      return t('spark_error.invalid_key', { key: k })
+      return t('spark.duplicate_key', { key: k })
     }
     return null
   }
