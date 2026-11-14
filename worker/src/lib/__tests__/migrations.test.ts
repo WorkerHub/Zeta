@@ -38,6 +38,7 @@ describe('getMigrations', () => {
       'schema_v4',
       'schema_v5',
       'schema_v6',
+      'schema_v7',
     ])
     expect(migrations[0]!.sql).not.toMatch(/PRAGMA/)
     expect(migrations[0]!.sql).not.toMatch(/\bALTER TABLE\b/)
@@ -112,8 +113,11 @@ describe('getMigrations', () => {
   it('parameterises every table and index name by the effective prefix', () => {
     const sql = getMigrations(env('ZETA')).find((m) => m.name === 'schema_v1')!.sql
     const T = tables(env('ZETA'))
-    // Every table schema_v1 creates (executions arrives in schema_v5)
-    for (const name of Object.values(T).filter((name) => !name.endsWith('_executions'))) {
+    // Every table schema_v1 creates (executions arrives in schema_v5, the two Spark tables in schema_v7)
+    for (const name of Object.values(T).filter(
+      (n) =>
+        !n.endsWith('_executions') && !n.endsWith('_spark_config_profiles') && !n.endsWith('_spark_instance_configs')
+    )) {
       expect(sql).toContain(name)
     }
     expect(sql).toContain('idx_ZETA_notebook_runs_seq')
@@ -136,10 +140,15 @@ describe('schema_v1 applied to a real database', () => {
     const { sqlite } = sqliteD1()
     sqlite.exec(getMigrations(env('kp')).find((m) => m.name === 'schema_v1')!.sql)
 
-    // The 11 tables of the collapsed baseline (schema_v5 adds executions later)
+    // The 11 tables of the collapsed baseline (schema_v5 adds executions, schema_v7 the two Spark tables)
     expect(tableNames(sqlite)).toEqual(
       Object.values(tables(env('kp')))
-        .filter((t) => !t.endsWith('_executions'))
+        .filter(
+          (t) =>
+            !t.endsWith('_executions') &&
+            !t.endsWith('_spark_config_profiles') &&
+            !t.endsWith('_spark_instance_configs')
+        )
         .sort()
     )
     expect(indexNames(sqlite).sort()).toEqual(
@@ -341,5 +350,95 @@ describe('schema_v6 applied after schema_v5', () => {
     // ... and it takes a preset once the column exists
     sqlite.exec(`UPDATE users SET theme_color = 'ocean' WHERE id = 'u1'`)
     expect(sqlite.prepare('SELECT theme_color FROM users').all()).toEqual([{ theme_color: 'ocean' }])
+  })
+})
+
+describe('schema_v7 (Spark config tables + the manage permission)', () => {
+  it('rebuilds the permissions table: keeps rows and FKs, accepts manage, still refuses garbage', async () => {
+    const { db, sqlite } = sqliteD1()
+    const env = fakeEnv({ DB: db, TABLE_PREFIX: '' })
+    const migrations = getMigrations({ TABLE_PREFIX: '' })
+    const upToV7 = migrations.slice(0, migrations.findIndex((m) => m.name === 'schema_v7') + 1)
+    expect(upToV7[upToV7.length - 1]!.name).toBe('schema_v7')
+
+    // A deployment whose grants predate the manage level
+    await runMigrations(env, upToV7.slice(0, -1))
+    sqlite.exec(`
+      INSERT INTO users (id, email, name, role, created_at, updated_at)
+      VALUES ('u1', 'u1@example.com', 'U1', 'member', 0, 0), ('u2', 'u2@example.com', 'U2', 'member', 0, 0);
+      INSERT INTO d1_databases (id, name, binding_name, created_at)
+      VALUES ('db1', 'one', 'cf:db1', 0), ('db2', 'two', 'cf:db2', 0);
+      INSERT INTO user_database_permissions (id, user_id, database_id, permission, granted_at)
+      VALUES ('p1', 'u1', 'db1', 'write_drop', 0);
+    `)
+
+    const upgrade = await runMigrations(env, upToV7)
+    expect(upgrade.migrations).toEqual([
+      { name: 'schema_v1', status: 'skipped' },
+      { name: 'schema_v2', status: 'skipped' },
+      { name: 'schema_v3', status: 'skipped' },
+      { name: 'schema_v4', status: 'skipped' },
+      { name: 'schema_v5', status: 'skipped' },
+      { name: 'schema_v6', status: 'skipped' },
+      { name: 'schema_v7', status: 'applied' },
+    ])
+
+    // The existing grant survived the rebuild untouched
+    expect(
+      sqlite.prepare('SELECT id, user_id, database_id, permission, granted_at FROM user_database_permissions').all()
+    ).toEqual([{ id: 'p1', user_id: 'u1', database_id: 'db1', permission: 'write_drop', granted_at: 0 }])
+
+    // The rebuilt table kept its foreign keys and the UNIQUE (user_id, database_id) rule
+    const fks = (
+      sqlite.prepare('PRAGMA foreign_key_list(user_database_permissions)').all() as Array<{
+        from: string
+        table: string
+        on_delete: string
+      }>
+    )
+      .map((fk) => `${fk.from}->${fk.table} ${fk.on_delete}`)
+      .sort()
+    expect(fks).toEqual(['database_id->d1_databases CASCADE', 'granted_by->users NO ACTION', 'user_id->users CASCADE'])
+
+    // The new level is accepted, and the CHECK still refuses anything outside the enum
+    sqlite.exec(
+      `INSERT INTO user_database_permissions (id, user_id, database_id, permission, granted_at) VALUES ('p2', 'u1', 'db2', 'manage', 0)`
+    )
+    expect(sqlite.prepare("SELECT permission FROM user_database_permissions WHERE id = 'p2'").all()).toEqual([
+      { permission: 'manage' },
+    ])
+
+    expect(() =>
+      sqlite.exec(
+        `INSERT INTO user_database_permissions (id, user_id, database_id, permission, granted_at) VALUES ('p3', 'u2', 'db1', 'superuser', 0)`
+      )
+    ).toThrow()
+  })
+
+  it('creates the two Spark config tables, prefix-aware, with the profile composite index', async () => {
+    const { db, sqlite } = sqliteD1()
+    const env = fakeEnv({ DB: db, TABLE_PREFIX: '' })
+    await runMigrations(env)
+
+    const columns = (table: string) =>
+      (sqlite.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>).map((c) => c.name)
+
+    expect(columns('spark_config_profiles')).toEqual([
+      'id',
+      'user_id',
+      'database_id',
+      'name',
+      'entries',
+      'created_at',
+      'updated_at',
+    ])
+    expect(columns('spark_instance_configs')).toEqual(['database_id', 'entries', 'jars', 'updated_by', 'updated_at'])
+
+    const indexes = (
+      sqlite
+        .prepare("SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name = 'spark_config_profiles'")
+        .all() as Array<{ name: string }>
+    ).map((r) => r.name)
+    expect(indexes).toContain('idx_spark_config_profiles_user_db')
   })
 })

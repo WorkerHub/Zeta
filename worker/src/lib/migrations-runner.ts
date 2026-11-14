@@ -172,7 +172,17 @@ export async function runMigrations(
       continue
     }
     try {
-      await env.DB.exec(toSingleLine(migration.sql))
+      if (migration.atomic) {
+        // One D1 batch = one SQL transaction: a failure part-way rolls the whole migration back,
+        // so a rebuild (create → copy → drop → rename) can never leave the table half-swapped.
+        const statements = migration.sql
+          .split(';\n')
+          .map((s) => s.trim())
+          .filter((s) => s.length > 0)
+        await env.DB.batch(statements.map((sql) => env.DB.prepare(sql)))
+      } else {
+        await env.DB.exec(toSingleLine(migration.sql))
+      }
       await env.DB.prepare(`INSERT INTO ${ledger} (name) VALUES (?1)`).bind(migration.name).run()
       results.push({ name: migration.name, status: 'applied' })
     } catch (err) {

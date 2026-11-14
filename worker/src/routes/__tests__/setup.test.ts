@@ -15,6 +15,7 @@ describe('setup endpoint', () => {
         { name: 'schema_v4', status: 'applied' },
         { name: 'schema_v5', status: 'applied' },
         { name: 'schema_v6', status: 'applied' },
+        { name: 'schema_v7', status: 'applied' },
       ],
       upgraded: [
         'schema_v1: applied',
@@ -23,6 +24,7 @@ describe('setup endpoint', () => {
         'schema_v4: applied',
         'schema_v5: applied',
         'schema_v6: applied',
+        'schema_v7: applied',
       ],
     })
     expect(calls.some((c) => c.sql.includes('CREATE TABLE IF NOT EXISTS users'))).toBe(true)

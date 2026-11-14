@@ -36,6 +36,10 @@ export function tables(env: Pick<Env, 'TABLE_PREFIX'>) {
     rate_limits: `${p}rate_limits`,
     // One row per in-flight query request: the cancellation registry (see lib/executions.ts).
     executions: `${p}executions`,
+    // Spark configuration (§3): per-user saved config profiles and the per-database expected
+    // instance config, both added by schema_v7 (see lib/migrations.ts).
+    spark_config_profiles: `${p}spark_config_profiles`,
+    spark_instance_configs: `${p}spark_instance_configs`,
   }
 }
 
@@ -55,7 +59,7 @@ export function migrationsTable(env: Pick<Env, 'TABLE_PREFIX'>): string {
 
 // ── Existing-schema detection (anti-silent-switch guard) ─────────────────────────────────────
 
-// The unprefixed names of the 12 Zeta tables double as the family suffixes: any table named
+// The unprefixed names of the 14 Zeta tables double as the family suffixes: any table named
 // `<something>users`, `<something>settings` … belongs to the family, with `<something>_` as its
 // prefix (and a bare `users` means an unprefixed schema).
 const FAMILY_TABLES = Object.values(tables({ TABLE_PREFIX: '' }))
@@ -69,7 +73,7 @@ const MIN_FAMILY_TABLES = 9
 export interface ExistingTableFamily {
   // '' for an unprefixed schema, otherwise the prefix with its trailing '_' (e.g. 'ZETA_')
   prefix: string
-  // how many of the 12 family tables were found under that prefix
+  // how many of the 14 family tables were found under that prefix
   tableCount: number
 }
 

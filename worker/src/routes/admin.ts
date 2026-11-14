@@ -722,21 +722,21 @@ admin.get('/databases/:id/permissions', async (c) => {
 
 admin.put('/databases/:id/permissions/:userId', async (c) => {
   const body = await c.req.json<{ permission?: string }>().catch(() => null)
-  if (!body?.permission || !['read', 'write', 'write_drop'].includes(body.permission)) {
-    return c.json({ error: 'permission must be "read", "write", or "write_drop"' }, 400)
+  if (!body?.permission || !['read', 'write', 'write_drop', 'manage'].includes(body.permission)) {
+    return c.json({ error: 'permission must be "read", "write", "write_drop", or "manage"' }, 400)
   }
 
   const T = tables(c.env)
   // The application database's effective permission is capped at write (destructive statements
-  // are rejected there), so write_drop is refused up front instead of being stored and discounted
-  // at runtime.
-  if (body.permission === 'write_drop') {
+  // are rejected there), so write_drop and its superset manage are refused up front instead of
+  // being stored and discounted at runtime.
+  if (body.permission === 'write_drop' || body.permission === 'manage') {
     const row = await c.env.DB.prepare(`SELECT cf_database_id FROM ${T.d1_databases} WHERE id = ?1`)
       .bind(c.req.param('id'))
       .first<{ cf_database_id: string | null }>()
     if (row && isAppDb(c.env, row.cf_database_id)) {
       return c.json(
-        { error: 'The application database allows at most write permission; write_drop cannot be granted.' },
+        { error: 'The application database allows at most write permission; write_drop and manage cannot be granted.' },
         400
       )
     }

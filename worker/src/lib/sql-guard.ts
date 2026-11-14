@@ -1,6 +1,15 @@
 export type SqlClass = 'read' | 'write' | 'destructive' | 'forbidden' | 'multiple' | 'empty'
-export type Permission = 'read' | 'write' | 'write_drop'
+export type Permission = 'read' | 'write' | 'write_drop' | 'manage'
 export type SqlDialect = 'sqlite' | 'postgres' | 'mysql' | 'spark'
+
+// The permission ladder: read < write < write_drop < manage. `manage` is a strict superset of
+// `write_drop` for statement access (see checkSqlAccess below); the extra instance-config
+// capability it grants (§6) is enforced in its own routes, not here.
+const PERMISSION_RANK: Record<Permission, number> = { read: 0, write: 1, write_drop: 2, manage: 3 }
+
+export function permissionRank(p: Permission): number {
+  return PERMISSION_RANK[p]
+}
 
 export interface Token {
   type: 'word' | 'quoted' | 'punct'
@@ -548,10 +557,12 @@ export function checkSqlAccess(kind: SqlClass, permission: Permission): string |
   if (kind === 'forbidden') return 'This SQL statement is not allowed.'
   if (kind === 'multiple') return 'Only one statement is allowed per request.'
   if (kind === 'empty') return 'SQL is empty.'
-  if (kind === 'destructive' && permission !== 'write_drop') {
+  if (kind === 'destructive' && permissionRank(permission) < permissionRank('write_drop')) {
     return 'This statement requires elevated permissions (level 3: write & drop).'
   }
-  if (isWriteClass(kind) && permission === 'read') return 'You only have read access to this database.'
+  if (isWriteClass(kind) && permissionRank(permission) < permissionRank('write')) {
+    return 'You only have read access to this database.'
+  }
   return null
 }
 

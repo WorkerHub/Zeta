@@ -462,7 +462,7 @@ query.post('/', async (c) => {
 
   let permission: Permission = 'read'
   if (role === 'admin') {
-    permission = 'write_drop'
+    permission = 'manage'
   } else {
     const perm = await c.env.DB.prepare(
       `SELECT permission FROM ${T.user_database_permissions} WHERE user_id = ?1 AND database_id = ?2`
@@ -656,7 +656,7 @@ query.post('/batch', async (c) => {
   // Check permission once
   let permission: Permission = 'read'
   if (role === 'admin') {
-    permission = 'write_drop'
+    permission = 'manage'
   } else {
     const perm = await c.env.DB.prepare(
       `SELECT permission FROM ${T.user_database_permissions} WHERE user_id = ?1 AND database_id = ?2`

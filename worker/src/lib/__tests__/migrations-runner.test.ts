@@ -109,6 +109,20 @@ describe('runMigrations', () => {
     expect(ledgerRows(sqlite)).toEqual([])
   })
 
+  it('rolls back an atomic migration entirely when a statement fails, recording nothing', async () => {
+    const { db, sqlite } = sqliteD1()
+    const env: Envish = fakeEnv({ DB: db, TABLE_PREFIX: '' })
+    const migrations: Migration[] = [
+      { name: 'schema_v1', atomic: true, sql: 'CREATE TABLE IF NOT EXISTS one (id TEXT);\nDROP TABLE missing' },
+    ]
+
+    await expect(runMigrations(env, migrations)).rejects.toThrow(/Migration schema_v1 failed and was not recorded/)
+
+    // The batch is one transaction: the CREATE that ran before the failure is rolled back too
+    expect(ledgerRows(sqlite)).toEqual([])
+    expect(tableNames(sqlite)).not.toContain('one')
+  })
+
   it('applies migrations in order', async () => {
     const { db, sqlite } = sqliteD1()
     const env: Envish = fakeEnv({ DB: db, TABLE_PREFIX: '' })

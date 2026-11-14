@@ -49,13 +49,13 @@ describe('GET /api/databases', () => {
     const normalRow = body.find((r) => r.id === 'r2')!
     expect(appRow.is_app_db).toBe(true)
     expect(normalRow.is_app_db).toBe(false)
-    // The admin's implicit write_drop is reported at its effective level on the app DB
+    // The admin's implicit manage is reported at its effective level on the app DB
     expect(appRow.permission).toBe('write')
-    expect(normalRow.permission).toBe('write_drop')
+    expect(normalRow.permission).toBe('manage')
   })
 
-  it('never reports write_drop for the application database, whatever is stored', async () => {
-    for (const stored of ['write_drop', 'write', 'read']) {
+  it('never reports above write for the application database, whatever is stored', async () => {
+    for (const stored of ['manage', 'write_drop', 'write', 'read']) {
       const env = databasesEnv({ r1: stored })
       const res = await callWorker(env, '/api/databases', { headers: await bearer(env, 'u1') })
       expect(res.status).toBe(200)
@@ -63,7 +63,7 @@ describe('GET /api/databases', () => {
       const appRow = body.find((r) => r.id === 'r1')!
       const normalRow = body.find((r) => r.id === 'r2')!
       expect(appRow.is_app_db).toBe(true)
-      expect(appRow.permission).toBe(stored === 'write_drop' ? 'write' : stored)
+      expect(appRow.permission).toBe(stored === 'write_drop' || stored === 'manage' ? 'write' : stored)
       expect(normalRow.permission).toBe('read') // not granted → no access entry in permMap → read
     }
   })

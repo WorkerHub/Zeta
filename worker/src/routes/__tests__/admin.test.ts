@@ -600,20 +600,37 @@ describe('application database as a query target (ALLOW_APP_DB_AS_TARGET)', () =
     expect(body.results.find((r) => r.id === 'r2')!.is_app_db).toBe(false)
   })
 
-  it('refuses to grant write_drop on an application-database registry row', async () => {
+  it('refuses to grant write_drop and manage on an application-database registry row', async () => {
+    for (const permission of ['write_drop', 'manage']) {
+      const { db, calls } = fakeD1((sql) =>
+        sql.includes('SELECT cf_database_id FROM d1_databases') ? { cf_database_id: APP_DB } : null
+      )
+      const env = switchOnEnv()
+      env.DB = db
+      const res = await callWorker(
+        env,
+        '/api/admin/databases/r1/permissions/u1',
+        postJson({ permission }, { method: 'PUT', headers: await bearer(env, 'a1', 'admin') })
+      )
+      expect(res.status).toBe(400)
+      expect(((await res.json()) as { error: string }).error).toContain('write')
+      expect(calls.some((c) => c.sql.startsWith('INSERT INTO user_database_permissions'))).toBe(false)
+    }
+  })
+
+  it('grants manage on an ordinary (non-app) registry row', async () => {
     const { db, calls } = fakeD1((sql) =>
-      sql.includes('SELECT cf_database_id FROM d1_databases') ? { cf_database_id: APP_DB } : null
+      sql.includes('SELECT cf_database_id FROM d1_databases') ? { cf_database_id: DB_1 } : null
     )
     const env = switchOnEnv()
     env.DB = db
     const res = await callWorker(
       env,
-      '/api/admin/databases/r1/permissions/u1',
-      postJson({ permission: 'write_drop' }, { method: 'PUT', headers: await bearer(env, 'a1', 'admin') })
+      '/api/admin/databases/r2/permissions/u1',
+      postJson({ permission: 'manage' }, { method: 'PUT', headers: await bearer(env, 'a1', 'admin') })
     )
-    expect(res.status).toBe(400)
-    expect(((await res.json()) as { error: string }).error).toContain('write')
-    expect(calls.some((c) => c.sql.startsWith('INSERT INTO user_database_permissions'))).toBe(false)
+    expect(res.status).toBe(200)
+    expect(calls.some((c) => c.sql.startsWith('INSERT INTO user_database_permissions'))).toBe(true)
   })
 
   it('still grants write and read on an application-database registry row', async () => {
@@ -652,6 +669,7 @@ describe('POST /api/admin/setup', () => {
         { name: 'schema_v4', status: 'applied' },
         { name: 'schema_v5', status: 'applied' },
         { name: 'schema_v6', status: 'applied' },
+        { name: 'schema_v7', status: 'applied' },
       ],
       upgraded: [
         'schema_v1: applied',
@@ -660,6 +678,7 @@ describe('POST /api/admin/setup', () => {
         'schema_v4: applied',
         'schema_v5: applied',
         'schema_v6: applied',
+        'schema_v7: applied',
       ],
     })
     expect(calls.some((c) => c.sql.includes('CREATE TABLE IF NOT EXISTS users'))).toBe(true)
@@ -702,6 +721,7 @@ describe('POST /api/admin/setup', () => {
         { name: 'schema_v4', status: 'skipped' },
         { name: 'schema_v5', status: 'skipped' },
         { name: 'schema_v6', status: 'skipped' },
+        { name: 'schema_v7', status: 'skipped' },
       ],
     })
     expect(body).not.toHaveProperty('upgraded')
