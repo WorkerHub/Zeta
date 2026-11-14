@@ -25,13 +25,13 @@ function declarations(selector: string): string {
 
 const noop = () => {}
 
-const run = (id: string, seq: number): NotebookRunSummary => ({
+const run = (id: string, seq: number, sql = 'SELECT 1'): NotebookRunSummary => ({
   id,
   seq,
   notebook_id: 'nb-1',
   database_id: 'db-1',
   database_name: 'analytics',
-  sql: 'SELECT 1',
+  sql,
   statement_count: 1,
   row_count: 1,
   error_count: 0,
@@ -44,10 +44,10 @@ const run = (id: string, seq: number): NotebookRunSummary => ({
 
 const runs = [run('run-3', 3), run('run-2', 2), run('run-1', 1)]
 
-function render(props: { running?: boolean; selected?: NotebookRunSummary | null } = {}) {
+function render(props: { running?: boolean; selected?: NotebookRunSummary | null; list?: NotebookRunSummary[] } = {}) {
   return renderToStaticMarkup(
     <RunHistoryBar
-      runs={runs}
+      runs={props.list ?? runs}
       selected={props.selected === undefined ? runs[0]! : props.selected}
       running={props.running ?? false}
       runningDatabaseName={props.running ? 'analytics' : ''}
@@ -175,6 +175,14 @@ describe('RunHistoryBar separators', () => {
   it('drops the line on both sides of a highlighted tab', () => {
     expect(declarations('.run-tab-strip > .run-tab-accent::before')).toMatch(/content:\s*none/)
     expect(declarations('.run-tab-strip > .run-tab-accent + *::before')).toMatch(/content:\s*none/)
+  })
+})
+
+describe('RunHistoryBar tab tooltip', () => {
+  it('opens with the statement, not the comments stored above it', () => {
+    const html = render({ list: [run('run-1', 1, '-- 用户量\nSELECT count(*) FROM users')] })
+    expect(html).not.toContain('用户量')
+    expect(html).toMatch(/title="[^"]*\nSELECT count\(\*\) FROM users"/)
   })
 })
 

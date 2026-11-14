@@ -126,6 +126,116 @@ function stripLeadingComments(sql: string): string {
   }
 }
 
+// The index just past the quoted run starting at `start`. `'…'` and `"…"` escape their own quote by
+// doubling it; a backtick identifier has no escape and ends at the next one. An unterminated run
+// reaches the end of the text — the same model splitSqlStatements scans by.
+function endOfQuoted(sql: string, start: number): number {
+  const quote = sql[start]!
+  let i = start + 1
+  while (i < sql.length) {
+    if (sql[i] !== quote) {
+      i++
+      continue
+    }
+    if (quote !== '`' && sql[i + 1] === quote) {
+      i += 2
+      continue
+    }
+    return i + 1
+  }
+  return sql.length
+}
+
+/**
+ * The text a saved run shows as: the comments in front of each statement are dropped, so the display
+ * starts at the statement itself, and the blank lines that came with those comments go too. A
+ * comment inside a statement — a trailing `-- note` on the statement's own line, a comment line
+ * between its clauses — stays, and text that is nothing but comments comes back unchanged.
+ *
+ * `splitSqlStatements` scans the same way (single quotes escape by doubling, `#` is MySQL's line
+ * comment), but it keeps the comments: this is the display-only variant, and the classification
+ * paths that read the first keyword keep using `stripLeadingComments`.
+ */
+export function stripLeadingCommentsForDisplay(sql: string): string {
+  let out = ''
+  let i = 0
+  // Only whitespace and comments since the start or the last `;`
+  let leading = true
+  // Whitespace seen while leading: put back unless a comment was dropped (then it goes with it)
+  let gap = ''
+  // A comment was dropped since the last statement character
+  let dropped = false
+
+  // Leave the leading state just before a statement character is written: after a dropped comment
+  // one newline keeps the statements apart, otherwise the whitespace seen on the way stays as it was
+  const resume = () => {
+    if (!dropped) out += gap
+    else if (out) out += '\n'
+    gap = ''
+    dropped = false
+    leading = false
+  }
+
+  while (i < sql.length) {
+    const ch = sql[i]!
+    // Line comment: -- anywhere, # only where a comment can be (a `#` inside a statement may be an
+    // operator, so there it stays an ordinary character)
+    if ((ch === '-' && sql[i + 1] === '-') || (ch === '#' && leading)) {
+      const end = sql.indexOf('\n', i)
+      const stop = end === -1 ? sql.length : end
+      if (leading) {
+        dropped = true
+        gap = ''
+      } else {
+        out += sql.slice(i, stop)
+      }
+      i = stop
+      continue
+    }
+    // Block comment: /* … */, or to the end of the text when it is never closed
+    if (ch === '/' && sql[i + 1] === '*') {
+      const end = sql.indexOf('*/', i + 2)
+      const stop = end === -1 ? sql.length : end + 2
+      if (leading) {
+        dropped = true
+        gap = ''
+      } else {
+        out += sql.slice(i, stop)
+      }
+      i = stop
+      continue
+    }
+    // Quoted text is never a comment, whatever it holds
+    if (ch === "'" || ch === '"' || ch === '`') {
+      if (leading) resume()
+      const stop = endOfQuoted(sql, i)
+      out += sql.slice(i, stop)
+      i = stop
+      continue
+    }
+    // A statement terminator starts the next statement's leading run
+    if (ch === ';') {
+      out += ch
+      i++
+      leading = true
+      continue
+    }
+    if (leading) {
+      if (ch === ' ' || ch === '\t' || ch === '\r' || ch === '\n') {
+        if (!dropped) gap += ch
+        i++
+        continue
+      }
+      resume()
+    }
+    out += ch
+    i++
+  }
+
+  const stripped = out.trim()
+  return stripped === '' ? sql : stripped
+}
+
 // The database a `USE` statement points the session at, or null for anything else. The page needs it
 // because the worker never echoes the pinned database back: a run that switched the MySQL session
 // records the name here, so the next request can carry it (lib/connection-state.ts). Only the first
