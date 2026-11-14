@@ -102,7 +102,21 @@ describe('PUT /api/profile/theme-color', () => {
     expect(storedTheme(sqlite)).toBe('terracotta')
   })
 
-  it('refuses anything that is not one of the six presets, writing nothing', async () => {
+  it.each(['royal', 'violet', 'tangerine', 'cyan', 'magenta', 'emerald'])(
+    'stores the new preset %s and answers GET with the same id',
+    async (id) => {
+      const { env } = await upgraded()
+      const headers = await bearer(env, 'u1')
+      const res = await callWorker(env, '/api/profile/theme-color', putTheme({ theme_color: id }, headers))
+      expect(res.status).toBe(200)
+      expect(await res.json()).toEqual({ theme_color: id })
+      expect(await (await callWorker(env, '/api/profile/theme-color', { headers })).json()).toEqual({
+        theme_color: id,
+      })
+    }
+  )
+
+  it('refuses anything that is not one of the twelve presets, writing nothing', async () => {
     const { env, sqlite } = await upgraded()
     const headers = await bearer(env, 'u1')
     const before = storedUpdatedAt(sqlite)

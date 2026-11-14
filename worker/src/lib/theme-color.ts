@@ -9,7 +9,20 @@ import { now, tables } from './db'
 // A new preset is a cross-cutting change (CSS tokens, theme-init.js, the web list and this list) —
 // never add it on one side only.
 
-export const THEME_COLORS = ['terracotta', 'ocean', 'teal', 'forest', 'grape', 'rose'] as const
+export const THEME_COLORS = [
+  'terracotta',
+  'ocean',
+  'teal',
+  'forest',
+  'grape',
+  'rose',
+  'royal',
+  'violet',
+  'tangerine',
+  'cyan',
+  'magenta',
+  'emerald',
+] as const
 
 export type ThemeColor = (typeof THEME_COLORS)[number]
 
