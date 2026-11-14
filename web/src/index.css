@@ -74,6 +74,18 @@
   --color-info-600: #3d5a99;
   --color-info-700: #304779;
 
+  /* §2 editor code tokens — the SQL editor's five token classes (lib/editor-highlight.ts).
+     Functional status ramps above are muted by design (low saturation, hues close together) and
+     read grey at 13px, so the editor carries its own saturated set instead. Each value is ≥ 4.5:1
+     on the editor's white background (ink-0, #fff); the ratio sits next to the @theme entry below.
+     Light only on purpose: dark mode runs CodeMirror's oneDark palette, which owns the editor in
+     the dark, so these get no `.dark` overrides and no dark rules may read them. */
+  --color-code-keyword: #7c3aed; /* 5.70:1 violet */
+  --color-code-function: #2563eb; /* 5.17:1 blue */
+  --color-code-string: #047857; /* 5.48:1 green */
+  --color-code-number: #c2410c; /* 5.18:1 orange */
+  --color-code-type: #0e7490; /* 5.36:1 teal */
+
   /* §2.5 Type scale (size / line-height / weight / letter-spacing) */
   --text-display: 2rem;
   --text-display--line-height: 1.15;
@@ -531,6 +543,13 @@
 }
 :root:not(.dark) .cm-editor .cm-activeLineGutter {
   background-color: var(--color-ink-100);
+}
+/* Function-call names (lib/editor-highlight.ts, sqlLightFunctionCalls): lang-sql tags a call name
+   as a plain identifier (tags.name), so a HighlightStyle rule cannot reach it — the view plugin
+   marks the identifier before '(' structurally and this rule colours it. Scoped to the light
+   theme like the rules above: nothing here applies under .dark, so oneDark stays as it is. */
+:root:not(.dark) .cm-editor .cm-sql-fn-call {
+  color: var(--color-code-function);
 }
 
 /*
