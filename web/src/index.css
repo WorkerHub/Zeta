@@ -726,6 +726,50 @@
   }
 }
 
+/*
+ * Signed-out page shell (components/AuthShell.tsx) — the shared frame for login,
+ * register, forgot-password, reset-password, verify-email and setup. These pages
+ * must be fully locked: on iOS (PWA standalone) the previous `min-h-screen`
+ * measured `100vh`, which overcounts the visible area (the status-bar strip), so
+ * the page sat a few px taller than the viewport and rubber-banded in BOTH axes
+ * when dragged. The shell pins to the dynamic viewport (`100dvh` — the real
+ * visible height), the document scrollers are hidden while it is mounted
+ * (`html.auth-locked`), and `overscroll-behavior: none` removes the bounce rather
+ * than just hiding the bar. The card's own region (`.auth-scroll`) is the only
+ * scroller and only on very short screens: `margin: auto` on its child centres
+ * the card when it fits and top-aligns + scrolls when it does not
+ * (`align-items: center` would clip the top on overflow). `overflow-x: hidden` is
+ * the horizontal fallback; the real horizontal drag was the rubber-band, removed
+ * by `overscroll-behavior: none`.
+ */
+.auth-shell {
+  position: relative;
+  height: 100vh; /* pre-dvh fallback */
+  overflow: hidden;
+  overscroll-behavior: none;
+}
+@supports (height: 100dvh) {
+  .auth-shell {
+    height: 100dvh;
+  }
+}
+.auth-scroll {
+  height: 100%;
+  overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior: none;
+  display: flex;
+  padding: 1rem;
+}
+.auth-scroll > * {
+  margin: auto;
+}
+html.auth-locked,
+html.auth-locked body {
+  overflow: hidden;
+  overscroll-behavior: none;
+}
+
 @layer components {
   /* Shared button base — repeated per variant because Tailwind v4 @apply
      cannot inline custom component classes. Focus ring (§3.1): ring-2 brand + offset. */

@@ -6,6 +6,7 @@ import { useAuthContext } from '../hooks/useAuth'
 import { useLocale } from '../hooks/useLocale'
 import Logo from '../components/Logo'
 import TwoFactorModal from '../components/TwoFactorModal'
+import AuthShell from '../components/AuthShell'
 import type { User } from '../types'
 
 export default function Login() {
@@ -58,15 +59,18 @@ export default function Login() {
   }
 
   return (
-    <div className="relative min-h-screen flex items-center justify-center p-4 bg-ink-50">
-      <button
-        type="button"
-        onClick={() => changeLocale(locale === 'en' ? 'zh' : 'en')}
-        className="absolute top-4 right-4 btn-ghost p-2"
-        title={t('lang.label')}
-      >
-        <Globe size={16} />
-      </button>
+    <AuthShell
+      toolbar={
+        <button
+          type="button"
+          onClick={() => changeLocale(locale === 'en' ? 'zh' : 'en')}
+          className="absolute top-4 right-4 btn-ghost p-2"
+          title={t('lang.label')}
+        >
+          <Globe size={16} />
+        </button>
+      }
+    >
       <div className="w-full max-w-sm">
         {/* Logo */}
         <div className="flex items-center justify-center gap-2 mb-8">
@@ -151,6 +155,6 @@ export default function Login() {
           onCancel={() => setPending(null)}
         />
       )}
-    </div>
+    </AuthShell>
   )
 }

@@ -5,6 +5,7 @@ import { setupApi, SetupApiError } from '../lib/api'
 import { resolveSetupView, setupErrorInfo, type SetupView } from '../lib/setup'
 import { useLocale } from '../hooks/useLocale'
 import Logo from '../components/Logo'
+import AuthShell from '../components/AuthShell'
 
 type Translate = (key: string, vars?: Record<string, string | number>) => string
 
@@ -188,15 +189,18 @@ export default function Setup() {
   }
 
   return (
-    <div className="relative min-h-screen flex items-center justify-center p-4 bg-ink-50">
-      <button
-        type="button"
-        onClick={() => changeLocale(locale === 'en' ? 'zh' : 'en')}
-        className="absolute top-4 right-4 btn-ghost p-2"
-        title={t('lang.label')}
-      >
-        <Globe size={16} />
-      </button>
+    <AuthShell
+      toolbar={
+        <button
+          type="button"
+          onClick={() => changeLocale(locale === 'en' ? 'zh' : 'en')}
+          className="absolute top-4 right-4 btn-ghost p-2"
+          title={t('lang.label')}
+        >
+          <Globe size={16} />
+        </button>
+      }
+    >
       <div className="w-full max-w-sm">
         <div className="flex items-center justify-center gap-2 mb-8">
           <Logo size="md" />
@@ -216,6 +220,6 @@ export default function Setup() {
           onSubmit={() => void handleSubmit()}
         />
       </div>
-    </div>
+    </AuthShell>
   )
 }
