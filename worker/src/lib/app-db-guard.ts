@@ -1,6 +1,6 @@
 import type { Env } from '../types'
 import { migrationsTable, tables } from './db'
-import { type Permission, stripCte, type Token, tokenize } from './sql-guard'
+import { type Permission, permissionRank, stripCte, type Token, tokenize } from './sql-guard'
 
 // ── Guardrails for the application database as a query target ──────────────────
 // These checks apply ONLY when the resolved target is the application's own D1
@@ -20,11 +20,12 @@ export function appInternalTables(env: Pick<Env, 'TABLE_PREFIX'>): Set<string> {
 }
 
 // On the application database the effective permission is capped at `write`: the
-// admin's implicit write_drop is downgraded there, so destructive statements
+// admin's implicit write_drop (now `manage`) is downgraded there, so destructive statements
 // (DROP/TRUNCATE/ALTER…DROP per classifySql) are rejected through the ordinary
-// permission check instead of a special case.
+// permission check instead of a special case. `manage` and `write_drop` both cap at `write`,
+// since `manage` is a strict superset of `write_drop`.
 export function capAppDbPermission(permission: Permission): Permission {
-  return permission === 'write_drop' ? 'write' : permission
+  return permissionRank(permission) >= permissionRank('write_drop') ? 'write' : permission
 }
 
 const INTERNAL_TABLE_MSG =

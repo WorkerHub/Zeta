@@ -29,6 +29,8 @@ describe('appInternalTables', () => {
         'zeta_notebook_runs',
         'zeta_rate_limits',
         'zeta_executions',
+        'zeta_spark_config_profiles',
+        'zeta_spark_instance_configs',
         // The schema-migration ledger is internal too (ONE-352)
         '_zeta_schema_migrations',
       ].sort()
@@ -54,7 +56,8 @@ describe('appInternalTables', () => {
 })
 
 describe('capAppDbPermission', () => {
-  it('caps write_drop at write and leaves read/write alone', () => {
+  it('caps write_drop and manage at write and leaves read/write alone', () => {
+    expect(capAppDbPermission('manage')).toBe('write')
     expect(capAppDbPermission('write_drop')).toBe('write')
     expect(capAppDbPermission('write')).toBe('write')
     expect(capAppDbPermission('read')).toBe('read')
