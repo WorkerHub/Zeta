@@ -87,6 +87,11 @@ databases.get('/', async (c) => {
 
 type Ctx = Context<{ Bindings: Env; Variables: Variables }>
 
+// The caller's address for the audit trail, with the same fallback the other write paths use.
+function clientIp(c: Ctx): string {
+  return c.req.header('cf-connecting-ip') ?? 'unknown'
+}
+
 // Resolves the target and the caller's right to manage it. Returns an error response, or null with
 // the registry row when the caller is an admin or holds an exact `manage` grant on it.
 async function resolveSparkInstance(c: Ctx, id: string): Promise<{ db: DatabaseRow } | Response> {
@@ -200,7 +205,15 @@ databases.put('/:id/spark-instance-config', async (c) => {
     .bind(resolved.db.id, JSON.stringify(entries.value), JSON.stringify(jars.value), userId, ts)
     .run()
 
-  c.executionCtx.waitUntil(audit(c.env, { userId, action: 'spark_instance_config_save', resource: resolved.db.id }))
+  c.executionCtx.waitUntil(
+    audit(c.env, {
+      userId,
+      action: 'spark_instance_config_save',
+      resource: resolved.db.id,
+      ip: clientIp(c),
+      userAgent: c.req.header('user-agent'),
+    })
+  )
 
   return c.json({ entries: entries.value, jars: jars.value })
 })
@@ -228,7 +241,13 @@ databases.post('/:id/spark-instance-config/apply', async (c) => {
   }
 
   c.executionCtx.waitUntil(
-    audit(c.env, { userId: c.get('userId'), action: 'spark_instance_config_apply', resource: resolved.db.id })
+    audit(c.env, {
+      userId: c.get('userId'),
+      action: 'spark_instance_config_apply',
+      resource: resolved.db.id,
+      ip: clientIp(c),
+      userAgent: c.req.header('user-agent'),
+    })
   )
 
   return c.json({ state }, 202)

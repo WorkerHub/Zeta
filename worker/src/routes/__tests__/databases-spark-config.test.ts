@@ -262,3 +262,37 @@ describe('POST /api/databases/:id/spark-instance-config/apply', () => {
     expect((await apply(env, 'sp1', ['u1', 'member'])).status).toBe(403)
   })
 })
+
+describe('audit trail', () => {
+  it('records ip and user agent on the save and apply writes', async () => {
+    const { env, app } = await envWith(null)
+    sparkAdmin.apply = { state: 'restarting' }
+    const headers = {
+      ...(await bearer(env, 'a1', 'admin')),
+      'Content-Type': 'application/json',
+      'cf-connecting-ip': '203.0.113.9',
+      'user-agent': 'ZetaTest/1.0',
+    }
+
+    await callWorker(env, '/api/databases/sp1/spark-instance-config', {
+      method: 'PUT',
+      headers,
+      body: JSON.stringify({ entries: {}, jars: [] }),
+    })
+    await callWorker(env, '/api/databases/sp1/spark-instance-config/apply', {
+      method: 'POST',
+      headers,
+      body: '{}',
+    })
+
+    const rows = app.sqlite
+      .prepare(
+        `SELECT action, ip, user_agent FROM audit_logs WHERE action LIKE 'spark_instance_config_%' ORDER BY action`
+      )
+      .all() as Array<{ action: string; ip: string; user_agent: string }>
+    expect(rows).toEqual([
+      { action: 'spark_instance_config_apply', ip: '203.0.113.9', user_agent: 'ZetaTest/1.0' },
+      { action: 'spark_instance_config_save', ip: '203.0.113.9', user_agent: 'ZetaTest/1.0' },
+    ])
+  })
+})
