@@ -610,14 +610,15 @@ export default function QueryPage() {
         {/* Target switcher and its connect button — hidden on mobile (shown in the bottom bar) */}
         <div className="hidden sm:flex items-center gap-1.5">
           <div className="relative" ref={dbMenuDesktopRef}>
-            {/* The fixed-size target button (150×46, SPEC §7.1): the name alone, left-aligned and
-                truncated, with the chevron absolutely positioned (11px from the right edge) so no
-                label change moves it. A Spark target adds a second 9px line naming the selected
-                profile; every other engine stays a single centered line, the same size. */}
+            {/* The fixed-size target button (140×36): the name alone, left-aligned and truncated,
+                with the chevron absolutely positioned (11px from the right edge) so no label change
+                moves it. A Spark target adds a second 9px line naming the selected profile; every
+                other engine stays a single centered line, the same size — and carries no badge, so
+                the whole width left of the chevron belongs to the name. */}
             <button
               type="button"
               onClick={() => setShowDbMenu(!showDbMenu)}
-              className="relative flex h-[46px] w-[150px] items-center rounded-md border border-ink-200 bg-ink-100 pl-3 pr-8 text-left transition-colors duration-(--duration-base) hover:bg-ink-200"
+              className="relative flex h-9 w-[140px] items-center rounded-md border border-ink-200 bg-ink-100 pl-3 pr-8 text-left transition-colors duration-(--duration-base) hover:bg-ink-200"
             >
               {selectedDb?.kind === 'spark' ? (
                 <span className="flex min-w-0 flex-col justify-center gap-0.5">
@@ -632,20 +633,11 @@ export default function QueryPage() {
                   </span>
                 </span>
               ) : (
-                <span className="flex min-w-0 items-center gap-1.5">
-                  <span
-                    className="min-w-0 truncate text-body-strong leading-tight text-ink-900"
-                    title={selectedDb?.name ?? t('query.select_db')}
-                  >
-                    {selectedDb?.name ?? t('query.select_db')}
-                  </span>
-                  {/* The badge yields to the name instead of covering it: on a narrow bar the two
-                      truncate together, and the chevron stays clear */}
-                  {selectedDb?.is_app_db && (
-                    <span className="badge badge-brand min-w-0">
-                      <span className="truncate">{t('admin_db.app_db_badge')}</span>
-                    </span>
-                  )}
+                <span
+                  className="min-w-0 truncate text-body-strong leading-tight text-ink-900"
+                  title={selectedDb?.name ?? t('query.select_db')}
+                >
+                  {selectedDb?.name ?? t('query.select_db')}
                 </span>
               )}
               <ChevronDown size={13} className="absolute right-[11px] top-1/2 -translate-y-1/2 text-ink-400" />
@@ -689,7 +681,7 @@ export default function QueryPage() {
               onOpenManage={() => setProfilesDialogOpen(true)}
               canManageInstance={canManageInstance}
               onOpenInstanceConfig={() => setInstanceDialogOpen(true)}
-              triggerClassName="flex h-[46px] w-[46px] shrink-0 items-center justify-center rounded-md border border-ink-200 bg-ink-100 text-ink-500 transition-colors duration-(--duration-base) hover:bg-ink-200 hover:text-ink-900"
+              triggerClassName="flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-ink-200 bg-ink-100 text-ink-500 transition-colors duration-(--duration-base) hover:bg-ink-200 hover:text-ink-900"
             />
           )}
 
@@ -1031,7 +1023,8 @@ export default function QueryPage() {
         {/* DB selector */}
         <div className="relative flex-1 min-w-0" ref={dbMenuRef}>
           {/* The same button, filling the bar's available width and 40px tall, as the connect
-              button beside it: the name alone, the engine and provider stay in the menu's rows */}
+              button beside it: the name alone (no badge — the list rows keep it), the engine and
+              provider stay in the menu's rows */}
           <button
             type="button"
             onClick={() => {
@@ -1039,18 +1032,11 @@ export default function QueryPage() {
             }}
             className="flex h-10 w-full min-w-0 items-center gap-2 rounded-md border border-ink-200 bg-ink-100 px-3 text-left transition-colors duration-(--duration-base)"
           >
-            <span className="flex min-w-0 flex-1 items-center gap-1.5">
-              <span
-                className="min-w-0 truncate text-body-strong leading-tight text-ink-900"
-                title={selectedDb?.name ?? t('query.select_db')}
-              >
-                {selectedDb?.name ?? t('query.select_db')}
-              </span>
-              {selectedDb?.is_app_db && (
-                <span className="badge badge-brand min-w-0">
-                  <span className="truncate">{t('admin_db.app_db_badge')}</span>
-                </span>
-              )}
+            <span
+              className="min-w-0 flex-1 truncate text-body-strong leading-tight text-ink-900"
+              title={selectedDb?.name ?? t('query.select_db')}
+            >
+              {selectedDb?.name ?? t('query.select_db')}
             </span>
             <ChevronDown size={13} className="text-ink-400 shrink-0" />
           </button>
