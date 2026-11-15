@@ -22,7 +22,7 @@ interface Props {
   /** §7.4: a global admin or an exact `manage` grant — the same right the API requires. */
   canManageInstance: boolean
   onOpenInstanceConfig: () => void
-  /** The gear button's own sizing/placement classes (desktop 46×46, mobile 40×40). */
+  /** The gear button's own sizing/placement classes (desktop 36×36, mobile 40×40). */
   triggerClassName?: string
 }
 

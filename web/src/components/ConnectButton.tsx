@@ -15,9 +15,11 @@ interface Props {
 }
 
 // The one connect control of the query page, sitting beside the target switcher. Its desktop size
-// is fixed (110×46 — SPEC §7.1) so the label moving between 连接 / 已连接 / 断开 / 重新连接 never
-// shifts the header; below `sm` it keeps the bottom bar's 40px height and flexes with the label.
-const SIZE = 'h-10 sm:h-[46px] sm:w-[110px] gap-1.5 shrink-0'
+// is fixed (100×36) so the label moving between 连接 / 已连接 / 断开 / 重新连接 never shifts the header;
+// below `sm` it keeps the bottom bar's 40px height and flexes with the label. The horizontal padding
+// is tighter than a standard button's so the widest label (取消连接 / 重新连接) stays on one line —
+// with `whitespace-nowrap` a long one can never wrap and grow the button taller.
+const SIZE = 'h-10 sm:h-9 sm:w-[100px] gap-1.5 px-2.5 shrink-0 whitespace-nowrap'
 
 /**
  * Not connected reads as the page's only action (brand); connected reads as a state (neutral) and
