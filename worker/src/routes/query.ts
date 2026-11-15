@@ -33,7 +33,7 @@ import {
   type SparkOpenOptions,
   type SparkSession,
 } from '../lib/spark-executor'
-import { loadProfileConfig } from '../lib/spark-profile'
+import { loadProfileConfig, sparkSessionKey } from '../lib/spark-profile'
 import {
   checkSqlAccess,
   classifySql,
@@ -259,8 +259,9 @@ async function postgresUrlFor(env: Env, db: DatabaseRow): Promise<string> {
 // only place it is unwrapped), normalises it again, and proves the connection before any statement
 // runs. `connectTest` asks a Spark target for the longer connection-check budget (20 s health probe,
 // 120 s hard cap): the admin's test step and POST /api/query/probe use it, a query does not.
-// `session` is the caller's own Spark session (their user id): the machine keeps one session per
-// value, so two people querying it share neither temp views nor a lock.
+// `session` is the caller's own Spark session (see sparkSessionKey): one session per caller *and*
+// effective config, so two people querying it share neither temp views nor a lock, and switching
+// configurations — back to the default included — lands on a session built for that config.
 // `sessionDatabase` is the database a MySQL request chose for its session (see
 // resolveSessionDatabase); it overrides the registered default as the pin target of that one session
 // and means nothing to the other engines, which never open a stateful session of their own.
@@ -398,13 +399,17 @@ function resolveExecutionId(raw: unknown): { ok: true; value: string | null } | 
 // critical path, so a request that died without finishing cannot leave a row behind for good.
 async function registerExecution(
   c: Ctx,
-  exec: { id: string; userId: string; databaseId: string; kind: string }
+  exec: { id: string; userId: string; databaseId: string; kind: string; sparkSession?: string }
 ): Promise<Response | null> {
   const registered = await beginExecution(c.env, {
-    ...exec,
+    id: exec.id,
+    userId: exec.userId,
+    databaseId: exec.databaseId,
+    kind: exec.kind,
     // The address a kill needs: PostgreSQL's application_name marker (the id itself, unique per
-    // execution). Spark is addressed by session + execution id and D1/TiDB have no address at all.
-    handle: exec.kind === 'postgres' ? exec.id : null,
+    // execution), Spark's session key (its job group is session + execution id), and none for
+    // D1/TiDB, which only stop between statements.
+    handle: exec.kind === 'postgres' ? exec.id : exec.kind === 'spark' ? (exec.sparkSession ?? null) : null,
   })
   if (!registered.created) return c.json({ error: 'executionId is already in use' }, 409)
   c.executionCtx.waitUntil(pruneExecutions(c.env).catch(() => {}))
@@ -434,8 +439,11 @@ async function dispatchCancel(
       return
     }
     if (resolved.target.kind === 'spark') {
+      // The session this execution ran on, as registered: the job group is session + execution id,
+      // and a caller's raw user id is no longer a session key (see sparkSessionKey). A row written
+      // before that key existed falls back to the user id, which is where that request really ran.
       await cancelSparkExecution(await sparkAccessFor(env, db), {
-        session: cancel.userId,
+        session: cancel.handle ?? cancel.userId,
         execution: cancel.id,
       })
     }
@@ -521,6 +529,9 @@ query.post('/', async (c) => {
   // The caller's selected Spark profile, resolved to a runtime config. Only a Spark target has a
   // config; an absent/unknown/foreign profileId resolves to null (default — no `config` is sent).
   const config = db.kind === 'spark' ? await loadProfileConfig(c.env, userId, db.id, body.profileId) : null
+  // This request's Spark session: the caller plus the config it carries (see sparkSessionKey). No
+  // other engine has a session of its own.
+  const sparkSession = db.kind === 'spark' ? await sparkSessionKey(userId, config) : undefined
 
   const notebook = await resolveNotebook(c, body.notebookId)
   if (notebook instanceof Response) return notebook
@@ -528,7 +539,13 @@ query.post('/', async (c) => {
   // Registered before anything opens or runs, so a cancel that arrives while the target is still
   // connecting is not lost.
   if (execution) {
-    const taken = await registerExecution(c, { id: execution, userId, databaseId: db.id, kind: db.kind ?? 'sqlite' })
+    const taken = await registerExecution(c, {
+      id: execution,
+      userId,
+      databaseId: db.id,
+      kind: db.kind ?? 'sqlite',
+      sparkSession,
+    })
     if (taken) return taken
   }
 
@@ -536,7 +553,7 @@ query.post('/', async (c) => {
   let executor: Executor
   try {
     executor = await openExecutor(c.env, db, resolved.target, {
-      session: userId,
+      session: sparkSession,
       sessionDatabase: session.value,
       execution: execution ?? undefined,
       config: config ?? undefined,
@@ -714,6 +731,8 @@ query.post('/batch', async (c) => {
   if (!resolved.ok) return queryError(c, resolved.error)
 
   const config = db.kind === 'spark' ? await loadProfileConfig(c.env, userId, db.id, body.profileId) : null
+  // Same session identity as the single-statement path: the caller plus this request's config.
+  const sparkSession = db.kind === 'spark' ? await sparkSessionKey(userId, config) : undefined
 
   // A batch whose statements are all rejected before running is not saved, like a rejected single
   // one, and uses up no run number — and must not open a connection either. Rejections by the
@@ -737,7 +756,13 @@ query.post('/batch', async (c) => {
 
   // Registered before the target opens (see the single-statement path).
   if (execution) {
-    const taken = await registerExecution(c, { id: execution, userId, databaseId: db.id, kind: db.kind ?? 'sqlite' })
+    const taken = await registerExecution(c, {
+      id: execution,
+      userId,
+      databaseId: db.id,
+      kind: db.kind ?? 'sqlite',
+      sparkSession,
+    })
     if (taken) return taken
   }
 
@@ -746,7 +771,7 @@ query.post('/batch', async (c) => {
   let executor: Executor
   try {
     executor = await openExecutor(c.env, db, resolved.target, {
-      session: userId,
+      session: sparkSession,
       sessionDatabase: session.value,
       execution: execution ?? undefined,
       config: config ?? undefined,
@@ -981,6 +1006,8 @@ query.post('/probe', async (c) => {
   // A probe may carry the caller's selected profile (§5.3): the throwaway statement then runs under
   // that config, so the connection check proves the session the caller's queries will actually use.
   const config = db.kind === 'spark' ? await loadProfileConfig(c.env, userId, db.id, body.profileId) : null
+  // The same key a query with this config uses, so the probe warms exactly that session.
+  const sparkSession = db.kind === 'spark' ? await sparkSessionKey(userId, config) : undefined
 
   let executor: Executor
   try {
@@ -989,7 +1016,7 @@ query.post('/probe', async (c) => {
     // probe proves the session that caller's queries will use.
     executor = await openExecutor(c.env, db, resolved.target, {
       connectTest: true,
-      session: userId,
+      session: sparkSession,
       config: config ?? undefined,
     })
   } catch (err) {
