@@ -52,7 +52,9 @@ function mockApi() {
   get.mockResolvedValue(config())
   // The PUT echoes what was sent, so the dialog's stored snapshot moves with the draft.
   save.mockImplementation(async (_id: string, body: { entries: Record<string, string>; jars: JarRef[] }) => body)
-  apply.mockResolvedValue({ state: 'draining' })
+  // The service's 202 carries a momentary snapshot (§9.3): it answers "running" before its worker has
+  // begun draining, which is exactly the reply #57 turned into a false failure.
+  apply.mockResolvedValue({ state: 'running' })
   return { get, save, apply }
 }
 
@@ -378,5 +380,151 @@ describe('SparkInstanceConfigDialog — apply and poll', () => {
     expect(confirmCard().textContent).toContain('The number of queries in flight is unknown.')
     await user.click(within(confirmCard()).getByRole('button', { name: t('common.cancel') }))
     expect(screen.queryByRole('alertdialog')).toBeNull()
+  })
+
+  it('settles a call the worker answered with 502 by polling: everything in effect, the red sentence gone', async () => {
+    vi.useFakeTimers()
+    const { get, apply } = mockApi()
+    // The worker still turns the "running" snapshot into 502 (§9.3 keeps the backend untouched).
+    apply.mockRejectedValue(new Error('The Spark service could not be reached.'))
+    get
+      .mockResolvedValueOnce(config())
+      .mockResolvedValueOnce(config())
+      .mockResolvedValueOnce(config({ status: status({ state: 'draining', inflight: 0 }) }))
+      .mockResolvedValueOnce(config({ status: status({ state: 'restarting' }) }))
+      .mockResolvedValueOnce(
+        config({
+          status: status({
+            epoch: 4,
+            effective: { entries: { 'spark.driver.memory': '8g' }, jars: ['my-udf.jar'] },
+          }),
+        })
+      )
+    renderDialog()
+    await settle()
+
+    typeInto(screen.getByLabelText('value'), '8g')
+    click(footerButton(t('spark.instance_apply')))
+    await settle()
+    click(within(confirmCard()).getByRole('button', { name: t('spark.instance_apply') }))
+    await settle()
+
+    // The sentence is shown, but it is not the verdict: polling goes on regardless.
+    expect(screen.getByText('The Spark service could not be reached.')).toBeTruthy()
+    expect(footerButton(t('spark.instance_apply')).disabled).toBe(true)
+
+    await tick()
+    expect(screen.getByText(t('spark.instance_status_draining_unknown'))).toBeTruthy()
+    await tick()
+    expect(screen.getByText(t('spark.instance_status_restarting'))).toBeTruthy()
+    await tick()
+    expect(screen.getByText(t('spark.instance_status_running'))).toBeTruthy()
+    expect(screen.queryByText('The Spark service could not be reached.')).toBeNull()
+    expect(screen.getByText(t('spark.instance_summary', { memory: '8g', count: 1 }))).toBeTruthy()
+    expect(footerButton(t('spark.save')).disabled).toBe(false)
+    expect(footerButton(t('spark.instance_apply')).disabled).toBe(false)
+  })
+
+  it('fails a running environment that kept its config, with the service reason', async () => {
+    vi.useFakeTimers()
+    const { get } = mockApi()
+    get
+      .mockResolvedValueOnce(config())
+      .mockResolvedValueOnce(config())
+      .mockResolvedValueOnce(config({ status: status({ lastError: 'Cannot allocate 32g of driver memory' }) }))
+    renderDialog()
+    await settle()
+
+    typeInto(screen.getByLabelText('value'), '32g')
+    click(footerButton(t('spark.instance_apply')))
+    await settle()
+    click(within(confirmCard()).getByRole('button', { name: t('spark.instance_apply') }))
+    await settle()
+
+    await tick()
+    expect(screen.getByText(t('spark.instance_status_failed'))).toBeTruthy()
+    expect(screen.getByText('Cannot allocate 32g of driver memory')).toBeTruthy()
+    expect(footerButton(t('spark.instance_apply')).disabled).toBe(false)
+    const calls = get.mock.calls.length
+    await tick(6000)
+    expect(get.mock.calls.length).toBe(calls)
+  })
+
+  it('stops on an apply that changed nothing, without inventing a failure', async () => {
+    vi.useFakeTimers()
+    const { get } = mockApi()
+    get
+      .mockResolvedValueOnce(config())
+      .mockResolvedValueOnce(config())
+      .mockResolvedValue(config({ status: status() }))
+    renderDialog()
+    await settle()
+
+    typeInto(screen.getByLabelText('value'), '8g')
+    click(footerButton(t('spark.instance_apply')))
+    await settle()
+    click(within(confirmCard()).getByRole('button', { name: t('spark.instance_apply') }))
+    await settle()
+
+    await tick()
+    // One reading is not enough: the status may still be the snapshot from before the restart.
+    expect(footerButton(t('spark.instance_apply')).disabled).toBe(true)
+    await tick()
+    expect(screen.getByText(t('spark.instance_status_pending'))).toBeTruthy()
+    expect(screen.queryByText(t('spark.instance_status_failed'))).toBeNull()
+    expect(footerButton(t('spark.instance_apply')).disabled).toBe(false)
+    const calls = get.mock.calls.length
+    await tick(6000)
+    expect(get.mock.calls.length).toBe(calls)
+  })
+
+  it('stops on an epoch that moved on, without waiting out the limit or calling it a failure', async () => {
+    vi.useFakeTimers()
+    const { get } = mockApi()
+    get
+      .mockResolvedValueOnce(config())
+      .mockResolvedValueOnce(config())
+      .mockResolvedValueOnce(config({ status: status({ epoch: 4 }) }))
+    renderDialog()
+    await settle()
+
+    typeInto(screen.getByLabelText('value'), '8g')
+    click(footerButton(t('spark.instance_apply')))
+    await settle()
+    click(within(confirmCard()).getByRole('button', { name: t('spark.instance_apply') }))
+    await settle()
+
+    await tick()
+    expect(screen.queryByText(t('spark.instance_status_failed'))).toBeNull()
+    expect(footerButton(t('spark.instance_apply')).disabled).toBe(false)
+    // The line keeps its one meaning: the service does not report the new config yet.
+    expect(screen.getByText(t('spark.instance_status_pending'))).toBeTruthy()
+    const calls = get.mock.calls.length
+    await tick(6000)
+    expect(get.mock.calls.length).toBe(calls)
+  })
+
+  it('says "applying" instead of "status unknown" while the service has not answered yet', async () => {
+    vi.useFakeTimers()
+    const { get } = mockApi()
+    get
+      .mockResolvedValueOnce(config({ status: null, serverJars: null }))
+      .mockResolvedValueOnce(config({ status: null, serverJars: null }))
+      .mockResolvedValueOnce(config())
+    renderDialog()
+    await settle()
+    expect(screen.getByText(t('spark.instance_status_unknown'))).toBeTruthy()
+
+    click(footerButton(t('spark.instance_apply')))
+    await settle()
+    click(within(confirmCard()).getByRole('button', { name: t('spark.instance_apply') }))
+    await settle()
+
+    expect(screen.getByText(t('spark.instance_status_applying'))).toBeTruthy()
+    expect(screen.queryByText(t('spark.instance_status_unknown'))).toBeNull()
+
+    await tick()
+    expect(screen.getByText(t('spark.instance_status_running'))).toBeTruthy()
+    expect(footerButton(t('spark.instance_apply')).disabled).toBe(false)
   })
 })

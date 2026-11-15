@@ -8,13 +8,15 @@ import {
   isInstancePending,
   jarRefsMatch,
   jarServerState,
+  judgeApplyStatus,
   parseJarInput,
   rowsMatchEntries,
   rowsToEntries,
   validateInstanceEntry,
+  type ApplyExpectation,
   type InstanceJarError,
 } from '../lib/spark-instance'
-import type { JarRef, ProfileEntry, ServerJar, SparkConfigState, SparkConfigStatus } from '../types'
+import type { JarRef, ProfileEntry, ServerJar, SparkConfigStatus } from '../types'
 import ConfirmDialog from './ConfirmDialog'
 import Dialog from './Dialog'
 import KeyValueEditor from './KeyValueEditor'
@@ -66,8 +68,9 @@ interface Props {
  * The instance-config dialog (§7.4): a status line, the startup-level parameters (the shared
  * key-value row editor with the §6.2 validator injected) and the jar list. The expected config is
  * stored by PUT; "apply and restart" hands it to the service and polls GET (2 s, at most 3 minutes)
- * until the service reports a terminal state, so the dialog's two buttons stay disabled while the
- * environment drains and restarts.
+ * until the polled status settles the outcome (§9.3) — the apply call's own reply is a momentary
+ * snapshot, so neither its `state` nor a failed call decides anything. Both buttons stay disabled
+ * until that verdict.
  */
 export default function SparkInstanceConfigDialog({ open, onOpenChange, databaseId }: Props) {
   const { t } = useLocale()
@@ -81,9 +84,12 @@ export default function SparkInstanceConfigDialog({ open, onOpenChange, database
   // The service's side: its status and jar listing, both null when it could not be reached.
   const [status, setStatus] = useState<SparkConfigStatus | null>(null)
   const [serverJars, setServerJars] = useState<ServerJar[] | null>(null)
-  // The state the apply call reported, kept until the first poll answers (the status may be null,
-  // e.g. the service was unreachable at open time, and the line should still say "applying").
-  const [applyState, setApplyState] = useState<SparkConfigState | null>(null)
+  // This dialog's own apply: the config it should land plus the epoch it started from, and the
+  // verdict the polling reached. The apply call's reply decides nothing (`applyState` is gone
+  // precisely so that no code path can read it).
+  const applyRef = useRef<ApplyExpectation | null>(null)
+  const [applyVerdict, setApplyVerdict] = useState<'applied' | 'failed' | null>(null)
+  const [applyFailure, setApplyFailure] = useState<string | null>(null)
 
   const [loaded, setLoaded] = useState(false)
   const [loading, setLoading] = useState(false)
@@ -124,7 +130,9 @@ export default function SparkInstanceConfigDialog({ open, onOpenChange, database
     setLoadError(null)
     setDialogError(null)
     setPollTimedOut(false)
-    setApplyState(null)
+    setApplyVerdict(null)
+    setApplyFailure(null)
+    applyRef.current = null
     sparkInstanceConfigApi
       .get(databaseId)
       .then((res) => {
@@ -148,12 +156,16 @@ export default function SparkInstanceConfigDialog({ open, onOpenChange, database
     }
   }, [open, databaseId, applySnapshot, t])
 
-  // The poll loop (§6.1): one GET every 2 s until a terminal state or the 3-minute limit. A null
+  // The poll loop (§6.1): one GET every 2 s until the verdict (§9.3) or the 3-minute limit. A null
   // status (the service is restarting, its port briefly closed) is not a failure — keep waiting.
   useEffect(() => {
     if (!open || !polling) return
     let cancelled = false
     let timer: number | undefined
+    // "Nothing changed" has to survive a second reading 2 s later: the status right after an apply
+    // can still be the snapshot from before the service's worker switched to draining, and that
+    // snapshot is indistinguishable from a no-op apply (#57).
+    let unchanged = 0
     const deadline = Date.now() + POLL_LIMIT_MS
     const tick = async () => {
       let next: { status: SparkConfigStatus | null; serverJars: ServerJar[] | null } | null = null
@@ -166,13 +178,28 @@ export default function SparkInstanceConfigDialog({ open, onOpenChange, database
       if (next) {
         setStatus(next.status)
         setServerJars(next.serverJars)
-        setApplyState(null)
-      }
-      const state = next?.status?.state
-      if (state === 'running' || state === 'failed_fallback') {
-        setPolling(false)
-        setPollTimedOut(false)
-        return
+        const expected = applyRef.current
+        const verdict = judgeApplyStatus(next.status, expected)
+        if (verdict.state === 'applied' || verdict.state === 'failed') {
+          // Only this dialog's own apply writes the verdict; a dialog reopened onto somebody else's
+          // apply just stops polling, as before.
+          if (expected) {
+            setApplyVerdict(verdict.state)
+            setApplyFailure(verdict.state === 'failed' ? verdict.lastError : null)
+            // A failed apply call is moot once the service is running the config it asked for.
+            if (verdict.state === 'applied') setDialogError(null)
+            applyRef.current = null
+          }
+          setPolling(false)
+          setPollTimedOut(false)
+          return
+        }
+        if (verdict.state === 'unchanged' && ++unchanged >= 2) {
+          applyRef.current = null
+          setPolling(false)
+          setPollTimedOut(false)
+          return
+        }
       }
       if (Date.now() >= deadline) {
         setPolling(false)
@@ -203,7 +230,11 @@ export default function SparkInstanceConfigDialog({ open, onOpenChange, database
     : null
 
   const statusLine = (): StatusLine => {
-    const state = applyState ?? status?.state ?? null
+    const state = status?.state ?? null
+    // Nothing to name yet: the apply call is in flight, or its first status has not arrived.
+    if (applying || (polling && !status)) {
+      return { tone: 'yellow', text: t('spark.instance_status_applying'), note: null, noteTone: 'ink' }
+    }
     if (state === 'draining') {
       const inflight = status?.inflight ?? 0
       return {
@@ -235,6 +266,13 @@ export default function SparkInstanceConfigDialog({ open, onOpenChange, database
         noteTone: 'ink',
       }
     }
+    // The polled status says the apply did not land, with the service's own reason.
+    if (applyVerdict === 'failed') {
+      return { tone: 'red', text: t('spark.instance_status_failed'), note: applyFailure, noteTone: 'danger' }
+    }
+    // "Unapplied changes" keeps its one meaning — the draft differs from what the service runs —
+    // so an epoch-moved success whose effective snapshot still lags behind reads that way until the
+    // service reports the new config.
     if (pending) {
       return { tone: 'yellow', text: t('spark.instance_status_pending'), note: null, noteTone: 'ink' }
     }
@@ -311,26 +349,31 @@ export default function SparkInstanceConfigDialog({ open, onOpenChange, database
     setConfirming(true)
   }
 
+  // The outcome is the poll's, not the call's (§9.3): the wait starts as the apply is handed over,
+  // and a failed call only contributes its sentence — the terminal status is what settles the
+  // dialog, so a 502 that came from a momentary "running" snapshot cannot report a false failure.
   const doApply = async () => {
     setConfirming(false)
     setApplying(true)
     setDialogError(null)
+    setApplyVerdict(null)
+    setApplyFailure(null)
+    setPollTimedOut(false)
+    applyRef.current = {
+      entries: rowsToEntries(rows),
+      jars: draftJars,
+      epoch: confirmStatus?.epoch ?? status?.epoch ?? null,
+    }
+    setPolling(true)
     try {
-      if (!(await persistDraft())) return
-      const res = await sparkInstanceConfigApi.apply(databaseId)
-      setApplyState(res.state)
-      setPollTimedOut(false)
-      setPolling(true)
+      if (!(await persistDraft())) {
+        applyRef.current = null
+        setPolling(false)
+        return
+      }
+      await sparkInstanceConfigApi.apply(databaseId)
     } catch (err) {
       setDialogError(err instanceof Error ? err.message : t('spark.instance_load_failed'))
-      // The environment may have stayed as it was; read its real state instead of guessing.
-      try {
-        const res = await sparkInstanceConfigApi.get(databaseId)
-        setStatus(res.status)
-        setServerJars(res.serverJars)
-      } catch {
-        // Nothing more to show: the error sentence above stands.
-      }
     } finally {
       setApplying(false)
     }
