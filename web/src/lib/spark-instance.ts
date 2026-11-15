@@ -161,3 +161,45 @@ export function isInstancePending(rows: ProfileEntry[], jars: JarRef[], status: 
     status.effective.jars ?? []
   )
 }
+
+/**
+ * What an apply is expected to land (§9.3): the config it stored and the service epoch it started
+ * from. `epoch` is null when no status could be read before applying — then only the effective
+ * config can decide, since there is no epoch to have moved on from.
+ */
+export interface ApplyExpectation {
+  entries: Record<string, string>
+  jars: JarRef[]
+  epoch: number | null
+}
+
+/**
+ * What one polled status says about an apply (§9.3). The apply reply's own `state` is a momentary
+ * snapshot and settles nothing — the terminal reading does.
+ *
+ * - `waiting`: still draining/restarting, or the service is briefly unreachable.
+ * - `applied`: the service runs exactly the expected config, or its epoch moved on (the restart
+ *   the apply triggered) — a success even while the effective snapshot still lags behind.
+ * - `failed`: the service rolled back (`failed_fallback`), or it runs with an error and an
+ *   unchanged config; `lastError` is the service's own reason, when it gave one.
+ * - `unchanged`: running, same epoch, no error, not the expected config — nothing was applied. It
+ *   is only terminal once it survives a second reading: the status read right after an apply can
+ *   still be the snapshot from before the service's worker switched to draining (#57).
+ */
+export type ApplyVerdict =
+  | { state: 'waiting' }
+  | { state: 'applied' }
+  | { state: 'failed'; lastError: string | null }
+  | { state: 'unchanged' }
+
+export function judgeApplyStatus(status: SparkConfigStatus | null, expected: ApplyExpectation | null): ApplyVerdict {
+  if (!status) return { state: 'waiting' }
+  if (status.state === 'failed_fallback') return { state: 'failed', lastError: status.lastError ?? null }
+  if (status.state !== 'running') return { state: 'waiting' }
+  // Running. Without an expectation (a dialog opened onto somebody else's apply) that is terminal.
+  if (!expected) return { state: 'applied' }
+  if (!isInstancePending(entriesToRows(expected.entries), expected.jars, status)) return { state: 'applied' }
+  if (expected.epoch !== null && status.epoch !== expected.epoch) return { state: 'applied' }
+  if (status.lastError) return { state: 'failed', lastError: status.lastError }
+  return { state: 'unchanged' }
+}

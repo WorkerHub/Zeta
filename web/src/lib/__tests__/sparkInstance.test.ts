@@ -5,6 +5,7 @@ import {
   jarDisplayName,
   jarRefsMatch,
   jarServerState,
+  judgeApplyStatus,
   parseJarInput,
   rowsMatchEntries,
   rowsToEntries,
@@ -188,5 +189,59 @@ describe('isInstancePending — the status line "unapplied changes"', () => {
     expect(isInstancePending(rows, [], status())).toBe(true)
     // A URL jar matches the file it lands under.
     expect(isInstancePending(rows, [{ type: 'url', value: 'https://x/my-udf.jar' }], status())).toBe(false)
+  })
+})
+
+describe('judgeApplyStatus — the apply outcome is the polled status, never the reply (§9.3)', () => {
+  const expected = {
+    entries: { 'spark.driver.memory': '8g' },
+    jars: [{ type: 'file', value: 'my-udf.jar' }] as JarRef[],
+    epoch: 3,
+  }
+  // What the service reports once it runs the config the apply asked for.
+  const nowRunning = (overrides: Partial<SparkConfigStatus> = {}) =>
+    status({ effective: { entries: { 'spark.driver.memory': '8g' }, jars: ['my-udf.jar'] }, ...overrides })
+
+  it('waits while the service drains, restarts, or cannot be read', () => {
+    expect(judgeApplyStatus(null, expected)).toEqual({ state: 'waiting' })
+    expect(judgeApplyStatus(status({ state: 'draining' }), expected)).toEqual({ state: 'waiting' })
+    expect(judgeApplyStatus(status({ state: 'restarting' }), expected)).toEqual({ state: 'waiting' })
+  })
+
+  it('is a success once the service runs the expected config', () => {
+    expect(judgeApplyStatus(nowRunning(), expected)).toEqual({ state: 'applied' })
+  })
+
+  it('is a success when the epoch moved on, even before the config catches up', () => {
+    expect(judgeApplyStatus(status({ epoch: 4 }), expected)).toEqual({ state: 'applied' })
+  })
+
+  it('is a failure with the service reason when it rolled back', () => {
+    expect(
+      judgeApplyStatus(status({ state: 'failed_fallback', lastError: 'Jar not found: delta.jar' }), expected)
+    ).toEqual({ state: 'failed', lastError: 'Jar not found: delta.jar' })
+    expect(judgeApplyStatus(status({ state: 'failed_fallback' }), expected)).toEqual({
+      state: 'failed',
+      lastError: null,
+    })
+  })
+
+  it('is a failure when it runs with an error and kept the old config', () => {
+    expect(judgeApplyStatus(status({ lastError: 'Cannot allocate 32g' }), expected)).toEqual({
+      state: 'failed',
+      lastError: 'Cannot allocate 32g',
+    })
+    // A stale error does not outvote a config that did land.
+    expect(judgeApplyStatus(nowRunning({ lastError: 'Cannot allocate 32g' }), expected)).toEqual({ state: 'applied' })
+  })
+
+  it('is unchanged when it runs the old config with no error and the same epoch', () => {
+    expect(judgeApplyStatus(status(), expected)).toEqual({ state: 'unchanged' })
+    // Without an epoch read before applying, only the config itself can decide.
+    expect(judgeApplyStatus(status(), { ...expected, epoch: null })).toEqual({ state: 'unchanged' })
+  })
+
+  it('treats running as terminal for a dialog that has no apply of its own', () => {
+    expect(judgeApplyStatus(status(), null)).toEqual({ state: 'applied' })
   })
 })

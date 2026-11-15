@@ -279,8 +279,11 @@ export const sparkInstanceConfigApi = {
       method: 'PUT',
       body: JSON.stringify(body),
     }),
+  // Applies the stored expected config. The reply's `state` is a momentary snapshot of the service
+  // right after it accepted the request (it may still say `running` while its worker has not begun
+  // draining yet), so it decides nothing: the caller polls GET until the status settles (§9.3).
   apply: (databaseId: string) =>
-    apiFetch<{ state: 'draining' | 'restarting' }>(`/databases/${databaseId}/spark-instance-config/apply`, {
+    apiFetch<{ state: 'running' | 'draining' | 'restarting' }>(`/databases/${databaseId}/spark-instance-config/apply`, {
       method: 'POST',
     }),
 }
