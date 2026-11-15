@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import type { SparkAccess } from '../spark-access'
 import {
+  applySparkConfig,
   CONNECT_HARD_CAP_MS,
   CONNECT_TEST_OPEN,
   MAX_SESSION_CHARS,
@@ -405,5 +406,43 @@ describe('service state codes (§1.1/§1.3)', () => {
     const session = await openSparkSession(ACCESS)
     const error = await session.run('select 1', 'read', 1).catch((e) => e)
     expect(error).toMatchObject({ kind: 'context', code: 'context_rebuilt', detail: { epoch: 7 } })
+  })
+})
+
+// The instance-config apply (§1.2). Its 202 names the state the service moved into, and `running` is
+// one of them: a config that needs no new environment is a started apply, not an unreadable answer
+// (§9.3 — treating it as a transport failure made the route answer 502 "service unreachable").
+describe('applySparkConfig', () => {
+  const BODY = { entries: { 'spark.driver.memory': '4g' }, jars: [] }
+  const applied = () => {
+    expect(calls).toHaveLength(1)
+    expect(calls[0]!.url).toBe(`${ACCESS.url}/admin/config/apply`)
+    expect(calls[0]!.init.method).toBe('POST')
+    expect(JSON.parse(String(calls[0]!.init.body))).toEqual(BODY)
+  }
+
+  it('returns running when the service accepts the config without a restart', async () => {
+    script.push(json({ state: 'running' }, 202))
+    // Not a throw: the apply started, and the terminal state comes from polling the status (§6.1)
+    await expect(applySparkConfig(ACCESS, BODY)).resolves.toBe('running')
+    applied()
+  })
+
+  it('returns the draining and restarting states the service reports', async () => {
+    script.push(json({ state: 'draining' }, 202), json({ state: 'restarting' }, 202))
+    await expect(applySparkConfig(ACCESS, BODY)).resolves.toBe('draining')
+    await expect(applySparkConfig(ACCESS, BODY)).resolves.toBe('restarting')
+  })
+
+  it('keeps a rejected config a sql error carrying the service sentence', async () => {
+    script.push(json({ error: 'jar file not found: my-udf.jar' }, 400))
+    const error = await applySparkConfig(ACCESS, BODY).catch((err) => err)
+    expect(error).toMatchObject({ kind: 'sql', code: 'spark_sql', message: 'jar file not found: my-udf.jar' })
+  })
+
+  it('still refuses a 202 that names no known state', async () => {
+    script.push(json({ state: 'sideways' }, 202))
+    const error = await applySparkConfig(ACCESS, BODY).catch((err) => err)
+    expect(error).toMatchObject({ kind: 'transport', code: 'spark_transport' })
   })
 })

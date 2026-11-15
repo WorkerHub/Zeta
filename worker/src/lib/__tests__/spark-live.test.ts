@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { normalizeSparkAccess, type SparkAccess } from '../spark-access'
 import { openSparkSession, SparkQueryError, testSparkConnection } from '../spark-executor'
+import { sparkSessionKey } from '../spark-profile'
 
 // Opt-in live test: runs only when the published Spark port's credentials are in the environment
 // (team secret SPARK_ACCESS — JSON `{url, platform_token, app_token}`; never committed).
@@ -169,6 +170,49 @@ describeMultiSession('spark-live: one session per caller', () => {
       await first.run(`drop table if exists ${table}`, 'write', 5000).catch(() => {})
       await first.close()
       await second.close()
+    }
+  })
+
+  // The default configuration has to come back when the caller switches back to it (§9.1). The service
+  // applies `config` per request and never resets what an earlier request set, so it is the session
+  // key — not the presence of the field — that restores the defaults (lib/spark-profile.ts). This runs
+  // the real repro: default → profile → default → profile, reading the exchange's partition count out
+  // of the plan (SparkSQL offers no `SET`, and its sessions are per named session, not per instance).
+  it('restores the default configuration when the caller switches back to it', SLOW, async () => {
+    const userId = `zeta-live-cfg-${Date.now()}`
+    const profile = { 'spark.sql.shuffle.partitions': '777' }
+    const explain = 'EXPLAIN SELECT k, count(*) FROM (SELECT id % 10 AS k FROM range(1000)) GROUP BY k'
+    const partitions = (executed: { results: Record<string, unknown>[] }): number => {
+      const plan = JSON.stringify(executed.results)
+      const match = plan.match(/hashpartitioning\([^)]*?([0-9]+)\)/)
+      expect(match, `no exchange in the plan: ${plan.slice(0, 200)}`).not.toBeNull()
+      return Number(match![1])
+    }
+
+    const defaultKey = await sparkSessionKey(userId, null)
+    const profileKey = await sparkSessionKey(userId, profile)
+    expect(profileKey).not.toBe(defaultKey)
+
+    const plain = await openSparkSession(requireAccess(), { session: defaultKey })
+    const profiled = await openSparkSession(requireAccess(), { session: profileKey, config: profile })
+    try {
+      const before = partitions(await plain.run(explain, 'read', 50))
+      log('default configuration before the profile', before)
+      // The instance's own default is what a fresh session gets; 777 is the profile's value
+      expect(before).not.toBe(777)
+
+      expect(partitions(await profiled.run(explain, 'read', 50))).toBe(777)
+      log('profile configuration', 777)
+
+      const back = partitions(await plain.run(explain, 'read', 50))
+      log('default configuration after switching back', back)
+      expect(back).toBe(before)
+
+      // And the other direction still works: selecting the profile again reaches its session
+      expect(partitions(await profiled.run(explain, 'read', 50))).toBe(777)
+    } finally {
+      await plain.close()
+      await profiled.close()
     }
   })
 })

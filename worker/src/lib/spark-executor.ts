@@ -10,9 +10,12 @@ import { isWriteClass, type SqlClass } from './sql-guard'
 //   GET  {url}/health  → {"ok":true,"sparkVersion":"3.5.3"}   (platform token only)
 //   POST {url}/query   → {"columns":[…],"rows":[[…]],"rowCount":n,"truncated":bool}
 //                        headers: Authorization: Bearer <platform token>, X-Auth-Token: <app token>
-//                        body:    {"sql":"…","maxRows":5000,"session":"<caller id>","execution":"<execution id>"}
+//                        body:    {"sql":"…","maxRows":5000,"session":"<session key>","execution":"<execution id>"}
 //   POST {url}/cancel  → {"ok":true}
-//                        same headers, body: {"session":"<caller id>","execution":"<execution id>"}
+//                        same headers, body: {"session":"<session key>","execution":"<execution id>"}
+//
+// `session` is Zeta's own session key — the caller plus the request's effective config, see
+// lib/spark-profile.ts — never a raw user id.
 //
 // There is no driver to load: Workers cannot open a Spark Connect (gRPC) or Thrift (JDBC) session,
 // and the service's HTTP contract *is* the interface. So this module is a thin `fetch` client with
@@ -99,8 +102,9 @@ export const SPARK_CONTEXT_REBUILT_MESSAGE = 'The Spark environment was rebuilt.
 // most 2000 characters, and nothing a user reads needs more than this.
 const MAX_ERROR_CHARS = 1500
 
-// The service's ceiling for the request's `session` field. Zeta sends the caller's user id, which is
-// a 36-character uuid; the check turns a wrong caller into a configuration error here instead of a
+// The service's ceiling for the request's `session` field. Zeta sends its own session key
+// (`zeta:<user id>:default` / `zeta:<user id>:p<hash>`, at most 59 characters — see
+// lib/spark-profile.ts); the check turns a wrong caller into a configuration error here instead of a
 // service 400, which would be classified as a rejected statement and shown as a SQL mistake.
 export const MAX_SESSION_CHARS = 128
 
@@ -199,10 +203,12 @@ export interface SparkOpenOptions {
   hardCapMs?: number
   statementTimeoutMs?: number
   /**
-   * The caller's own session — the Zeta user id: an identifier only, never a credential. The service
-   * keeps one SparkSession per value: a given session serialises its statements, different sessions
-   * run in parallel, temp views and the current database stay private, and the metastore is shared.
-   * Omitted → the service's default session.
+   * The caller's own session, as Zeta keys it — `sparkSessionKey(userId, config)`, an identifier
+   * only, never a credential. The service keeps one SparkSession per value: a given session serialises
+   * its statements, different sessions run in parallel, temp views and the current database stay
+   * private, and the metastore is shared. The key carries the request's effective config, because the
+   * service applies `config` per request and never resets what an earlier one set — see
+   * lib/spark-profile.ts. Omitted → the service's default session.
    */
   session?: string
   /**
@@ -630,14 +636,18 @@ export async function fetchSparkJars(access: SparkAccess): Promise<ServerJar[] |
   return out
 }
 
-// Applies the expected config and returns the state the service entered. A 400 is the service
-// rejecting the applied config (a missing jar file, a bad key, …) and is surfaced as a `sql` error
-// — the caller answers 400 with the service's own sentence. Anything else goes through the shared
-// classifier (transport/stopped/starting/auth) and the caller answers "service unreachable".
+// Applies the expected config and returns the state the service entered. The service answers 202 with
+// the state it moved into: `draining` / `restarting` for a change that needs a new environment, and
+// `running` when the applied config needs no restart at all (nothing changed, or only what the
+// running environment already has). All three are a started apply — only the awaited terminal state
+// differs, and the UI decides that by polling the status (§6.1). A 400 is the service rejecting the
+// applied config (a missing jar file, a bad key, …) and is surfaced as a `sql` error — the caller
+// answers 400 with the service's own sentence. Anything else goes through the shared classifier
+// (transport/stopped/starting/auth) and the caller answers "service unreachable".
 export async function applySparkConfig(
   access: SparkAccess,
   body: { entries: Record<string, string>; jars: JarRef[] }
-): Promise<'draining' | 'restarting'> {
+): Promise<'running' | 'draining' | 'restarting'> {
   let res: Response
   try {
     res = await fetch(`${access.url}/admin/config/apply`, {
@@ -659,7 +669,9 @@ export async function applySparkConfig(
   const json = parseJson(text)
   if (res.status === 202) {
     const state = (json as { state?: unknown } | null)?.state
-    if (state === 'draining' || state === 'restarting') return state
+    // `running`: the service took the config without needing a new environment. It is a started
+    // apply like the other two — refusing it here turned the answer into "service unreachable" (§9.3).
+    if (state === 'running' || state === 'draining' || state === 'restarting') return state
     throw new SparkQueryError('The Spark service returned an unexpected response.', 'transport', 'spark_transport')
   }
   if (res.status === 400) {

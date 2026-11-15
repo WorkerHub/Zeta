@@ -15,6 +15,7 @@ import { sealLegacySecret, sealSecret } from '../lib/secrets'
 import { runSetup } from '../lib/setup'
 import { normalizeSparkAccess } from '../lib/spark-access'
 import { SparkQueryError, testSparkConnection } from '../lib/spark-executor'
+import { sparkSessionKey } from '../lib/spark-profile'
 import { requireAdmin } from '../middleware/auth'
 import type { DatabaseRow, Env, UserRow, Variables } from '../types'
 
@@ -321,8 +322,9 @@ async function verifyConnection(
     })
     if (!access.ok) return c.json({ error: access.error }, 400)
     try {
-      // The admin's own session, so the test proves the session their queries will use.
-      const { server_version } = await testSparkConnection(access.access, c.get('userId'))
+      // The admin's own session — the very key a default-config query of theirs uses — so the test
+      // proves the session their queries will use, and leaves no session under a second key behind.
+      const { server_version } = await testSparkConnection(access.access, await sparkSessionKey(c.get('userId'), null))
       return { stored: { ...access.access }, database: access.host, serverVersion: server_version }
     } catch (err) {
       return connectionError(c, err)

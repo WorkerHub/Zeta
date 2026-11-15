@@ -19,8 +19,8 @@ import { now, tables } from './db'
 //     cancel_requested_at IS NULL`) and only a caller that won it may send an engine-side kill, so a
 //     kill can never land on a later execution of the same session;
 //   * only the initiator may cancel: `user_id` is part of every WHERE clause, admins included;
-//   * `handle` (an engine-side address such as the PostgreSQL application_name marker) is never
-//     returned to a client and never logged;
+//   * `handle` (an engine-side address such as the PostgreSQL application_name marker or Spark's
+//     session key) is never returned to a client and never logged;
 //   * rows are pruned by age, so an execution whose request died without finishing cannot pile up.
 
 // How long an execution row is kept after it started. Comfortably longer than any request (the

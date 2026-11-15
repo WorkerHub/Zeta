@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { getMigrations } from '../../lib/migrations'
 import { openSecret, sealSecret } from '../../lib/secrets'
+import { sparkSessionKey } from '../../lib/spark-profile'
 import type { Env } from '../../types'
 import { bearer, callWorker, fakeEnv, postJson } from './fakes'
 import { sqliteD1 } from './sqlite-d1'
@@ -83,8 +84,10 @@ describe('POST /api/admin/databases/test-connection (kind=spark)', () => {
     expect(json).toMatchObject({ ok: true, kind: 'spark', server_version: '3.5.3' })
     expect(typeof json.latency_ms).toBe('number')
     // The address is normalised before the executor sees it: no trailing slash, no query string, and
-    // the admin's own id rides along as the session
-    expect(spark.calls).toEqual([{ url: URL, platform: PLATFORM, app: APP, session: 'a1' }])
+    // the admin's own default-config session rides along
+    expect(spark.calls).toEqual([
+      { url: URL, platform: PLATFORM, app: APP, session: await sparkSessionKey('a1', null) },
+    ])
   })
 
   it('requires both tokens and an https address, without calling the executor', async () => {
@@ -234,7 +237,9 @@ describe('PATCH /api/admin/databases/:id (kind=spark)', () => {
     expect(res.status).toBe(200)
     // Re-saving re-proves the connection in the admin's own session, and the session stays out of the
     // sealed payload (it belongs to the request, not to the registration)
-    expect(spark.calls).toEqual([{ url: `${URL}/spark`, platform: 'new-platform', app: 'new-app', session: 'a1' }])
+    expect(spark.calls).toEqual([
+      { url: `${URL}/spark`, platform: 'new-platform', app: 'new-app', session: await sparkSessionKey('a1', null) },
+    ])
     const sealed = (await listRows(e))[0]!.connection_secret as string
     expect(JSON.parse(await openSecret(e, sealed))).toEqual({
       url: `${URL}/spark`,
