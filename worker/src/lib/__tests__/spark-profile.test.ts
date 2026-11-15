@@ -10,6 +10,7 @@ import {
   MAX_PROFILE_KEY_LENGTH,
   MAX_PROFILE_VALUE_LENGTH,
   parseStoredEntries,
+  sparkSessionKey,
   validateProfileEntries,
 } from '../spark-profile'
 
@@ -185,5 +186,48 @@ describe('loadProfileConfig', () => {
     const { env, app } = envWithDb()
     seed(app)
     await expect(loadProfileConfig(env, 'u1', 'sp1', 'p3')).resolves.toBeNull()
+  })
+})
+
+// The session key is what makes "switch back to the default configuration" work at all: a key that
+// only ever carries the default config can only ever hold Spark's defaults.
+describe('sparkSessionKey', () => {
+  const config = { 'spark.sql.shuffle.partitions': '1000' }
+
+  it('gives the default configuration a key of its own', async () => {
+    await expect(sparkSessionKey('u1', null)).resolves.toBe('zeta:u1:default')
+    // An empty config object is the default one, never a profile of its own
+    await expect(sparkSessionKey('u1', {})).resolves.toBe('zeta:u1:default')
+  })
+
+  it('keys a profile by its effective config, whatever order the entries came in', async () => {
+    const a = await sparkSessionKey('u1', {
+      'spark.sql.shuffle.partitions': '1000',
+      'spark.sql.adaptive.enabled': 'false',
+    })
+    const b = await sparkSessionKey('u1', {
+      'spark.sql.adaptive.enabled': 'false',
+      'spark.sql.shuffle.partitions': '1000',
+    })
+    expect(a).toBe(b)
+    expect(a).toMatch(/^zeta:u1:p[0-9a-f]{16}$/)
+  })
+
+  it('changes the key when a value changes, and drops a key removed from the config', async () => {
+    const first = await sparkSessionKey('u1', config)
+    await expect(sparkSessionKey('u1', { 'spark.sql.shuffle.partitions': '200' })).resolves.not.toBe(first)
+    // A key removed from the profile is a different session, so it cannot linger in the old one
+    await expect(sparkSessionKey('u1', { ...config, 'spark.sql.adaptive.enabled': 'false' })).resolves.not.toBe(first)
+  })
+
+  it('never lets a profile key collide with the default one, and keeps users apart', async () => {
+    const profile = await sparkSessionKey('u1', config)
+    expect(profile).not.toBe(await sparkSessionKey('u1', null))
+    expect(profile).not.toBe(await sparkSessionKey('u2', config))
+  })
+
+  it('stays well inside the service session ceiling', async () => {
+    const longest = await sparkSessionKey('a'.repeat(36), { 'spark.sql.shuffle.partitions': '1000' })
+    expect(longest.length).toBeLessThan(128)
   })
 })

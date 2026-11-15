@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { getMigrations } from '../../lib/migrations'
 import { sealSecret } from '../../lib/secrets'
+import { sparkSessionKey } from '../../lib/spark-profile'
 import type { Env } from '../../types'
 import { bearer, callWorker, fakeEnv, postJson } from './fakes'
 import { sqliteD1 } from './sqlite-d1'
@@ -336,7 +337,7 @@ describe('cancelling a Spark execution', () => {
     // The stack is not passed on as an error, and no error code rides along
     expect(body.error).toBeUndefined()
     expect(body.code).toBeUndefined()
-    expect(spark.cancels).toEqual([{ session: 'u1', execution: EXEC }])
+    expect(spark.cancels).toEqual([{ session: await sparkSessionKey('u1', null), execution: EXEC }])
     expect((spark.opened[0]!.opts as { execution?: string }).execution).toBe(EXEC)
   })
 

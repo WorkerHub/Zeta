@@ -60,6 +60,14 @@ vi.mock('../../lib/spark-executor', async (importOriginal) => {
 const { SPARK_APP_TOKEN_MESSAGE, SPARK_STARTING_MESSAGE, SPARK_STOPPED_MESSAGE, VERIFY_HEALTH } = await import(
   '../../lib/spark-executor'
 )
+const { sparkSessionKey } = await import('../../lib/spark-profile')
+
+// The session a request opens: the caller and the config it carries (lib/spark-profile.ts). The
+// default config has a key no profile request can use, which is what makes switching back to it work.
+const PROFILE_CONFIG = { 'spark.sql.shuffle.partitions': '1000' }
+const DEFAULT_U1 = await sparkSessionKey('u1', null)
+const PROFILE_U1 = await sparkSessionKey('u1', PROFILE_CONFIG)
+const DEFAULT_A1 = await sparkSessionKey('a1', null)
 
 const HOST = 'spark-3f9a.publish.example.dev'
 const PAYLOAD = {
@@ -117,7 +125,7 @@ describe('query a SparkSQL target', () => {
     expect(spark.opened[0]!.runs).toEqual([{ sql: 'SELECT 1 AS n', kind: 'read' }])
     expect(spark.opened[0]!.closed).toBe(true)
     // A query gets the short budget, never the connection check's — and carries the caller's session
-    expect(spark.opened[0]!.opts).toStrictEqual({ session: 'u1' })
+    expect(spark.opened[0]!.opts).toStrictEqual({ session: DEFAULT_U1 })
   })
 
   it('resolves a profileId to the runtime config the session opens with', async () => {
@@ -135,8 +143,8 @@ describe('query a SparkSQL target', () => {
     )
     expect(res.status).toBe(200)
     expect(spark.opened[0]!.opts).toStrictEqual({
-      session: 'u1',
-      config: { 'spark.sql.shuffle.partitions': '1000' },
+      session: PROFILE_U1,
+      config: PROFILE_CONFIG,
     })
   })
 
@@ -154,7 +162,28 @@ describe('query a SparkSQL target', () => {
       await bearer(env, 'u1')
     )
     expect(res.status).toBe(200)
-    expect(spark.opened[0]!.opts).toStrictEqual({ session: 'u1' })
+    expect(spark.opened[0]!.opts).toStrictEqual({ session: DEFAULT_U1 })
+  })
+
+  it('keeps a profile on its own session and returns to the default one after switching back', async () => {
+    const { env, app } = await sparkEnv('read')
+    app.sqlite.exec(`
+      INSERT INTO spark_config_profiles (id, user_id, database_id, name, entries, created_at, updated_at)
+      VALUES ('p1', 'u1', 'sp1', 'mine', '[{"key":"spark.sql.shuffle.partitions","value":"1000"}]', 0, 0)
+    `)
+    const headers = await bearer(env, 'u1')
+    for (const body of [
+      { databaseId: 'sp1', sql: 'SELECT 1' },
+      { databaseId: 'sp1', sql: 'SELECT 1', profileId: 'p1' },
+      { databaseId: 'sp1', sql: 'SELECT 1' },
+      { databaseId: 'sp1', sql: 'SELECT 1', profileId: 'p1' },
+    ]) {
+      spark.queue.push({ results: [{ n: 1 }] })
+      expect((await post(env, '/api/query', body, headers)).status).toBe(200)
+    }
+    const sessions = spark.opened.map((opened) => (opened.opts as { session?: string }).session)
+    // Default, profile, default, profile: two stable keys, and the default one is never the profile's
+    expect(sessions).toEqual([DEFAULT_U1, PROFILE_U1, DEFAULT_U1, PROFILE_U1])
   })
 
   it('surfaces a rejected profile key with its code and key to everyone', async () => {
@@ -275,7 +304,7 @@ describe('query a SparkSQL target', () => {
     expect(body.results[1]!.code).toBeUndefined()
     expect(spark.opened).toHaveLength(1)
     // One session for the whole batch, opened for the caller (here the admin)
-    expect(spark.opened[0]!.opts).toStrictEqual({ session: 'a1' })
+    expect(spark.opened[0]!.opts).toStrictEqual({ session: DEFAULT_A1 })
     expect(spark.opened[0]!.runs).toHaveLength(2)
   })
 
@@ -331,7 +360,7 @@ describe('POST /api/query/probe', () => {
     expect(body).toMatchObject({ ok: true, kind: 'spark' })
     expect(typeof body.latency_ms).toBe('number')
     // The probe opens with the patient budget: 20 s health, 120 s hard cap — plus the caller's session
-    expect(spark.opened[0]!.opts).toStrictEqual({ health: VERIFY_HEALTH, hardCapMs: 120_000, session: 'u1' })
+    expect(spark.opened[0]!.opts).toStrictEqual({ health: VERIFY_HEALTH, hardCapMs: 120_000, session: DEFAULT_U1 })
     expect(spark.opened[0]!.runs).toEqual([{ sql: 'select 1', kind: 'read' }])
     expect(spark.opened[0]!.closed).toBe(true)
   })
@@ -348,8 +377,8 @@ describe('POST /api/query/probe', () => {
     expect(spark.opened[0]!.opts).toStrictEqual({
       health: VERIFY_HEALTH,
       hardCapMs: 120_000,
-      session: 'u1',
-      config: { 'spark.sql.shuffle.partitions': '1000' },
+      session: PROFILE_U1,
+      config: PROFILE_CONFIG,
     })
   })
 

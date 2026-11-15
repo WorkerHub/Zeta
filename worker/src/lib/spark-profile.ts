@@ -124,3 +124,27 @@ export async function loadProfileConfig(
   const entries = parseStoredEntries(row.entries)
   return entries.length ? entriesToConfig(entries) : null
 }
+
+// ── The Spark session one request runs on (§5.1/§9.1) ─────────────────────────────────────────
+// The service applies a request's `config` to the named session on every request and never resets
+// what an earlier request set: a session that once carried a profile keeps those values, and a
+// request that carries no config changes nothing at all — which is exactly the "default
+// configuration" case, so a user switching back to the default used to keep the profile's values
+// until the instance restarted. One session key per effective config is the way back: the default
+// configuration owns a key no profile request can ever use, so it can only ever hold Spark's
+// defaults, and a profile owns a key derived from its own entries, so two profiles can never share
+// a session and a key dropped from a profile cannot linger.
+const SPARK_SESSION_PREFIX = 'zeta:'
+
+export async function sparkSessionKey(userId: string, config: Record<string, string> | null): Promise<string> {
+  if (!config || !Object.keys(config).length) return `${SPARK_SESSION_PREFIX}${userId}:default`
+  // Order-independent: the same entries in another order are the same configuration.
+  const canonical = JSON.stringify(Object.entries(config).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)))
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(canonical))
+  const hex = Array.from(new Uint8Array(digest), (b) => b.toString(16).padStart(2, '0'))
+    .join('')
+    .slice(0, 16)
+  // `:p…` never collides with `:default`, so even a (negligible) digest collision between two
+  // profiles only makes them share a session — each request still applies its own config.
+  return `${SPARK_SESSION_PREFIX}${userId}:p${hex}`
+}

@@ -99,8 +99,9 @@ export const SPARK_CONTEXT_REBUILT_MESSAGE = 'The Spark environment was rebuilt.
 // most 2000 characters, and nothing a user reads needs more than this.
 const MAX_ERROR_CHARS = 1500
 
-// The service's ceiling for the request's `session` field. Zeta sends the caller's user id, which is
-// a 36-character uuid; the check turns a wrong caller into a configuration error here instead of a
+// The service's ceiling for the request's `session` field. Zeta sends its own session key
+// (`zeta:<user id>:default` / `zeta:<user id>:p<hash>`, at most 59 characters — see
+// lib/spark-profile.ts); the check turns a wrong caller into a configuration error here instead of a
 // service 400, which would be classified as a rejected statement and shown as a SQL mistake.
 export const MAX_SESSION_CHARS = 128
 
@@ -199,10 +200,12 @@ export interface SparkOpenOptions {
   hardCapMs?: number
   statementTimeoutMs?: number
   /**
-   * The caller's own session — the Zeta user id: an identifier only, never a credential. The service
-   * keeps one SparkSession per value: a given session serialises its statements, different sessions
-   * run in parallel, temp views and the current database stay private, and the metastore is shared.
-   * Omitted → the service's default session.
+   * The caller's own session, as Zeta keys it — `sparkSessionKey(userId, config)`, an identifier
+   * only, never a credential. The service keeps one SparkSession per value: a given session serialises
+   * its statements, different sessions run in parallel, temp views and the current database stay
+   * private, and the metastore is shared. The key carries the request's effective config, because the
+   * service applies `config` per request and never resets what an earlier one set — see
+   * lib/spark-profile.ts. Omitted → the service's default session.
    */
   session?: string
   /**
