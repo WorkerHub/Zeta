@@ -229,7 +229,9 @@ databases.post('/:id/spark-instance-config/apply', async (c) => {
   if (!access) return c.json({ error: 'The stored connection for this database could not be read.' }, 500)
 
   const expected = await readInstanceConfig(c.env, resolved.db.id)
-  let state: 'draining' | 'restarting'
+  // `running` is a started apply too: the service took the config without needing a restart, and the
+  // UI learns the terminal state by polling the status (§6.1) — it must never read as unreachable.
+  let state: 'running' | 'draining' | 'restarting'
   try {
     state = await applySparkConfig(access, { entries: expected.entries, jars: expected.jars })
   } catch (err) {

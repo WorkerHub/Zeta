@@ -270,8 +270,9 @@ export const sparkProfilesApi = {
 
 // Mounted under /api/databases/:id/spark-instance-config. Reading, saving and applying all require
 // a global admin or an exact `manage` grant on the target (the worker answers 403 otherwise). The
-// expected config is stored by PUT; apply hands that stored config to the service and starts a
-// drain/restart, so the caller polls GET until the status reaches a terminal state.
+// expected config is stored by PUT; apply hands that stored config to the service, which answers
+// whether it started a drain/restart or took the config while staying `running` — either way the
+// caller polls GET until the status reaches a terminal state.
 export const sparkInstanceConfigApi = {
   get: (databaseId: string) => apiFetch<SparkInstanceConfigResponse>(`/databases/${databaseId}/spark-instance-config`),
   save: (databaseId: string, body: { entries: Record<string, string>; jars: JarRef[] }) =>
@@ -280,7 +281,7 @@ export const sparkInstanceConfigApi = {
       body: JSON.stringify(body),
     }),
   apply: (databaseId: string) =>
-    apiFetch<{ state: 'draining' | 'restarting' }>(`/databases/${databaseId}/spark-instance-config/apply`, {
+    apiFetch<{ state: 'running' | 'draining' | 'restarting' }>(`/databases/${databaseId}/spark-instance-config/apply`, {
       method: 'POST',
     }),
 }

@@ -21,7 +21,7 @@ const sparkAdmin = vi.hoisted(() => ({
   serverJars: null as null | Array<{ name: string; sizeBytes: number }>,
   apply: null as
     | null
-    | { state: 'draining' | 'restarting' }
+    | { state: 'running' | 'draining' | 'restarting' }
     | { error: { message: string; kind: 'sql' | 'transport' } },
   applyCalls: [] as Array<{ url: string; body: unknown }>,
 }))
@@ -239,6 +239,17 @@ describe('POST /api/databases/:id/spark-instance-config/apply', () => {
     sparkAdmin.apply = { state: 'restarting' }
     expect((await apply(env, 'sp1', ['a1', 'admin'])).status).toBe(202)
     expect(sparkAdmin.applyCalls[0]!.body).toEqual({ entries: {}, jars: [] })
+  })
+
+  it('returns a 202 running apply as itself, never as an unreachable service', async () => {
+    const { env } = await envWith(null)
+    await put(env, 'sp1', { entries: { 'spark.driver.memory': '4g' }, jars: [] }, ['a1', 'admin'])
+    // Nothing to restart: the service accepted the config and stayed running (§9.3)
+    sparkAdmin.apply = { state: 'running' }
+
+    const res = await apply(env, 'sp1', ['a1', 'admin'])
+    expect(res.status).toBe(202)
+    expect(await res.json()).toEqual({ state: 'running' })
   })
 
   it('surfaces a service rejection as 400 with its own sentence', async () => {
