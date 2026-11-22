@@ -659,7 +659,7 @@ auth.post('/passkey/login/verify', async (c) => {
     }
   }
 
-  let verification
+  let verification: Awaited<ReturnType<typeof verifyAuthenticationResponse>>
   try {
     verification = await verifyAuthenticationResponse({
       response: cred as unknown as Parameters<typeof verifyAuthenticationResponse>[0]['response'],

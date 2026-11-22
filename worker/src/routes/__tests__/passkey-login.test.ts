@@ -106,7 +106,6 @@ describe('POST /api/auth/passkey/login/options', () => {
   it('rejects options request when IP is already locked out from failed logins', async () => {
     const env = fakeEnv()
     // Simulate 21 failed login attempts from this IP
-    const ip = 'unknown'
     for (let i = 0; i < 21; i++) {
       await callWorker(env, '/api/auth/login', postJson({ email: 'any@example.com', password: 'bad' }))
     }
