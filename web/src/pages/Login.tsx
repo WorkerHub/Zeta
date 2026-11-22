@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { Eye, EyeOff, Globe } from 'lucide-react'
+import { Eye, EyeOff, Fingerprint, Globe } from 'lucide-react'
+import { startAuthentication } from '@simplewebauthn/browser'
 import { authApi } from '../lib/api'
 import { useAuthContext } from '../hooks/useAuth'
 import { useLocale } from '../hooks/useLocale'
@@ -18,6 +19,8 @@ export default function Login() {
   const [showPw, setShowPw] = useState(false)
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
+  const [passkeyLoading, setPasskeyLoading] = useState(false)
+  const [passkeyError, setPasskeyError] = useState('')
   const [pending, setPending] = useState<{ pendingToken: string } | null>(null)
   const [registrationEnabled, setRegistrationEnabled] = useState(false)
 
@@ -37,6 +40,7 @@ export default function Login() {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     setError('')
+    setPasskeyError('')
     setLoading(true)
     try {
       const res = await authApi.login({ email, password })
@@ -56,6 +60,29 @@ export default function Login() {
   function handle2faSuccess(token: string, user: User) {
     login(token, user)
     navigate('/query')
+  }
+
+  async function handlePasskeyLogin() {
+    setError('')
+    setPasskeyError('')
+    setPasskeyLoading(true)
+    try {
+      const options = await authApi.passkeyLoginOptions()
+      const result = await startAuthentication({
+        optionsJSON: options as unknown as Parameters<typeof startAuthentication>[0]['optionsJSON'],
+      })
+      const res = await authApi.passkeyLoginVerify(result)
+      login(res.accessToken, res.user)
+      navigate('/query')
+    } catch (err: unknown) {
+      if (err instanceof Error && err.name === 'NotAllowedError') {
+        setPasskeyError(t('errors.passkey_cancelled'))
+      } else {
+        setPasskeyError(err instanceof Error ? err.message : t('errors.passkey_failed'))
+      }
+    } finally {
+      setPasskeyLoading(false)
+    }
   }
 
   return (
@@ -124,10 +151,28 @@ export default function Login() {
 
             {error && <p className="text-body text-danger-600">{error}</p>}
 
-            <button type="submit" className="btn-primary w-full" disabled={loading}>
+            <button type="submit" className="btn-primary w-full" disabled={loading || passkeyLoading}>
               {loading ? t('auth.signing_in') : t('auth.signin')}
             </button>
           </form>
+
+          <div className="my-4 flex items-center gap-3">
+            <div className="h-px flex-1 bg-ink-200" />
+            <span className="text-caption text-ink-400">{t('auth.or')}</span>
+            <div className="h-px flex-1 bg-ink-200" />
+          </div>
+
+          <button
+            type="button"
+            onClick={handlePasskeyLogin}
+            disabled={loading || passkeyLoading}
+            className="btn-secondary w-full"
+          >
+            <Fingerprint size={16} />
+            {passkeyLoading ? t('profile.passkey_waiting') : t('auth.signin_with_passkey')}
+          </button>
+
+          {passkeyError && <p className="text-body text-danger-600 mt-2">{passkeyError}</p>}
 
           <div className="mt-4 flex items-center justify-between text-body">
             <Link

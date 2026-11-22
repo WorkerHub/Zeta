@@ -40,6 +40,8 @@ export const translations: Record<Locale, Record<string, string>> = {
     'auth.reset_success': 'Password reset successfully. You can now sign in.',
     'auth.placeholder_email': 'you@example.com',
     'auth.placeholder_name': 'Your name',
+    'auth.signin_with_passkey': 'Sign in with passkey',
+    'auth.or': 'or',
 
     // 2FA
     '2fa.title': 'Two-factor verification',
@@ -573,6 +575,8 @@ export const translations: Record<Locale, Record<string, string>> = {
     'auth.reset_success': '密码已重置，您现在可以登录了。',
     'auth.placeholder_email': '请输入邮箱',
     'auth.placeholder_name': '你的姓名',
+    'auth.signin_with_passkey': '使用通行密钥登录',
+    'auth.or': '或',
 
     // 2FA
     '2fa.title': '两步验证',
