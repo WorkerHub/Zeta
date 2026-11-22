@@ -1,8 +1,9 @@
-import { useState, useEffect } from 'react'
-import { Save, Loader2, Send, Database } from 'lucide-react'
+import { useState, useEffect, useMemo } from 'react'
+import { Loader2, Send, Database } from 'lucide-react'
 import { adminApi, adminSetupApi, ApiError } from '../../lib/api'
 import { adminSetupErrorKey } from '../../lib/setup'
 import { useLocale } from '../../hooks/useLocale'
+import StickySaveBar from '../../components/StickySaveBar'
 
 type Settings = Record<string, string>
 
@@ -80,6 +81,15 @@ export function AdminSetupCard({ t, upgraded, error, running, onRun }: AdminSetu
   )
 }
 
+interface SettingsBaseline {
+  settings: Settings
+  emailProvider: EmailProvider
+  smtp: SmtpConfig
+  resend: ResendConfig
+  smtpClearSecret: boolean
+  resendClearSecret: boolean
+}
+
 export default function AdminSettings() {
   const { t } = useLocale()
   const [settings, setSettings] = useState<Settings>({})
@@ -91,6 +101,7 @@ export default function AdminSettings() {
   const [smtpClearSecret, setSmtpClearSecret] = useState(false)
   const [resendHasSecret, setResendHasSecret] = useState(false)
   const [resendClearSecret, setResendClearSecret] = useState(false)
+  const [baseline, setBaseline] = useState<SettingsBaseline | null>(null)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
@@ -113,33 +124,84 @@ export default function AdminSettings() {
       .then((cfg) => {
         setSettings(cfg)
         const provider = cfg.email_provider
-        setEmailProvider(provider === 'smtp' || provider === 'resend' ? provider : 'none')
+        const resolvedProvider: EmailProvider = provider === 'smtp' || provider === 'resend' ? provider : 'none'
+        setEmailProvider(resolvedProvider)
+        let loadedSmtp = DEFAULT_SMTP
         if (cfg.smtp_config) {
           try {
             const parsed = JSON.parse(cfg.smtp_config)
             setSmtpHasSecret(Boolean(parsed.password))
-            setSmtp({ ...DEFAULT_SMTP, ...parsed, password: '' })
+            loadedSmtp = { ...DEFAULT_SMTP, ...parsed, password: '' }
+            setSmtp(loadedSmtp)
           } catch {
             /* ignore */
           }
         }
+        let loadedResend = DEFAULT_RESEND
         if (cfg.resend_config) {
           try {
             const parsed = JSON.parse(cfg.resend_config)
             setResendHasSecret(Boolean(parsed.api_key))
-            setResend({ ...DEFAULT_RESEND, ...parsed, api_key: '' })
+            loadedResend = { ...DEFAULT_RESEND, ...parsed, api_key: '' }
+            setResend(loadedResend)
           } catch {
             /* ignore */
           }
         }
+        setBaseline({
+          settings: cfg,
+          emailProvider: resolvedProvider,
+          smtp: loadedSmtp,
+          resend: loadedResend,
+          smtpClearSecret: false,
+          resendClearSecret: false,
+        })
       })
       .finally(() => setLoading(false))
   }, [])
 
-  const set = (key: string, value: string) => setSettings((s) => ({ ...s, [key]: value }))
-  const toggle = (key: string) => set(key, settings[key] === 'true' ? 'false' : 'true')
-  const setSmtpField = (key: keyof SmtpConfig, val: string) => setSmtp((prev) => ({ ...prev, [key]: val }))
-  const setResendField = (key: keyof ResendConfig, val: string) => setResend((prev) => ({ ...prev, [key]: val }))
+  const dirty = useMemo(() => {
+    if (!baseline) return false
+    if (emailProvider !== baseline.emailProvider) return true
+    if (smtpClearSecret !== baseline.smtpClearSecret) return true
+    if (resendClearSecret !== baseline.resendClearSecret) return true
+
+    // Compare general settings excluding email keys
+    const allKeys = new Set([...Object.keys(settings), ...Object.keys(baseline.settings)])
+    for (const k of allKeys) {
+      if (k === 'email_provider' || k === 'smtp_config' || k === 'resend_config') continue
+      if ((settings[k] ?? '') !== (baseline.settings[k] ?? '')) return true
+    }
+
+    // Compare smtp fields
+    for (const k of Object.keys(DEFAULT_SMTP) as (keyof SmtpConfig)[]) {
+      if (smtp[k] !== baseline.smtp[k]) return true
+    }
+
+    // Compare resend fields
+    for (const k of Object.keys(DEFAULT_RESEND) as (keyof ResendConfig)[]) {
+      if (resend[k] !== baseline.resend[k]) return true
+    }
+
+    return false
+  }, [baseline, emailProvider, smtpClearSecret, resendClearSecret, settings, smtp, resend])
+
+  const set = (key: string, value: string) => {
+    setSaved(false)
+    setSettings((s) => ({ ...s, [key]: value }))
+  }
+  const toggle = (key: string) => {
+    setSaved(false)
+    setSettings((s) => ({ ...s, [key]: s[key] === 'true' ? 'false' : 'true' }))
+  }
+  const setSmtpField = (key: keyof SmtpConfig, val: string) => {
+    setSaved(false)
+    setSmtp((prev) => ({ ...prev, [key]: val }))
+  }
+  const setResendField = (key: keyof ResendConfig, val: string) => {
+    setSaved(false)
+    setResend((prev) => ({ ...prev, [key]: val }))
+  }
 
   async function save() {
     setSaving(true)
@@ -177,6 +239,17 @@ export default function AdminSettings() {
         setResendHasSecret(Boolean(resend.api_key))
         setResendClearSecret(false)
       }
+      setSmtp((prev) => ({ ...prev, password: '' }))
+      setResend((prev) => ({ ...prev, api_key: '' }))
+
+      setBaseline({
+        settings,
+        emailProvider,
+        smtp: { ...smtp, password: '' },
+        resend: { ...resend, api_key: '' },
+        smtpClearSecret: false,
+        resendClearSecret: false,
+      })
       setSaved(true)
       setTimeout(() => setSaved(false), 3000)
     } catch (err) {
@@ -226,366 +299,371 @@ export default function AdminSettings() {
   const setupPageEnabled = (settings.setup_page_enabled ?? '1') !== '0'
 
   return (
-    <div className="p-4 sm:p-6 max-w-5xl flex flex-col gap-6">
-      <div className="flex items-center justify-between">
+    <div className="min-h-full flex flex-col justify-between">
+      <div className="p-4 sm:p-6 max-w-5xl w-full mx-auto flex flex-col gap-6 pb-20 sm:pb-24">
         <h1 className="text-title text-ink-950">{t('admin.settings')}</h1>
-        <button type="button" onClick={save} disabled={saving} className="btn-primary gap-2">
-          {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
-          {saved ? t('admin_settings.saved') : t('admin_settings.save_changes')}
-        </button>
-      </div>
 
-      {error && <p className="-mt-3 text-body text-danger-600">{error}</p>}
-
-      <div className="flex flex-col gap-6">
-        {/* General */}
-        <div className="card p-5 space-y-4">
-          <h2 className="text-micro uppercase text-ink-500">{t('admin_settings.general')}</h2>
-          <div>
-            <label htmlFor="settings-app-name" className="label">
-              {t('admin_settings.app_name')}
-            </label>
-            <input
-              id="settings-app-name"
-              type="text"
-              className="input"
-              value={settings.app_name ?? 'Zeta'}
-              onChange={(e) => set('app_name', e.target.value)}
-            />
-          </div>
-          <div className="flex items-center justify-between">
+        <div className="flex flex-col gap-6">
+          {/* General */}
+          <div className="card p-5 space-y-4">
+            <h2 className="text-micro uppercase text-ink-500">{t('admin_settings.general')}</h2>
             <div>
-              <p className="text-body-strong text-ink-900">{t('admin_settings.registration_open')}</p>
-              <p className="text-caption text-ink-500">{t('admin_settings.registration_desc')}</p>
-            </div>
-            <button
-              type="button"
-              role="switch"
-              aria-checked={settings.registration_enabled === 'true'}
-              onClick={() => toggle('registration_enabled')}
-              className="toggle-track"
-            >
-              <span className="toggle-thumb" />
-            </button>
-          </div>
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-body-strong text-ink-900">{t('admin_settings.require_verification')}</p>
-              <p className="text-caption text-ink-500">{t('admin_settings.require_verification_desc')}</p>
-            </div>
-            <button
-              type="button"
-              role="switch"
-              aria-checked={settings.require_email_verification !== 'false'}
-              onClick={() => toggle('require_email_verification')}
-              className="toggle-track"
-            >
-              <span className="toggle-thumb" />
-            </button>
-          </div>
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-body-strong text-ink-900">{t('admin_settings.enforce_2fa')}</p>
-              <p className="text-caption text-ink-500">{t('admin_settings.enforce_2fa_desc')}</p>
-            </div>
-            <button
-              type="button"
-              role="switch"
-              aria-checked={settings.enforce_2fa === 'true'}
-              onClick={() => toggle('enforce_2fa')}
-              className="toggle-track"
-            >
-              <span className="toggle-thumb" />
-            </button>
-          </div>
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-body-strong text-ink-900">{t('admin_settings.setup_page')}</p>
-              <p className="text-caption text-ink-500">{t('admin_settings.setup_page_desc')}</p>
-            </div>
-            <button
-              type="button"
-              role="switch"
-              aria-checked={setupPageEnabled}
-              aria-label={t('admin_settings.setup_page')}
-              onClick={() => set('setup_page_enabled', setupPageEnabled ? '0' : '1')}
-              className="toggle-track"
-            >
-              <span className="toggle-thumb" />
-            </button>
-          </div>
-        </div>
-
-        {/* Database maintenance */}
-        <AdminSetupCard
-          t={t}
-          upgraded={upgradeUpgraded}
-          error={upgradeError}
-          running={upgradeRunning}
-          onRun={() => void handleUpgrade()}
-        />
-
-        {/* Saved query runs */}
-        <div className="card p-5 space-y-4">
-          <h2 className="text-micro uppercase text-ink-500">{t('admin_settings.saved_runs')}</h2>
-          <div>
-            <label htmlFor="settings-run-limit" className="label">
-              {t('admin_settings.run_limit')}
-            </label>
-            <input
-              id="settings-run-limit"
-              type="number"
-              min={1}
-              max={1000}
-              step={1}
-              className="input"
-              value={settings.notebook_run_limit ?? '100'}
-              onChange={(e) => set('notebook_run_limit', e.target.value)}
-            />
-            <p className="text-caption text-ink-500 mt-1 tnum">{t('admin_settings.run_limit_desc')}</p>
-          </div>
-          <div>
-            <label htmlFor="settings-run-quota" className="label">
-              {t('admin_settings.run_quota')}
-            </label>
-            <input
-              id="settings-run-quota"
-              type="number"
-              min={1}
-              max={1024}
-              step={1}
-              className="input"
-              value={settings.run_storage_quota_mb ?? '50'}
-              onChange={(e) => set('run_storage_quota_mb', e.target.value)}
-            />
-            <p className="text-caption text-ink-500 mt-1 tnum">{t('admin_settings.run_quota_desc')}</p>
-          </div>
-        </div>
-
-        {/* Email */}
-        <div className="card p-5 space-y-4">
-          <h2 className="text-micro uppercase text-ink-500">{t('admin_settings.email_provider')}</h2>
-
-          <div className="flex gap-4">
-            {(['none', 'smtp', 'resend'] as EmailProvider[]).map((p) => (
-              <label key={p} className="flex items-center gap-2 cursor-pointer">
-                <input
-                  type="radio"
-                  name="email_provider"
-                  value={p}
-                  checked={emailProvider === p}
-                  onChange={() => setEmailProvider(p)}
-                  className="accent-(--color-brand-600)"
-                />
-                <span className="text-body-strong text-ink-900">
-                  {p === 'none' ? t('admin_settings.provider_none') : p === 'smtp' ? 'SMTP' : 'Resend'}
-                </span>
+              <label htmlFor="settings-app-name" className="label">
+                {t('admin_settings.app_name')}
               </label>
-            ))}
+              <input
+                id="settings-app-name"
+                type="text"
+                className="input"
+                value={settings.app_name ?? 'Zeta'}
+                onChange={(e) => set('app_name', e.target.value)}
+              />
+            </div>
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-body-strong text-ink-900">{t('admin_settings.registration_open')}</p>
+                <p className="text-caption text-ink-500">{t('admin_settings.registration_desc')}</p>
+              </div>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={settings.registration_enabled === 'true'}
+                onClick={() => toggle('registration_enabled')}
+                className="toggle-track"
+              >
+                <span className="toggle-thumb" />
+              </button>
+            </div>
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-body-strong text-ink-900">{t('admin_settings.require_verification')}</p>
+                <p className="text-caption text-ink-500">{t('admin_settings.require_verification_desc')}</p>
+              </div>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={settings.require_email_verification !== 'false'}
+                onClick={() => toggle('require_email_verification')}
+                className="toggle-track"
+              >
+                <span className="toggle-thumb" />
+              </button>
+            </div>
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-body-strong text-ink-900">{t('admin_settings.enforce_2fa')}</p>
+                <p className="text-caption text-ink-500">{t('admin_settings.enforce_2fa_desc')}</p>
+              </div>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={settings.enforce_2fa === 'true'}
+                onClick={() => toggle('enforce_2fa')}
+                className="toggle-track"
+              >
+                <span className="toggle-thumb" />
+              </button>
+            </div>
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-body-strong text-ink-900">{t('admin_settings.setup_page')}</p>
+                <p className="text-caption text-ink-500">{t('admin_settings.setup_page_desc')}</p>
+              </div>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={setupPageEnabled}
+                aria-label={t('admin_settings.setup_page')}
+                onClick={() => set('setup_page_enabled', setupPageEnabled ? '0' : '1')}
+                className="toggle-track"
+              >
+                <span className="toggle-thumb" />
+              </button>
+            </div>
           </div>
 
-          {emailProvider === 'smtp' && (
-            <div className="space-y-3 pt-2 border-t border-ink-200">
-              <div className="grid grid-cols-3 gap-3">
-                <div className="col-span-2">
-                  <label htmlFor="smtp-host" className="label">
-                    {t('admin_settings.smtp_host')}
-                  </label>
+          {/* Database maintenance */}
+          <AdminSetupCard
+            t={t}
+            upgraded={upgradeUpgraded}
+            error={upgradeError}
+            running={upgradeRunning}
+            onRun={() => void handleUpgrade()}
+          />
+
+          {/* Saved query runs */}
+          <div className="card p-5 space-y-4">
+            <h2 className="text-micro uppercase text-ink-500">{t('admin_settings.saved_runs')}</h2>
+            <div>
+              <label htmlFor="settings-run-limit" className="label">
+                {t('admin_settings.run_limit')}
+              </label>
+              <input
+                id="settings-run-limit"
+                type="number"
+                min={1}
+                max={1000}
+                step={1}
+                className="input"
+                value={settings.notebook_run_limit ?? '100'}
+                onChange={(e) => set('notebook_run_limit', e.target.value)}
+              />
+              <p className="text-caption text-ink-500 mt-1 tnum">{t('admin_settings.run_limit_desc')}</p>
+            </div>
+            <div>
+              <label htmlFor="settings-run-quota" className="label">
+                {t('admin_settings.run_quota')}
+              </label>
+              <input
+                id="settings-run-quota"
+                type="number"
+                min={1}
+                max={1024}
+                step={1}
+                className="input"
+                value={settings.run_storage_quota_mb ?? '50'}
+                onChange={(e) => set('run_storage_quota_mb', e.target.value)}
+              />
+              <p className="text-caption text-ink-500 mt-1 tnum">{t('admin_settings.run_quota_desc')}</p>
+            </div>
+          </div>
+
+          {/* Email */}
+          <div className="card p-5 space-y-4">
+            <h2 className="text-micro uppercase text-ink-500">{t('admin_settings.email_provider')}</h2>
+
+            <div className="flex gap-4">
+              {(['none', 'smtp', 'resend'] as EmailProvider[]).map((p) => (
+                <label key={p} className="flex items-center gap-2 cursor-pointer">
                   <input
-                    id="smtp-host"
-                    type="text"
-                    className="input"
-                    value={smtp.host}
-                    onChange={(e) => setSmtpField('host', e.target.value)}
-                    placeholder="smtp.example.com"
+                    type="radio"
+                    name="email_provider"
+                    value={p}
+                    checked={emailProvider === p}
+                    onChange={() => {
+                      setSaved(false)
+                      setEmailProvider(p)
+                    }}
+                    className="accent-(--color-brand-600)"
                   />
+                  <span className="text-body-strong text-ink-900">
+                    {p === 'none' ? t('admin_settings.provider_none') : p === 'smtp' ? 'SMTP' : 'Resend'}
+                  </span>
+                </label>
+              ))}
+            </div>
+
+            {emailProvider === 'smtp' && (
+              <div className="space-y-3 pt-2 border-t border-ink-200">
+                <div className="grid grid-cols-3 gap-3">
+                  <div className="col-span-2">
+                    <label htmlFor="smtp-host" className="label">
+                      {t('admin_settings.smtp_host')}
+                    </label>
+                    <input
+                      id="smtp-host"
+                      type="text"
+                      className="input"
+                      value={smtp.host}
+                      onChange={(e) => setSmtpField('host', e.target.value)}
+                      placeholder="smtp.example.com"
+                    />
+                  </div>
+                  <div>
+                    <label htmlFor="smtp-port" className="label">
+                      {t('admin_settings.smtp_port')}
+                    </label>
+                    <input
+                      id="smtp-port"
+                      type="number"
+                      className="input"
+                      value={smtp.port}
+                      onChange={(e) => setSmtpField('port', e.target.value)}
+                    />
+                  </div>
                 </div>
-                <div>
-                  <label htmlFor="smtp-port" className="label">
-                    {t('admin_settings.smtp_port')}
-                  </label>
-                  <input
-                    id="smtp-port"
-                    type="number"
-                    className="input"
-                    value={smtp.port}
-                    onChange={(e) => setSmtpField('port', e.target.value)}
-                  />
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label htmlFor="smtp-username" className="label">
+                      {t('admin_settings.smtp_username')}
+                    </label>
+                    <input
+                      id="smtp-username"
+                      type="text"
+                      className="input"
+                      value={smtp.username}
+                      onChange={(e) => setSmtpField('username', e.target.value)}
+                      autoComplete="off"
+                    />
+                  </div>
+                  <div>
+                    <label htmlFor="smtp-password" className="label">
+                      {t('admin_settings.smtp_password')}
+                    </label>
+                    <input
+                      id="smtp-password"
+                      type="password"
+                      className="input"
+                      value={smtp.password}
+                      onChange={(e) => {
+                        setSmtpField('password', e.target.value)
+                        if (e.target.value) setSmtpClearSecret(false)
+                      }}
+                      autoComplete="off"
+                      placeholder={
+                        smtpClearSecret
+                          ? t('admin_settings.secret_will_clear')
+                          : smtpHasSecret
+                            ? t('admin_settings.keep_existing')
+                            : ''
+                      }
+                    />
+                    {smtpHasSecret && !smtpClearSecret && !smtp.password && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSaved(false)
+                          setSmtpClearSecret(true)
+                        }}
+                        className="mt-1 text-caption text-ink-500 hover:text-danger-600 transition-colors duration-(--duration-base)"
+                      >
+                        {t('admin_settings.clear_secret')}
+                      </button>
+                    )}
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label htmlFor="smtp-from" className="label">
+                      {t('admin_settings.from_address')}
+                    </label>
+                    <input
+                      id="smtp-from"
+                      type="email"
+                      className="input"
+                      value={smtp.from}
+                      onChange={(e) => setSmtpField('from', e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <label htmlFor="smtp-from-name" className="label">
+                      {t('admin_settings.from_name')}
+                    </label>
+                    <input
+                      id="smtp-from-name"
+                      type="text"
+                      className="input"
+                      value={smtp.from_name}
+                      onChange={(e) => setSmtpField('from_name', e.target.value)}
+                    />
+                  </div>
                 </div>
               </div>
-              <div className="grid grid-cols-2 gap-3">
+            )}
+
+            {emailProvider === 'resend' && (
+              <div className="space-y-3 pt-2 border-t border-ink-200">
                 <div>
-                  <label htmlFor="smtp-username" className="label">
-                    {t('admin_settings.smtp_username')}
+                  <label htmlFor="resend-api-key" className="label">
+                    {t('admin_settings.resend_api_key')}
                   </label>
                   <input
-                    id="smtp-username"
-                    type="text"
-                    className="input"
-                    value={smtp.username}
-                    onChange={(e) => setSmtpField('username', e.target.value)}
-                    autoComplete="off"
-                  />
-                </div>
-                <div>
-                  <label htmlFor="smtp-password" className="label">
-                    {t('admin_settings.smtp_password')}
-                  </label>
-                  <input
-                    id="smtp-password"
+                    id="resend-api-key"
                     type="password"
-                    className="input"
-                    value={smtp.password}
+                    className="input font-mono"
+                    value={resend.api_key}
                     onChange={(e) => {
-                      setSmtpField('password', e.target.value)
-                      if (e.target.value) setSmtpClearSecret(false)
+                      setResendField('api_key', e.target.value)
+                      if (e.target.value) setResendClearSecret(false)
                     }}
-                    autoComplete="off"
                     placeholder={
-                      smtpClearSecret
+                      resendClearSecret
                         ? t('admin_settings.secret_will_clear')
-                        : smtpHasSecret
+                        : resendHasSecret
                           ? t('admin_settings.keep_existing')
-                          : ''
+                          : 're_xxxxxxxxxxxx'
                     }
+                    autoComplete="off"
                   />
-                  {smtpHasSecret && !smtpClearSecret && !smtp.password && (
+                  {resendHasSecret && !resendClearSecret && !resend.api_key && (
                     <button
                       type="button"
-                      onClick={() => setSmtpClearSecret(true)}
+                      onClick={() => {
+                        setSaved(false)
+                        setResendClearSecret(true)
+                      }}
                       className="mt-1 text-caption text-ink-500 hover:text-danger-600 transition-colors duration-(--duration-base)"
                     >
                       {t('admin_settings.clear_secret')}
                     </button>
                   )}
                 </div>
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label htmlFor="smtp-from" className="label">
-                    {t('admin_settings.from_address')}
-                  </label>
-                  <input
-                    id="smtp-from"
-                    type="email"
-                    className="input"
-                    value={smtp.from}
-                    onChange={(e) => setSmtpField('from', e.target.value)}
-                  />
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label htmlFor="resend-from" className="label">
+                      {t('admin_settings.from_address')}
+                    </label>
+                    <input
+                      id="resend-from"
+                      type="email"
+                      className="input"
+                      value={resend.from}
+                      onChange={(e) => setResendField('from', e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <label htmlFor="resend-from-name" className="label">
+                      {t('admin_settings.from_name')}
+                    </label>
+                    <input
+                      id="resend-from-name"
+                      type="text"
+                      className="input"
+                      value={resend.from_name}
+                      onChange={(e) => setResendField('from_name', e.target.value)}
+                    />
+                  </div>
                 </div>
-                <div>
-                  <label htmlFor="smtp-from-name" className="label">
-                    {t('admin_settings.from_name')}
-                  </label>
-                  <input
-                    id="smtp-from-name"
-                    type="text"
-                    className="input"
-                    value={smtp.from_name}
-                    onChange={(e) => setSmtpField('from_name', e.target.value)}
-                  />
-                </div>
               </div>
-            </div>
-          )}
+            )}
+          </div>
 
-          {emailProvider === 'resend' && (
-            <div className="space-y-3 pt-2 border-t border-ink-200">
+          {/* Test Email */}
+          {emailProvider !== 'none' && (
+            <div className="card p-5 space-y-4">
+              <h2 className="text-micro uppercase text-ink-500">{t('admin_settings.test_email')}</h2>
               <div>
-                <label htmlFor="resend-api-key" className="label">
-                  {t('admin_settings.resend_api_key')}
+                <label htmlFor="test-email-to" className="label">
+                  {t('admin_settings.test_email_address')}
                 </label>
                 <input
-                  id="resend-api-key"
-                  type="password"
-                  className="input font-mono"
-                  value={resend.api_key}
-                  onChange={(e) => {
-                    setResendField('api_key', e.target.value)
-                    if (e.target.value) setResendClearSecret(false)
-                  }}
-                  placeholder={
-                    resendClearSecret
-                      ? t('admin_settings.secret_will_clear')
-                      : resendHasSecret
-                        ? t('admin_settings.keep_existing')
-                        : 're_xxxxxxxxxxxx'
-                  }
-                  autoComplete="off"
+                  id="test-email-to"
+                  type="email"
+                  className="input"
+                  value={testEmailTo}
+                  onChange={(e) => setTestEmailTo(e.target.value)}
+                  placeholder="user@example.com"
                 />
-                {resendHasSecret && !resendClearSecret && !resend.api_key && (
-                  <button
-                    type="button"
-                    onClick={() => setResendClearSecret(true)}
-                    className="mt-1 text-caption text-ink-500 hover:text-danger-600 transition-colors duration-(--duration-base)"
-                  >
-                    {t('admin_settings.clear_secret')}
-                  </button>
-                )}
               </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label htmlFor="resend-from" className="label">
-                    {t('admin_settings.from_address')}
-                  </label>
-                  <input
-                    id="resend-from"
-                    type="email"
-                    className="input"
-                    value={resend.from}
-                    onChange={(e) => setResendField('from', e.target.value)}
-                  />
-                </div>
-                <div>
-                  <label htmlFor="resend-from-name" className="label">
-                    {t('admin_settings.from_name')}
-                  </label>
-                  <input
-                    id="resend-from-name"
-                    type="text"
-                    className="input"
-                    value={resend.from_name}
-                    onChange={(e) => setResendField('from_name', e.target.value)}
-                  />
-                </div>
+              <div className="flex items-center gap-3">
+                <button
+                  type="button"
+                  onClick={handleTestEmail}
+                  disabled={testEmailLoading || !testEmailTo}
+                  className="btn-primary gap-2"
+                >
+                  {testEmailLoading ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
+                  {t('admin_settings.test_email')}
+                </button>
+                {testEmailMsg && <span className="text-body text-success-600">{testEmailMsg}</span>}
+                {testEmailError && <span className="text-body text-danger-600">{testEmailError}</span>}
               </div>
             </div>
           )}
         </div>
-
-        {/* Test Email */}
-        {emailProvider !== 'none' && (
-          <div className="card p-5 space-y-4">
-            <h2 className="text-micro uppercase text-ink-500">{t('admin_settings.test_email')}</h2>
-            <div>
-              <label htmlFor="test-email-to" className="label">
-                {t('admin_settings.test_email_address')}
-              </label>
-              <input
-                id="test-email-to"
-                type="email"
-                className="input"
-                value={testEmailTo}
-                onChange={(e) => setTestEmailTo(e.target.value)}
-                placeholder="user@example.com"
-              />
-            </div>
-            <div className="flex items-center gap-3">
-              <button
-                type="button"
-                onClick={handleTestEmail}
-                disabled={testEmailLoading || !testEmailTo}
-                className="btn-primary gap-2"
-              >
-                {testEmailLoading ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
-                {t('admin_settings.test_email')}
-              </button>
-              {testEmailMsg && <span className="text-body text-success-600">{testEmailMsg}</span>}
-              {testEmailError && <span className="text-body text-danger-600">{testEmailError}</span>}
-            </div>
-          </div>
-        )}
       </div>
+
+      <StickySaveBar dirty={dirty} saving={saving} saved={saved} error={error} onSave={() => void save()} />
     </div>
   )
 }
