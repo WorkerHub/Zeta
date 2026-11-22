@@ -22,6 +22,11 @@ import {
   reset2faAttempts,
   checkEmailRateLimit,
   checkRegisterRateLimit,
+  checkPasskeyLoginOptionsRateLimit,
+  beginPasskeyLoginAttempt,
+  checkAccountLoginRateLimit,
+  parseUserHandle,
+  extractChallengeFromClientData,
 } from '../lib/auth'
 import { sendEmail, buildVerificationEmail, buildPasswordResetEmail, buildOtpEmail } from '../lib/email'
 import { verifyTotpCode, decryptTotpSecret } from '../lib/totp'
@@ -562,6 +567,136 @@ auth.post('/2fa/passkey/verify', async (c) => {
   setRefreshCookie(c, refreshToken, isSecure(c))
 
   c.executionCtx.waitUntil(audit(c.env, { userId: user.id, action: 'login_2fa_passkey', ip: clientIp(c) }))
+  return c.json({ accessToken, user: { id: user.id, email: user.email, name: user.name, role: user.role } })
+})
+
+// ── 无密码 Passkey 登录（可发现凭证 + 免账号登录） ─────────────────────────
+
+// POST /api/auth/passkey/login/options
+auth.post('/passkey/login/options', async (c) => {
+  const ip = clientIp(c)
+  if (!(await checkPasskeyLoginOptionsRateLimit(c.env, ip))) {
+    return c.json({ error: 'Too many requests. Try again later.' }, 429)
+  }
+
+  const options = await generateAuthenticationOptions({
+    rpID: resolveRpID(c),
+    userVerification: 'required',
+  })
+
+  await c.env.KV.put(KV.passkeyLoginChallenge(options.challenge), options.challenge, { expirationTtl: 300 })
+  return c.json(options)
+})
+
+// POST /api/auth/passkey/login/verify
+auth.post('/passkey/login/verify', async (c) => {
+  const ip = clientIp(c)
+  if (!(await beginPasskeyLoginAttempt(c.env, ip))) {
+    return c.json({ error: 'Too many login attempts. Try again later.' }, 429)
+  }
+
+  const body = await c.req.json<Record<string, unknown>>().catch(() => null)
+  if (!body || typeof body !== 'object' || Array.isArray(body)) {
+    return c.json({ error: 'Invalid request body' }, 400)
+  }
+
+  const cred = (
+    body.credential && typeof body.credential === 'object' && !Array.isArray(body.credential) ? body.credential : body
+  ) as Record<string, unknown>
+
+  const resp = (cred.response && typeof cred.response === 'object' ? cred.response : {}) as Record<string, unknown>
+  const clientDataJSON = typeof resp.clientDataJSON === 'string' ? resp.clientDataJSON : ''
+  const rawChallenge =
+    (typeof body.challenge === 'string' && body.challenge.trim()
+      ? body.challenge.trim()
+      : typeof cred.challenge === 'string' && cred.challenge.trim()
+        ? cred.challenge.trim()
+        : null) ?? extractChallengeFromClientData(clientDataJSON)
+
+  if (!rawChallenge) {
+    return c.json({ error: 'Invalid credentials' }, 401)
+  }
+
+  const expectedChallenge = await c.env.KV.get(KV.passkeyLoginChallenge(rawChallenge))
+  if (!expectedChallenge) {
+    return c.json({ error: 'Invalid credentials' }, 401)
+  }
+  await c.env.KV.delete(KV.passkeyLoginChallenge(rawChallenge))
+
+  const credentialId = typeof cred.id === 'string' ? cred.id.trim() : ''
+  if (!credentialId) {
+    return c.json({ error: 'Invalid credentials' }, 401)
+  }
+
+  const T = tables(c.env)
+  const storedCred = await c.env.DB.prepare(
+    `SELECT id, user_id, credential_id, public_key, sign_count FROM ${T.passkey_credentials} WHERE credential_id = ?1`
+  )
+    .bind(credentialId)
+    .first<PasskeyCredentialRow>()
+
+  if (!storedCred) {
+    return c.json({ error: 'Invalid credentials' }, 401)
+  }
+
+  const user = await c.env.DB.prepare(`SELECT * FROM ${T.users} WHERE id = ?1`)
+    .bind(storedCred.user_id)
+    .first<UserRow>()
+
+  if (!user) {
+    return c.json({ error: 'Invalid credentials' }, 401)
+  }
+
+  if (!(await checkAccountLoginRateLimit(c.env, user.email))) {
+    return c.json({ error: 'Too many login attempts. Try again later.' }, 429)
+  }
+
+  const rawUserHandle = resp.userHandle ?? cred.userHandle ?? body.userHandle
+  if (rawUserHandle !== undefined && rawUserHandle !== null && rawUserHandle !== '') {
+    const parsedUserId = parseUserHandle(rawUserHandle)
+    if (parsedUserId === null || parsedUserId !== user.id) {
+      return c.json({ error: 'Invalid credentials' }, 401)
+    }
+  }
+
+  let verification
+  try {
+    verification = await verifyAuthenticationResponse({
+      response: cred as unknown as Parameters<typeof verifyAuthenticationResponse>[0]['response'],
+      expectedChallenge,
+      expectedOrigin: resolveAppOrigin(c),
+      expectedRPID: resolveRpID(c),
+      credential: {
+        id: storedCred.credential_id,
+        publicKey: isoBase64URL.toBuffer(storedCred.public_key),
+        counter: storedCred.sign_count,
+      },
+      requireUserVerification: true,
+    })
+  } catch {
+    return c.json({ error: 'Invalid credentials' }, 401)
+  }
+
+  if (!verification.verified || !verification.authenticationInfo) {
+    return c.json({ error: 'Invalid credentials' }, 401)
+  }
+
+  await c.env.DB.prepare(`UPDATE ${T.passkey_credentials} SET sign_count = ?1 WHERE id = ?2`)
+    .bind(verification.authenticationInfo.newCounter, storedCred.id)
+    .run()
+
+  await loginAttemptSucceeded(c.env, ip, user.email)
+
+  const requireVerify = await getSetting(c.env, 'require_email_verification')
+  if (requireVerify !== 'false' && user.email_verified === 0) {
+    return c.json({ error: 'Please verify your email before logging in.' }, 403)
+  }
+
+  const accessToken = await createAccessToken(user.id, user.role, c.env)
+  const refreshToken = await createRefreshToken(user.id, c.env)
+  setRefreshCookie(c, refreshToken, isSecure(c))
+
+  c.executionCtx.waitUntil(audit(c.env, { userId: user.id, action: 'login_passkey', ip }))
   return c.json({ accessToken, user: { id: user.id, email: user.email, name: user.name, role: user.role } })
 })
 

@@ -14,6 +14,12 @@ export type DbHandler = (sql: string, args: unknown[]) => unknown
 function rateLimitTable() {
   const rows = new Map<string, { count: number; expires_at: number }>()
   const exec = (sql: string, args: unknown[]): unknown => {
+    if (sql.startsWith('SELECT count')) {
+      const [key, ts] = args as [string, number]
+      const row = rows.get(key)
+      if (row && row.expires_at > ts) return { count: row.count }
+      return null
+    }
     if (sql.startsWith('INSERT INTO')) {
       const [key, expiresAt, ts] = args as [string, number, number]
       const row = rows.get(key)

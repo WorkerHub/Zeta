@@ -264,7 +264,7 @@ profile.post('/passkey/register/options', async (c) => {
     rpID: resolveRpID(c),
     userID: new TextEncoder().encode(user.id) as Uint8Array<ArrayBuffer>,
     userName: user.email,
-    userDisplayName: user.name,
+    userDisplayName: user.name || user.email,
     excludeCredentials: existingCredentials.results.map((r) => ({
       id: r.credential_id,
     })),
