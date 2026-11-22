@@ -54,11 +54,17 @@ describe('StickySaveBar', () => {
     expect(html).toContain('text-danger-600')
   })
 
-  it('contains sticky bar and bottom safe area positioning classes', () => {
+  it('contains sticky bar and bottom safe area positioning classes with localized aria-label', () => {
     const html = renderStatic()
     expect(html).toContain('sticky bottom-0')
     expect(html).toContain('z-(--z-sticky-bar)')
     expect(html).toContain('safe-b')
+    expect(html).toContain(`aria-label="${t('admin_settings.save_bar')}"`)
+  })
+
+  it('supports custom aria-label', () => {
+    const html = renderStatic({ ariaLabel: 'Custom save controls' })
+    expect(html).toContain('aria-label="Custom save controls"')
   })
 
   it('supports Chinese locale labels', () => {

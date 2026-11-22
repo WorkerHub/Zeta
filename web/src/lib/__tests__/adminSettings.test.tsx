@@ -3,7 +3,7 @@ import { describe, it, expect, afterEach, beforeEach, vi } from 'vitest'
 import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react'
 import AdminSettings from '../../pages/admin/AdminSettings'
 import { adminApi } from '../api'
-import { setLocale } from '../translations'
+import { setLocale, t } from '../translations'
 
 vi.mock('../api', () => ({
   adminApi: {
@@ -60,8 +60,8 @@ describe('AdminSettings sticky save bar integration', () => {
     const saveButtons = screen.getAllByRole('button', { name: /Save changes/i })
     expect(saveButtons).toHaveLength(1)
 
-    // Save bar is at the bottom with sticky styling
-    const saveBarRegion = screen.getByRole('region', { name: 'Save bar' })
+    // Save bar is at the bottom with sticky styling and localized aria-label
+    const saveBarRegion = screen.getByRole('region', { name: t('admin_settings.save_bar') })
     expect(saveBarRegion.className).toContain('sticky bottom-0')
     expect(saveBarRegion.className).toContain('z-(--z-sticky-bar)')
   })
@@ -139,5 +139,71 @@ describe('AdminSettings sticky save bar integration', () => {
 
     // Button is still enabled so user can retry
     expect((saveButton as HTMLButtonElement).disabled).toBe(false)
+  })
+
+  it('immediately clears saved state when editing within 3s after saving', async () => {
+    vi.mocked(adminApi.updateSettings).mockResolvedValue(undefined as never)
+
+    render(<AdminSettings />)
+
+    await waitFor(() => {
+      expect(screen.queryByText('Loading…')).toBeNull()
+    })
+
+    const appNameInput = screen.getByLabelText('App name')
+    fireEvent.change(appNameInput, { target: { value: 'Zeta Enterprise' } })
+
+    const saveButton = screen.getByRole('button', { name: 'Save changes' })
+    fireEvent.click(saveButton)
+
+    await waitFor(() => {
+      expect(screen.getByText('Saved!')).toBeDefined()
+    })
+
+    // Edit field immediately while saved status is still active
+    fireEvent.change(appNameInput, { target: { value: 'Zeta Next' } })
+
+    // "Saved!" label must be cleared immediately and replaced with "Unsaved changes"
+    expect(screen.queryByText('Saved!')).toBeNull()
+    expect(screen.getByText('Unsaved changes')).toBeDefined()
+    expect((saveButton as HTMLButtonElement).disabled).toBe(false)
+  })
+
+  it('preserves concurrent edits made during in-flight save round-trip', async () => {
+    let resolveUpdate: () => void
+    const updatePromise = new Promise<void>((resolve) => {
+      resolveUpdate = resolve
+    })
+    vi.mocked(adminApi.updateSettings).mockImplementation(() => updatePromise as never)
+
+    render(<AdminSettings />)
+
+    await waitFor(() => {
+      expect(screen.queryByText('Loading…')).toBeNull()
+    })
+
+    // Switch to SMTP
+    const smtpRadio = screen.getByLabelText('SMTP')
+    fireEvent.click(smtpRadio)
+
+    const hostInput = screen.getByLabelText('SMTP host')
+    fireEvent.change(hostInput, { target: { value: 'smtp.initial.com' } })
+
+    const saveButton = screen.getByRole('button', { name: 'Save changes' }) as HTMLButtonElement
+    fireEvent.click(saveButton)
+    expect(saveButton.disabled).toBe(true)
+
+    // Concurrently edit host while save request is in flight
+    fireEvent.change(hostInput, { target: { value: 'smtp.concurrent.com' } })
+
+    // Request finishes
+    resolveUpdate!()
+    await waitFor(() => {
+      expect((hostInput as HTMLInputElement).value).toBe('smtp.concurrent.com')
+    })
+
+    // The concurrent edit is retained and dirty status correctly reflects remaining unsaved changes
+    expect(screen.getByText('Unsaved changes')).toBeDefined()
+    expect(saveButton.disabled).toBe(false)
   })
 })

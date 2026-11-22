@@ -11,6 +11,7 @@ export interface StickySaveBarProps {
   unsavedText?: string
   savedText?: string
   savingText?: string
+  ariaLabel?: string
   className?: string
 }
 
@@ -24,6 +25,7 @@ export default function StickySaveBar({
   unsavedText,
   savedText,
   savingText,
+  ariaLabel,
   className = '',
 }: StickySaveBarProps) {
   const { t } = useLocale()
@@ -32,10 +34,11 @@ export default function StickySaveBar({
   const resolvedUnsavedText = unsavedText ?? t('admin_settings.unsaved_changes')
   const resolvedSavedText = savedText ?? t('admin_settings.all_saved')
   const resolvedSavingText = savingText ?? t('auth.saving')
+  const resolvedAriaLabel = ariaLabel ?? t('admin_settings.save_bar')
 
   return (
     <section
-      aria-label="Save bar"
+      aria-label={resolvedAriaLabel}
       className={`sticky bottom-0 z-(--z-sticky-bar) w-full bg-ink-0/95 backdrop-blur-sm border-t border-ink-200 safe-b shadow-xs ${className}`}
     >
       <div className="max-w-5xl mx-auto px-4 sm:px-6 py-3 flex items-center justify-between gap-4">
@@ -50,7 +53,7 @@ export default function StickySaveBar({
               <Loader2 size={14} className="animate-spin shrink-0" />
               <span>{resolvedSavingText}</span>
             </div>
-          ) : saved ? (
+          ) : saved && !dirty ? (
             <div className="flex items-center gap-1.5 text-success-600 text-caption sm:text-body font-medium">
               <Check size={15} className="shrink-0 animate-success-pop" />
               <span>{t('admin_settings.saved')}</span>

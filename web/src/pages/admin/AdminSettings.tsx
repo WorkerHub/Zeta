@@ -186,10 +186,22 @@ export default function AdminSettings() {
     return false
   }, [baseline, emailProvider, smtpClearSecret, resendClearSecret, settings, smtp, resend])
 
-  const set = (key: string, value: string) => setSettings((s) => ({ ...s, [key]: value }))
-  const toggle = (key: string) => set(key, settings[key] === 'true' ? 'false' : 'true')
-  const setSmtpField = (key: keyof SmtpConfig, val: string) => setSmtp((prev) => ({ ...prev, [key]: val }))
-  const setResendField = (key: keyof ResendConfig, val: string) => setResend((prev) => ({ ...prev, [key]: val }))
+  const set = (key: string, value: string) => {
+    setSaved(false)
+    setSettings((s) => ({ ...s, [key]: value }))
+  }
+  const toggle = (key: string) => {
+    setSaved(false)
+    setSettings((s) => ({ ...s, [key]: s[key] === 'true' ? 'false' : 'true' }))
+  }
+  const setSmtpField = (key: keyof SmtpConfig, val: string) => {
+    setSaved(false)
+    setSmtp((prev) => ({ ...prev, [key]: val }))
+  }
+  const setResendField = (key: keyof ResendConfig, val: string) => {
+    setSaved(false)
+    setResend((prev) => ({ ...prev, [key]: val }))
+  }
 
   async function save() {
     setSaving(true)
@@ -227,16 +239,14 @@ export default function AdminSettings() {
         setResendHasSecret(Boolean(resend.api_key))
         setResendClearSecret(false)
       }
-      const nextSmtp = { ...smtp, password: '' }
-      const nextResend = { ...resend, api_key: '' }
-      setSmtp(nextSmtp)
-      setResend(nextResend)
+      setSmtp((prev) => ({ ...prev, password: '' }))
+      setResend((prev) => ({ ...prev, api_key: '' }))
 
       setBaseline({
         settings,
         emailProvider,
-        smtp: nextSmtp,
-        resend: nextResend,
+        smtp: { ...smtp, password: '' },
+        resend: { ...resend, api_key: '' },
         smtpClearSecret: false,
         resendClearSecret: false,
       })
@@ -430,7 +440,10 @@ export default function AdminSettings() {
                     name="email_provider"
                     value={p}
                     checked={emailProvider === p}
-                    onChange={() => setEmailProvider(p)}
+                    onChange={() => {
+                      setSaved(false)
+                      setEmailProvider(p)
+                    }}
                     className="accent-(--color-brand-600)"
                   />
                   <span className="text-body-strong text-ink-900">
@@ -508,7 +521,10 @@ export default function AdminSettings() {
                     {smtpHasSecret && !smtpClearSecret && !smtp.password && (
                       <button
                         type="button"
-                        onClick={() => setSmtpClearSecret(true)}
+                        onClick={() => {
+                          setSaved(false)
+                          setSmtpClearSecret(true)
+                        }}
                         className="mt-1 text-caption text-ink-500 hover:text-danger-600 transition-colors duration-(--duration-base)"
                       >
                         {t('admin_settings.clear_secret')}
@@ -572,7 +588,10 @@ export default function AdminSettings() {
                   {resendHasSecret && !resendClearSecret && !resend.api_key && (
                     <button
                       type="button"
-                      onClick={() => setResendClearSecret(true)}
+                      onClick={() => {
+                        setSaved(false)
+                        setResendClearSecret(true)
+                      }}
                       className="mt-1 text-caption text-ink-500 hover:text-danger-600 transition-colors duration-(--duration-base)"
                     >
                       {t('admin_settings.clear_secret')}
