@@ -10,6 +10,7 @@ import {
   Sun,
   Moon,
   User as UserIcon,
+  Shield,
   Info,
   LogOut,
 } from 'lucide-react'
@@ -137,7 +138,10 @@ export default function AdminLayout() {
                   <p className="text-caption text-ink-500 truncate">{user?.email}</p>
                 </div>
                 <Link to="/profile" onClick={() => setShowUserMenu(false)} className={menuItemClass}>
-                  <UserIcon size={14} /> {t('user.profile_security')}
+                  <UserIcon size={14} /> {t('user.profile')}
+                </Link>
+                <Link to="/security" onClick={() => setShowUserMenu(false)} className={menuItemClass}>
+                  <Shield size={14} /> {t('user.security')}
                 </Link>
                 <Link to="/query" onClick={() => setShowUserMenu(false)} className={menuItemClass}>
                   <Database size={14} /> {t('user.query_panel')}
