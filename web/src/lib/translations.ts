@@ -395,6 +395,8 @@ export const translations: Record<Locale, Record<string, string>> = {
     // Admin Settings
     'admin_settings.save_changes': 'Save changes',
     'admin_settings.saved': 'Saved!',
+    'admin_settings.all_saved': 'Saved',
+    'admin_settings.unsaved_changes': 'Unsaved changes',
     'admin_settings.general': 'General',
     'admin_settings.app_name': 'App name',
     'admin_settings.registration_open': 'Registration open',
@@ -908,6 +910,8 @@ export const translations: Record<Locale, Record<string, string>> = {
     // Admin Settings
     'admin_settings.save_changes': '保存更改',
     'admin_settings.saved': '已保存！',
+    'admin_settings.all_saved': '已保存',
+    'admin_settings.unsaved_changes': '有未保存更改',
     'admin_settings.general': '通用',
     'admin_settings.app_name': '应用名称',
     'admin_settings.registration_open': '开放注册',
