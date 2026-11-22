@@ -89,9 +89,6 @@ export default function App() {
                 <Route path="/security" element={<SecurityPage />} />
               </Route>
               <Route path="/profile/security" element={<Navigate to="/security" replace />} />
-              <Route path="/account" element={<Navigate to="/profile" replace />} />
-              <Route path="/account/profile" element={<Navigate to="/profile" replace />} />
-              <Route path="/account/security" element={<Navigate to="/security" replace />} />
               <Route
                 path="/about"
                 element={

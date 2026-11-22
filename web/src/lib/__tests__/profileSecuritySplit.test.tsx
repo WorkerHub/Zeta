@@ -320,5 +320,52 @@ describe('Profile / Security Page Split', () => {
       expect(confirmSpy).toHaveBeenCalledWith(t('common.unsaved_changes_warning'))
       confirmSpy.mockRestore()
     })
+
+    it('resets dirty when ProfilePage unmounts, avoiding stale dirty on Security page', async () => {
+      const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false)
+
+      const { unmount } = render(
+        <MemoryRouter initialEntries={['/profile']}>
+          <Routes>
+            <Route path="/" element={<AccountLayout />}>
+              <Route path="profile" element={<ProfilePage />} />
+              <Route path="security" element={<div>Security Content</div>} />
+            </Route>
+          </Routes>
+        </MemoryRouter>
+      )
+
+      await waitFor(() => {
+        expect(screen.queryByText('Loading…')).toBeNull()
+      })
+
+      // Modify run_limit to make dirty
+      const runInput = screen.getByLabelText(t('profile.run_limit'))
+      fireEvent.change(runInput, { target: { value: '25' } })
+
+      // Unmount ProfilePage (simulating navigation away)
+      unmount()
+
+      // When rendered on Security page, clicking Back to query should not trigger confirm
+      render(
+        <MemoryRouter initialEntries={['/security']}>
+          <Routes>
+            <Route path="/" element={<AccountLayout />}>
+              <Route path="security" element={<SecurityPage />} />
+            </Route>
+          </Routes>
+        </MemoryRouter>
+      )
+
+      await waitFor(() => {
+        expect(screen.queryByText('Loading…')).toBeNull()
+      })
+
+      const backLink = screen.getByRole('link', { name: new RegExp(t('profile.back_to_query'), 'i') })
+      fireEvent.click(backLink)
+
+      expect(confirmSpy).not.toHaveBeenCalled()
+      confirmSpy.mockRestore()
+    })
   })
 })

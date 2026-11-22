@@ -205,7 +205,6 @@ export const translations: Record<Locale, Record<string, string>> = {
     // User menu
     'user.profile': 'Profile',
     'user.security': 'Security',
-    'user.profile_security': 'Profile & Security',
     'user.admin_panel': 'Admin Panel',
     'user.query_panel': 'Query Panel',
     'user.about': 'About',
@@ -227,8 +226,6 @@ export const translations: Record<Locale, Record<string, string>> = {
     'about.feature_9': 'Dark / Light / Auto theme',
 
     // Profile
-    'profile.title': 'Profile',
-    'security.title': 'Security',
     'profile.tab_profile': 'Profile',
     'profile.tab_security': 'Security',
     'profile.back_to_query': 'Back to query',
@@ -732,7 +729,6 @@ export const translations: Record<Locale, Record<string, string>> = {
     // User menu
     'user.profile': '个人资料',
     'user.security': '安全设置',
-    'user.profile_security': '个人资料与安全',
     'user.admin_panel': '管理面板',
     'user.query_panel': '查询面板',
     'user.about': '关于',
@@ -753,8 +749,6 @@ export const translations: Record<Locale, Record<string, string>> = {
     'about.feature_9': '深色 / 浅色 / 自动主题',
 
     // Profile
-    'profile.title': '个人资料',
-    'security.title': '安全设置',
     'profile.tab_profile': '个人资料',
     'profile.tab_security': '安全设置',
     'profile.back_to_query': '返回查询',

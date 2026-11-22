@@ -51,6 +51,9 @@ export default function ProfilePage() {
 
   useEffect(() => {
     outletContext?.setDirty(dirty)
+    return () => {
+      outletContext?.setDirty(false)
+    }
   }, [dirty, outletContext])
 
   useEffect(() => {
