@@ -163,6 +163,20 @@ export const authApi = {
       { noSessionRetry: true }
     ),
 
+  passkeyLoginOptions: () =>
+    apiFetch<Record<string, unknown>>(
+      '/auth/passkey/login/options',
+      { method: 'POST', body: '{}' },
+      { noSessionRetry: true }
+    ),
+
+  passkeyLoginVerify: (body: unknown) =>
+    apiFetch<{ accessToken: string; user: User }>(
+      '/auth/passkey/login/verify',
+      { method: 'POST', body: JSON.stringify(body) },
+      { noSessionRetry: true }
+    ),
+
   passkey2faOptions: (body: { pendingToken: string }) =>
     apiFetch<Record<string, unknown>>(
       '/auth/2fa/passkey/options',
