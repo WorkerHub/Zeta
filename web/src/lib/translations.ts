@@ -203,6 +203,8 @@ export const translations: Record<Locale, Record<string, string>> = {
     'theme_color.emerald': 'Emerald',
 
     // User menu
+    'user.profile': 'Profile',
+    'user.security': 'Security',
     'user.profile_security': 'Profile & Security',
     'user.admin_panel': 'Admin Panel',
     'user.query_panel': 'Query Panel',
@@ -225,7 +227,10 @@ export const translations: Record<Locale, Record<string, string>> = {
     'about.feature_9': 'Dark / Light / Auto theme',
 
     // Profile
-    'profile.title': 'Profile & Security',
+    'profile.title': 'Profile',
+    'security.title': 'Security',
+    'profile.tab_profile': 'Profile',
+    'profile.tab_security': 'Security',
     'profile.back_to_query': 'Back to query',
     'profile.account': 'Account',
     'profile.role': 'Role',
@@ -530,6 +535,7 @@ export const translations: Record<Locale, Record<string, string>> = {
     'common.cancel': 'Cancel',
     'common.confirm': 'Confirm',
     'common.delete': 'Delete',
+    'common.unsaved_changes_warning': 'You have unsaved changes. Leave without saving?',
   },
   zh: {
     // App
@@ -724,6 +730,8 @@ export const translations: Record<Locale, Record<string, string>> = {
     'theme_color.emerald': '翠绿',
 
     // User menu
+    'user.profile': '个人资料',
+    'user.security': '安全设置',
     'user.profile_security': '个人资料与安全',
     'user.admin_panel': '管理面板',
     'user.query_panel': '查询面板',
@@ -745,7 +753,10 @@ export const translations: Record<Locale, Record<string, string>> = {
     'about.feature_9': '深色 / 浅色 / 自动主题',
 
     // Profile
-    'profile.title': '个人资料与安全',
+    'profile.title': '个人资料',
+    'security.title': '安全设置',
+    'profile.tab_profile': '个人资料',
+    'profile.tab_security': '安全设置',
     'profile.back_to_query': '返回查询',
     'profile.account': '账户',
     'profile.role': '角色',
@@ -1042,6 +1053,7 @@ export const translations: Record<Locale, Record<string, string>> = {
     'common.cancel': '取消',
     'common.confirm': '确定',
     'common.delete': '删除',
+    'common.unsaved_changes_warning': '你有未保存的更改，确定要离开吗？',
   },
 }
 

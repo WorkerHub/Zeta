@@ -12,7 +12,9 @@ const ForgotPassword = lazy(() => import('./pages/ForgotPassword'))
 const ResetPassword = lazy(() => import('./pages/ResetPassword'))
 const VerifyEmail = lazy(() => import('./pages/VerifyEmail'))
 const QueryPage = lazy(() => import('./pages/Query'))
+const AccountLayout = lazy(() => import('./pages/AccountLayout'))
 const ProfilePage = lazy(() => import('./pages/Profile'))
+const SecurityPage = lazy(() => import('./pages/Security'))
 const AboutPage = lazy(() => import('./pages/About'))
 const AdminPage = lazy(() => import('./pages/admin/AdminLayout'))
 
@@ -77,13 +79,19 @@ export default function App() {
                 }
               />
               <Route
-                path="/profile"
                 element={
                   <PrivateRoute>
-                    <ProfilePage />
+                    <AccountLayout />
                   </PrivateRoute>
                 }
-              />
+              >
+                <Route path="/profile" element={<ProfilePage />} />
+                <Route path="/security" element={<SecurityPage />} />
+              </Route>
+              <Route path="/profile/security" element={<Navigate to="/security" replace />} />
+              <Route path="/account" element={<Navigate to="/profile" replace />} />
+              <Route path="/account/profile" element={<Navigate to="/profile" replace />} />
+              <Route path="/account/security" element={<Navigate to="/security" replace />} />
               <Route
                 path="/about"
                 element={
