@@ -393,8 +393,11 @@ export const translations: Record<Locale, Record<string, string>> = {
       "This is Zeta's own application database. Its internal tables are read-only and drop-type operations are disabled.",
 
     // Admin Settings
+    'admin_settings.save_bar': 'Save settings',
     'admin_settings.save_changes': 'Save changes',
     'admin_settings.saved': 'Saved!',
+    'admin_settings.all_saved': 'Saved',
+    'admin_settings.unsaved_changes': 'Unsaved changes',
     'admin_settings.general': 'General',
     'admin_settings.app_name': 'App name',
     'admin_settings.registration_open': 'Registration open',
@@ -906,8 +909,11 @@ export const translations: Record<Locale, Record<string, string>> = {
     'admin_db.app_db_warning': '该库为 Zeta 自身应用库：内部表只读，删除类操作已禁用。',
 
     // Admin Settings
+    'admin_settings.save_bar': '保存设置',
     'admin_settings.save_changes': '保存更改',
     'admin_settings.saved': '已保存！',
+    'admin_settings.all_saved': '已保存',
+    'admin_settings.unsaved_changes': '有未保存更改',
     'admin_settings.general': '通用',
     'admin_settings.app_name': '应用名称',
     'admin_settings.registration_open': '开放注册',
