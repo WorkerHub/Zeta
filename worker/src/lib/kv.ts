@@ -13,6 +13,8 @@ export const KV = {
   // Passkey challenge (5min TTL)
   passkeyChallenge: (userId: string) => `pk_challenge:${userId}`,
   passkeyRegChallenge: (userId: string) => `pk_reg_challenge:${userId}`,
+  passkeyLoginChallenge: (challenge: string) => `pk_login_challenge:${challenge}`,
+  passkeyLoginOptionsAttempts: (ip: string) => `pk_login_opt_attempts:${ip}`,
   // Login attempt rate limiting (15min TTL)
   loginAttempts: (ip: string) => `login_attempts:${ip}`,
   // 2FA attempt rate limiting (10min TTL)

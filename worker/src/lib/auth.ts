@@ -1,6 +1,7 @@
 import type { Env } from '../types'
 import { KV } from './kv'
 import { tables } from './db'
+import { isoBase64URL } from '@simplewebauthn/server/helpers'
 
 // ── Password (PBKDF2 via WebCrypto) ─────────────────────────────────────────
 
@@ -327,6 +328,79 @@ export async function beginLoginAttempt(env: Env, ip: string, email: string): Pr
     hitCounter(env, KV.loginAttempts(`acct:${email}`), LOGIN_WINDOW),
   ])
   return byIp.count <= 20 && byAccount.count <= 10
+}
+
+// Checks whether an IP is currently blocked from logging in (more than 20 failed attempts in the window)
+// without incrementing the counter.
+export async function isIpLoginBlocked(env: Env, ip: string): Promise<boolean> {
+  const ts = Math.floor(Date.now() / 1000)
+  try {
+    const T = tables(env)
+    const row = await env.DB.prepare(`SELECT count FROM ${T.rate_limits} WHERE key = ?1 AND expires_at > ?2`)
+      .bind(KV.loginAttempts(ip), ts)
+      .first<{ count: number }>()
+    if (row && row.count > 20) return true
+    return false
+  } catch (err) {
+    kvFallback(err)
+    const count = parseInt((await env.KV.get(KV.loginAttempts(ip))) ?? '0', 10)
+    return count > 20
+  }
+}
+
+// Checks options rate limit:
+// 1. Returns false if the IP has been locked out from too many failed login attempts (> 20)
+// 2. Returns false if the IP exceeds options request limit (30 requests per 15 minutes)
+export async function checkPasskeyLoginOptionsRateLimit(env: Env, ip: string): Promise<boolean> {
+  if (await isIpLoginBlocked(env, ip)) return false
+  return checkRateLimit(env, KV.passkeyLoginOptionsAttempts(ip), 30, LOGIN_WINDOW)
+}
+
+// Reserves an attempt against the IP before verifying passkey assertion.
+export async function beginPasskeyLoginAttempt(env: Env, ip: string): Promise<boolean> {
+  const byIp = await hitCounter(env, KV.loginAttempts(ip), LOGIN_WINDOW)
+  return byIp.count <= 20
+}
+
+// Checks account-level login attempt rate limit once the credential resolves to a user.
+export async function checkAccountLoginRateLimit(env: Env, email: string): Promise<boolean> {
+  const byAccount = await hitCounter(env, KV.loginAttempts(`acct:${email}`), LOGIN_WINDOW)
+  return byAccount.count <= 10
+}
+
+/**
+ * Resolves the userHandle sent by the authenticator in an assertion.
+ * In discoverable credential assertion, userHandle is base64url encoded UTF-8 bytes of user.id.
+ * Normalizes to the string user ID (UUID).
+ */
+export function parseUserHandle(userHandle: unknown): string | null {
+  if (typeof userHandle !== 'string' || !userHandle.trim()) {
+    return null
+  }
+  const trimmed = userHandle.trim()
+  try {
+    const text = isoBase64URL.toUTF8String(trimmed)
+    if (text && !text.includes('\uFFFD')) {
+      return text
+    }
+  } catch {}
+  return trimmed || null
+}
+
+/**
+ * Extracts challenge string from WebAuthn clientDataJSON (base64url encoded).
+ */
+export function extractChallengeFromClientData(clientDataJSON: string): string | null {
+  if (typeof clientDataJSON !== 'string' || !clientDataJSON.trim()) {
+    return null
+  }
+  try {
+    const text = isoBase64URL.toUTF8String(clientDataJSON.trim())
+    const parsed = JSON.parse(text)
+    return typeof parsed?.challenge === 'string' ? parsed.challenge : null
+  } catch {
+    return null
+  }
 }
 
 // Clears the account counter and gives the IP its reserved attempt back: only failures count
