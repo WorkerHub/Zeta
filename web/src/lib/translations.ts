@@ -575,7 +575,7 @@ export const translations: Record<Locale, Record<string, string>> = {
     'auth.reset_success': '密码已重置，您现在可以登录了。',
     'auth.placeholder_email': '请输入邮箱',
     'auth.placeholder_name': '你的姓名',
-    'auth.signin_with_passkey': '使用 Passkey 登录',
+    'auth.signin_with_passkey': '使用通行密钥登录',
     'auth.or': '或',
 
     // 2FA
