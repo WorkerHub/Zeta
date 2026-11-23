@@ -207,6 +207,7 @@ export const translations: Record<Locale, Record<string, string>> = {
     // User menu
     'user.profile': 'Profile',
     'user.security': 'Security',
+    'user.account_settings': 'Account settings',
     'user.admin_panel': 'Admin Panel',
     'user.query_panel': 'Query Panel',
     'user.about': 'About',
@@ -733,6 +734,7 @@ export const translations: Record<Locale, Record<string, string>> = {
     // User menu
     'user.profile': '个人资料',
     'user.security': '安全设置',
+    'user.account_settings': '账户设置',
     'user.admin_panel': '管理面板',
     'user.query_panel': '查询面板',
     'user.about': '关于',

@@ -760,14 +760,7 @@ export default function QueryPage() {
                 onClick={() => setShowUserMenu(false)}
                 className="flex items-center gap-2 px-4 py-2.5 text-body text-ink-700 hover:bg-ink-100 hover:text-ink-950 transition-colors duration-(--duration-base)"
               >
-                <UserIcon size={14} /> {t('user.profile')}
-              </Link>
-              <Link
-                to="/security"
-                onClick={() => setShowUserMenu(false)}
-                className="flex items-center gap-2 px-4 py-2.5 text-body text-ink-700 hover:bg-ink-100 hover:text-ink-950 transition-colors duration-(--duration-base)"
-              >
-                <Shield size={14} /> {t('user.security')}
+                <UserIcon size={14} /> {t('user.account_settings')}
               </Link>
               {user?.role === 'admin' && (
                 <Link
