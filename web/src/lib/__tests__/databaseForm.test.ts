@@ -4,6 +4,8 @@ import {
   connectionPatch,
   connectionTouched,
   providerPrefill,
+  sparkLivyPairValid,
+  sparkLivyTouched,
   sparkUiPairValid,
   sparkUiTouched,
 } from '../database-form'
@@ -35,6 +37,18 @@ describe('sparkUiTouched', () => {
   })
 })
 
+describe('sparkLivyTouched', () => {
+  it('is false when neither Livy field is filled', () => {
+    expect(sparkLivyTouched(untouched)).toBe(false)
+    expect(sparkLivyTouched({ ...untouched, livyUrl: '   ', livyPlatformToken: '' })).toBe(false)
+  })
+
+  it('is true when either Livy field has text', () => {
+    expect(sparkLivyTouched({ ...untouched, livyUrl: 'https://livy.example.com' })).toBe(true)
+    expect(sparkLivyTouched({ ...untouched, livyPlatformToken: 'token' })).toBe(true)
+  })
+})
+
 describe('sparkUiPairValid', () => {
   it('is true when both are empty or undefined', () => {
     expect(sparkUiPairValid()).toBe(true)
@@ -50,6 +64,24 @@ describe('sparkUiPairValid', () => {
     expect(sparkUiPairValid('https://ui.example.com', '')).toBe(false)
     expect(sparkUiPairValid('', 'ui-token')).toBe(false)
     expect(sparkUiPairValid('https://ui.example.com', '   ')).toBe(false)
+  })
+})
+
+describe('sparkLivyPairValid', () => {
+  it('is true when both are empty or undefined', () => {
+    expect(sparkLivyPairValid()).toBe(true)
+    expect(sparkLivyPairValid('', '')).toBe(true)
+    expect(sparkLivyPairValid('   ', '  ')).toBe(true)
+  })
+
+  it('is true when both are provided', () => {
+    expect(sparkLivyPairValid('https://livy.example.com', 'livy-token')).toBe(true)
+  })
+
+  it('is false when only one is provided', () => {
+    expect(sparkLivyPairValid('https://livy.example.com', '')).toBe(false)
+    expect(sparkLivyPairValid('', 'livy-token')).toBe(false)
+    expect(sparkLivyPairValid('https://livy.example.com', '   ')).toBe(false)
   })
 })
 
@@ -158,6 +190,60 @@ describe('canSaveForm', () => {
     // Refuses if UI fields are partly filled in edit mode
     expect(canSaveForm({ ...args, values: { ...untouched, uiUrl: 'https://ui.example.com' } })).toBe(false)
   })
+
+  it('enforces that Spark Livy fields must travel as a pair', () => {
+    const sparkValues = {
+      url: 'https://spark.example.com',
+      platformToken: 'p',
+      appToken: 'a',
+    }
+    const base = {
+      mode: 'add' as const,
+      kind: 'spark' as const,
+      name: 'Spark',
+      cfDatabaseId: '',
+      testedSignature: tested(sparkValues, 'spark'),
+    }
+
+    // Both empty: fine
+    expect(canSaveForm({ ...base, values: sparkValues })).toBe(true)
+    // Both filled: fine
+    expect(
+      canSaveForm({
+        ...base,
+        values: { ...sparkValues, livyUrl: 'https://livy.example.com', livyPlatformToken: 'livy-token' },
+      })
+    ).toBe(true)
+    // Only livyUrl: refused
+    expect(
+      canSaveForm({
+        ...base,
+        values: { ...sparkValues, livyUrl: 'https://livy.example.com', livyPlatformToken: '' },
+      })
+    ).toBe(false)
+    // Only livyPlatformToken: refused
+    expect(
+      canSaveForm({
+        ...base,
+        values: { ...sparkValues, livyUrl: '', livyPlatformToken: 'livy-token' },
+      })
+    ).toBe(false)
+  })
+
+  it('allows saving updated Spark Livy fields in edit mode without re-testing unchanged connection', () => {
+    const args = {
+      mode: 'edit' as const,
+      kind: 'spark' as const,
+      name: 'Spark',
+      cfDatabaseId: '',
+      values: { ...untouched, livyUrl: 'https://livy.example.com', livyPlatformToken: 'livy-token' },
+      testedSignature: null,
+    }
+    expect(canSaveForm(args)).toBe(true)
+
+    // Refuses if Livy fields are partly filled in edit mode
+    expect(canSaveForm({ ...args, values: { ...untouched, livyUrl: 'https://livy.example.com' } })).toBe(false)
+  })
 })
 
 describe('connectionPatch', () => {
@@ -219,6 +305,51 @@ describe('connectionPatch', () => {
         appToken: 'a',
         uiUrl: 'https://spark-ui.example.com',
         uiPlatformToken: '',
+      })
+    ).toBe(null)
+  })
+
+  it('includes trimmed livy_url and livy_platform_token when both are present', () => {
+    expect(
+      connectionPatch('spark', {
+        url: 'https://spark.example.com',
+        platformToken: 'p',
+        appToken: 'a',
+        livyUrl: ' https://livy.example.com ',
+        livyPlatformToken: ' livy-token ',
+      })
+    ).toEqual({
+      connection_url: 'https://spark.example.com',
+      platform_token: 'p',
+      app_token: 'a',
+      livy_url: 'https://livy.example.com',
+      livy_platform_token: 'livy-token',
+    })
+  })
+
+  it('sends only Livy fields in edit mode when SQL connection is untouched', () => {
+    expect(
+      connectionPatch('spark', {
+        url: '',
+        platformToken: '',
+        appToken: '',
+        livyUrl: 'https://livy.example.com',
+        livyPlatformToken: 'livy-token',
+      })
+    ).toEqual({
+      livy_url: 'https://livy.example.com',
+      livy_platform_token: 'livy-token',
+    })
+  })
+
+  it('returns null when Livy fields are partly filled', () => {
+    expect(
+      connectionPatch('spark', {
+        url: 'https://spark.example.com',
+        platformToken: 'p',
+        appToken: 'a',
+        livyUrl: 'https://livy.example.com',
+        livyPlatformToken: '',
       })
     ).toBe(null)
   })

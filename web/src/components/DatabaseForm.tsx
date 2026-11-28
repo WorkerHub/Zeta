@@ -59,6 +59,8 @@ export default function DatabaseForm({ mode, database, available, onSaved, onCan
   const [appToken, setAppToken] = useState('')
   const [uiUrl, setUiUrl] = useState('')
   const [uiPlatformToken, setUiPlatformToken] = useState('')
+  const [livyUrl, setLivyUrl] = useState('')
+  const [livyPlatformToken, setLivyPlatformToken] = useState('')
   const [testState, setTestState] = useState<ConnectionTestState>('idle')
   const [testedSignature, setTestedSignature] = useState<string | null>(null)
   const [testError, setTestError] = useState('')
@@ -85,6 +87,8 @@ export default function DatabaseForm({ mode, database, available, onSaved, onCan
     setAppToken('')
     setUiUrl('')
     setUiPlatformToken('')
+    setLivyUrl('')
+    setLivyPlatformToken('')
     invalidateTest()
     setFormError('')
   }
@@ -110,6 +114,14 @@ export default function DatabaseForm({ mode, database, available, onSaved, onCan
 
   function changeUiPlatformToken(next: string) {
     setUiPlatformToken(next)
+  }
+
+  function changeLivyUrl(next: string) {
+    setLivyUrl(next)
+  }
+
+  function changeLivyPlatformToken(next: string) {
+    setLivyPlatformToken(next)
   }
 
   async function testConnection() {
@@ -140,7 +152,7 @@ export default function DatabaseForm({ mode, database, available, onSaved, onCan
     }
   }
 
-  const values = { url, platformToken, appToken, uiUrl, uiPlatformToken }
+  const values = { url, platformToken, appToken, uiUrl, uiPlatformToken, livyUrl, livyPlatformToken }
   const canSave = canSaveForm({
     mode,
     kind: activeKind,
@@ -248,6 +260,8 @@ export default function DatabaseForm({ mode, database, available, onSaved, onCan
             appToken={appToken}
             uiUrl={uiUrl}
             uiPlatformToken={uiPlatformToken}
+            livyUrl={livyUrl}
+            livyPlatformToken={livyPlatformToken}
             editing={editing}
             testState={testState}
             testError={testError}
@@ -257,6 +271,8 @@ export default function DatabaseForm({ mode, database, available, onSaved, onCan
             onAppTokenChange={changeAppToken}
             onUiUrlChange={changeUiUrl}
             onUiPlatformTokenChange={changeUiPlatformToken}
+            onLivyUrlChange={changeLivyUrl}
+            onLivyPlatformTokenChange={changeLivyPlatformToken}
             onTest={testConnection}
           />
         ) : (

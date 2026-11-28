@@ -34,6 +34,8 @@ import SparkGearMenu from '../components/SparkGearMenu'
 import SparkInstanceConfigDialog from '../components/SparkInstanceConfigDialog'
 import SparkProfilesDialog from '../components/SparkProfilesDialog'
 import SparkUiMenuLink from '../components/SparkUiMenuLink'
+import LivyDialog from '../components/LivyDialog'
+import LivyMenuLink from '../components/LivyMenuLink'
 import { useAuthContext } from '../hooks/useAuth'
 import { useConnections } from '../hooks/useConnections'
 import { useLocale } from '../hooks/useLocale'
@@ -119,6 +121,8 @@ export default function QueryPage() {
   const [contextRebuilt, setContextRebuilt] = useState(false)
   const [profilesDialogOpen, setProfilesDialogOpen] = useState(false)
   const [instanceDialogOpen, setInstanceDialogOpen] = useState(false)
+  const [livyDialogOpen, setLivyDialogOpen] = useState(false)
+  const [livyDialogTab, setLivyDialogTab] = useState<'console' | 'batches'>('console')
   // §7.4: the instance config is admin/manage only — the same right the API requires (an admin, or
   // an exact `manage` grant; `write_drop` does not include it).
   const canManageInstance = user?.role === 'admin' || selectedDb?.permission === 'manage'
@@ -671,6 +675,19 @@ export default function QueryPage() {
                   ))
                 )}
                 <SparkUiMenuLink selectedDb={selectedDb} onSelect={() => setShowDbMenu(false)} />
+                <LivyMenuLink
+                  selectedDb={selectedDb}
+                  onOpenConsole={() => {
+                    setShowDbMenu(false)
+                    setLivyDialogTab('console')
+                    setLivyDialogOpen(true)
+                  }}
+                  onOpenBatches={() => {
+                    setShowDbMenu(false)
+                    setLivyDialogTab('batches')
+                    setLivyDialogOpen(true)
+                  }}
+                />
               </div>
             )}
           </div>
@@ -1062,6 +1079,19 @@ export default function QueryPage() {
                 </button>
               ))}
               <SparkUiMenuLink selectedDb={selectedDb} onSelect={() => setShowDbMenu(false)} />
+              <LivyMenuLink
+                selectedDb={selectedDb}
+                onOpenConsole={() => {
+                  setShowDbMenu(false)
+                  setLivyDialogTab('console')
+                  setLivyDialogOpen(true)
+                }}
+                onOpenBatches={() => {
+                  setShowDbMenu(false)
+                  setLivyDialogTab('batches')
+                  setLivyDialogOpen(true)
+                }}
+              />
             </div>
           )}
         </div>
@@ -1159,6 +1189,16 @@ export default function QueryPage() {
           open={instanceDialogOpen}
           onOpenChange={setInstanceDialogOpen}
           databaseId={selectedDb.id}
+        />
+      )}
+      {/* Livy interactive console and batches dialog */}
+      {selectedDb?.kind === 'spark' && (
+        <LivyDialog
+          open={livyDialogOpen}
+          onOpenChange={setLivyDialogOpen}
+          database={selectedDb}
+          userId={user?.id ?? ''}
+          defaultTab={livyDialogTab}
         />
       )}
     </div>

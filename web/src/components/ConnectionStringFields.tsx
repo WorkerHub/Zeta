@@ -16,6 +16,10 @@ interface Props {
   uiUrl?: string
   /** Spark only: optional Spark UI platform token. */
   uiPlatformToken?: string
+  /** Spark only: optional Livy publish address. */
+  livyUrl?: string
+  /** Spark only: optional Livy platform token. */
+  livyPlatformToken?: string
   testState: ConnectionTestState
   /** Error text of a failed test, shown verbatim unless it carries a translatable code. */
   testError: string
@@ -26,6 +30,8 @@ interface Props {
   onAppTokenChange: (token: string) => void
   onUiUrlChange?: (url: string) => void
   onUiPlatformTokenChange?: (token: string) => void
+  onLivyUrlChange?: (url: string) => void
+  onLivyPlatformTokenChange?: (token: string) => void
   onTest: () => void
   /**
    * Editing a saved registration: the stored values never come back, so every field starts empty
@@ -34,7 +40,7 @@ interface Props {
   editing?: boolean
 }
 
-type Field = 'url' | 'platform' | 'app' | 'uiUrl' | 'uiPlatform'
+type Field = 'url' | 'platform' | 'app' | 'uiUrl' | 'uiPlatform' | 'livyUrl' | 'livyPlatform'
 
 function RevealToggle({ revealed, label, onToggle }: { revealed: boolean; label: string; onToggle: () => void }) {
   return (
@@ -63,6 +69,8 @@ export default function ConnectionStringFields({
   appToken,
   uiUrl = '',
   uiPlatformToken = '',
+  livyUrl = '',
+  livyPlatformToken = '',
   testState,
   testError,
   testInfo,
@@ -71,6 +79,8 @@ export default function ConnectionStringFields({
   onAppTokenChange,
   onUiUrlChange,
   onUiPlatformTokenChange,
+  onLivyUrlChange,
+  onLivyPlatformTokenChange,
   onTest,
   editing = false,
 }: Props) {
@@ -81,6 +91,8 @@ export default function ConnectionStringFields({
     app: false,
     uiUrl: false,
     uiPlatform: false,
+    livyUrl: false,
+    livyPlatform: false,
   })
   const toggle = (field: Field) => setRevealed((current) => ({ ...current, [field]: !current[field] }))
   const testing = testState === 'testing'
@@ -98,6 +110,13 @@ export default function ConnectionStringFields({
   const uiPairIncomplete =
     spark &&
     ((uiUrlTrimmed !== '' && uiPlatformTokenTrimmed === '') || (uiUrlTrimmed === '' && uiPlatformTokenTrimmed !== ''))
+
+  const livyUrlTrimmed = livyUrl.trim()
+  const livyPlatformTokenTrimmed = livyPlatformToken.trim()
+  const livyPairIncomplete =
+    spark &&
+    ((livyUrlTrimmed !== '' && livyPlatformTokenTrimmed === '') ||
+      (livyUrlTrimmed === '' && livyPlatformTokenTrimmed !== ''))
 
   const urlCopy = spark
     ? { label: 'admin_db.spark_url', placeholder: 'admin_db.spark_url_placeholder', hint: 'admin_db.spark_url_hint' }
@@ -238,6 +257,60 @@ export default function ConnectionStringFields({
           {uiPairIncomplete && (
             <p role="alert" className="text-caption text-danger-600">
               {t('admin_db.spark_ui_pair_hint')}
+            </p>
+          )}
+
+          <div className="space-y-2 pt-1">
+            <label htmlFor="db-livy-url" className="label">
+              {t('admin_db.livy_url')}
+            </label>
+            <div className="relative">
+              <input
+                id="db-livy-url"
+                type={!editing || revealed.livyUrl ? 'text' : 'password'}
+                className="input pr-11 font-mono text-caption"
+                value={livyUrl}
+                onChange={(e) => onLivyUrlChange?.(e.target.value)}
+                placeholder={t(editing ? 'admin_db.connection_unchanged' : 'admin_db.livy_url_placeholder')}
+                autoComplete="off"
+                spellCheck={false}
+              />
+              {editing && (
+                <RevealToggle
+                  revealed={revealed.livyUrl}
+                  label={revealed.livyUrl ? t('admin_db.hide_connection_url') : t('admin_db.show_connection_url')}
+                  onToggle={() => toggle('livyUrl')}
+                />
+              )}
+            </div>
+          </div>
+
+          <div className="space-y-2 pt-1">
+            <label htmlFor="db-livy-platform-token" className="label">
+              {t('admin_db.livy_platform_token')}
+            </label>
+            <div className="relative">
+              <input
+                id="db-livy-platform-token"
+                type={revealed.livyPlatform ? 'text' : 'password'}
+                className="input pr-11 font-mono text-caption"
+                value={livyPlatformToken}
+                onChange={(e) => onLivyPlatformTokenChange?.(e.target.value)}
+                placeholder={editing ? t('admin_db.connection_unchanged') : undefined}
+                autoComplete="off"
+                spellCheck={false}
+              />
+              <RevealToggle
+                revealed={revealed.livyPlatform}
+                label={revealed.livyPlatform ? t('admin_db.hide_secret') : t('admin_db.show_secret')}
+                onToggle={() => toggle('livyPlatform')}
+              />
+            </div>
+          </div>
+
+          {livyPairIncomplete && (
+            <p role="alert" className="text-caption text-danger-600">
+              {t('admin_db.livy_pair_hint')}
             </p>
           )}
         </>
