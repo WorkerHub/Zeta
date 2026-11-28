@@ -19,11 +19,18 @@
 | 6 | Jobs/Stages/SQL/Environment 四页逐页渲染正常 | 无静态资源 404、无错乱重定向、页内链接保持 `/spark-ui/` 前缀 | 逐页抓取 + 链接/资源审计（第二段） | 待测（等字段填写） | 计划 |
 | 7 | 网络面板见不到 UI 平台令牌与 UI 源发布地址 | 全部请求/响应中无 `ui_platform_token` 明文、无上游发布域名 | 请求/响应记录全文扫描（第二段） | 待测（等字段填写） | 计划 |
 
-## 审读疑点（待实测确认，不算结论）
+## 审读疑点（修正后待第二段实测定性，不算结论）
 
-- 菜单入口 `SparkUiMenuLink` 的 href 为 `/spark-ui/?db=<id>`，不带任何凭据；后端 `requireAuth` 对 `/spark-ui` 首击仅接受 `spark_ui_session` cookie、`Authorization` 头或 `?token=`。SPA 的 access token 仅存内存、refresh cookie 仅限 `Path=/api/auth`，顶级导航两者皆不带 → **代码上推断：真实浏览器从菜单打开 Spark UI 的首击会得到 401 JSON**，入口不可用（除非 24h 内曾以其他方式完成过一次带凭据的首击）。此为变更面内的集成疑点，第二段以真实浏览器点击菜单实测定性。
+- ~~菜单入口为 `<a href="/spark-ui/?db=<id>" target="_blank">` 顶级导航、无凭据 → 疑似首击 401~~ **此疑点基于旧实现，已过时**。生产部署对应代码中 `SparkUiMenuLink` 是按钮：点击先 `POST /api/spark-ui/session`（SPA 以内存 access token 带 Bearer 调用，SparkUiMenuLink.tsx `handleClick` → `sparkUiApi.createSession`）建立签名会话 cookie，成功后才 `window.open('/spark-ui/', '_blank', 'noopener,noreferrer')`——新标签页携带 `spark_ui_session` cookie 首击，凭据疑点按此机制应不成立。第二段以真实浏览器点击菜单实测整链路（POST 建会话 → 新标签页渲染）定性。
+- 第二段另需实测：带 `spark_ui_session` cookie 直接 GET `/spark-ui/?db=<id>` 的 302 落首页契约（冻结契约口径），与菜单点击流并存。
 
 ## 执行分段
 
 - 第一段（未填状态）：#2、#3，另附 #1 已完成项；出结果即停、回报。
-- 第二段（用户填好 Apollo 的 ui_url/ui_platform_token 后）：#4、#5、#6、#7 + 首击疑点定性。
+- 第二段（用户填好 Apollo 的 ui_url/ui_platform_token 后）：#4、#5、#6、#7 + 疑点定性。
+
+## 执行记录
+
+- **run 1（部分有效）**：注入 refresh_token 后登录态建立成功（A1/B1/B2/B3/C0/C1 + Apple/Deer/Tree 三个非 Spark 菜单项全过，`has_spark_ui=false` 口径确认，全 session `/spark-ui` 请求 0 次），但 6 项因脚本层缺陷失败（菜单开合状态未感知、锚定正则失配按钮 innerText、未先走显式连接流程、移动端预开状态误触发）——均为脚本缺陷非产品问题。部分结果与截图存档于 `results-phase1-run1-partial.json`、`shots-run1/`。
+- **run 2（终止）**：refresh=401。原因：refresh 端点为严格一次性轮换（`worker/src/routes/auth.ts` refresh 处理器验证后即 `revokeRefreshToken(payload.jti)` 再发新值），run 1 的 SPA 挂载刷新已消费注入原值。run 1 的 results JSON 被覆盖，已重建存档。
+- **待办**：待新 refresh_token 后一击跑完第一段（脚本已修复为菜单状态感知 + 非锚定匹配 + 显式连接 + 移动端预开处理）。

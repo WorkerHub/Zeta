@@ -1,0 +1,26 @@
+{
+  "note": "run 1 部分结果(重建自控制台输出)。run 1 的 results-phase1.json 被 run 2 的 fatal 覆盖,本文件为核对控制台输出后的重建。run 1 的 SPA 挂载刷新消费了注入的 refresh_token(轮换后旧值作废),导致 run 2 refresh=401 终止;脚本层缺陷(菜单开合未感知状态、锚定正则失配按钮 innerText、移动端预开状态误触发)已修复,待新 refresh_token 后重跑完整版。",
+  "run_at": "run1(2026-11-28 ~21:35 本机时区)",
+  "all_pass": false,
+  "valid_production_observations": [
+    { "id": "A1", "name": "登录态建立(refresh 200 + /api/databases 200 + 查询页切换器渲染)", "pass": true, "detail": "refresh=200 dbs=7 switcher=true" },
+    { "id": "B1", "name": "Apollo(spark) has_spark_ui=false(未填口径)", "pass": true, "detail": "{\"has_spark_ui\":false}" },
+    { "id": "B2", "name": "Spark 数据源恰好一个且为 Apollo", "pass": true, "detail": "Apollo" },
+    { "id": "B3", "name": "非 Spark 数据源 has_spark_ui 均为假值", "pass": true, "detail": "Apple(postgres),Bubble(postgres),Deer(sqlite),Moss(postgres),Tree(mysql),Workerhub(sqlite)" },
+    { "id": "C0", "name": "切换器显示 Apollo(选中成功)", "pass": true, "detail": "switcher=\"ApolloDefault config\"" },
+    { "id": "C1", "name": "桌面菜单(未填 Apollo)无 Spark UI 入口", "pass": true, "detail": "menu_open=1 contains_apollo=true entries=0" },
+    { "id": "D-menu-postgres", "name": "Apple(postgres)桌面菜单无 Spark UI 入口", "pass": true, "detail": "menu_open=true entries=0" },
+    { "id": "D-menu-sqlite", "name": "Deer(sqlite)桌面菜单无 Spark UI 入口", "pass": true, "detail": "menu_open=true entries=0" },
+    { "id": "D-menu-mysql", "name": "Tree(mysql)桌面菜单无 Spark UI 入口", "pass": true, "detail": "menu_open=true entries=0" }
+  ],
+  "script_artifact_failures_not_product_issues": [
+    { "id": "C2", "reason": "showDbMenu 桌面/移动共享,run 1 在菜单预开状态下误点触发按钮将其关闭" },
+    { "id": "D-menu-postgres(Bubble)", "reason": "Escape 不能关闭该下拉(外部点击才关),菜单开合交替导致奇偶数据源点选超时" },
+    { "id": "D-menu-postgres(Moss)", "reason": "同上" },
+    { "id": "D-menu-sqlite(Workerhub)", "reason": "同上" },
+    { "id": "D-query", "reason": "连接是显式 ConnectButton 流程(未连接时 Run 按钮禁用),run 1 未先点连接" },
+    { "id": "E1/E2", "reason": "hasText 锚定正则(/^Edit$/)与按钮 innerText(图标+空白)失配" }
+  ],
+  "spark_ui_requests_during_session": 0,
+  "screenshots_preserved": "shots-run1/"
+}

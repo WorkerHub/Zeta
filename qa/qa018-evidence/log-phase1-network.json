@@ -1,0 +1,97 @@
+[
+  {
+    "url": "https://zeta.pama.workers.dev/query",
+    "status": 200,
+    "size": 2103
+  },
+  {
+    "url": "https://zeta.pama.workers.dev/assets/api-B2BVYtf1.js",
+    "status": 200,
+    "size": 7423
+  },
+  {
+    "url": "https://zeta.pama.workers.dev/assets/rolldown-runtime-XKyaHtl9.js",
+    "status": 200,
+    "size": 726
+  },
+  {
+    "url": "https://zeta.pama.workers.dev/assets/index-JU63q6e4.js",
+    "status": 200,
+    "size": 60590
+  },
+  {
+    "url": "https://zeta.pama.workers.dev/assets/index-4rmKQB3j.css",
+    "status": 200,
+    "size": 68418
+  },
+  {
+    "url": "https://zeta.pama.workers.dev/theme-init.js",
+    "status": 200,
+    "size": 1000
+  },
+  {
+    "url": "https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap",
+    "status": 200,
+    "size": 15070
+  },
+  {
+    "url": "https://zeta.pama.workers.dev/assets/editor-vendor-DCJYUCJf.js",
+    "status": 200,
+    "size": 476244
+  },
+  {
+    "url": "https://zeta.pama.workers.dev/assets/react-vendor-U3SKuzn8.js",
+    "status": 200,
+    "size": 232364
+  },
+  {
+    "url": "https://zeta.pama.workers.dev/assets/vendor-C0MbsHBK.js",
+    "status": 200,
+    "size": 146392
+  },
+  {
+    "url": "https://fonts.gstatic.com/s/inter/v20/UcC73FwrK3iLTeHuS_nVMrMxCp50SjIa1ZL7W0Q5nw.woff2",
+    "status": 200,
+    "size": 48432
+  },
+  {
+    "url": "https://zeta.pama.workers.dev/favicon.svg",
+    "status": 200,
+    "size": 1820
+  },
+  {
+    "url": "https://zeta.pama.workers.dev/api/auth/refresh",
+    "status": 401,
+    "size": 33
+  },
+  {
+    "url": "https://zeta.pama.workers.dev/assets/Login-B3y674zV.js",
+    "status": 200,
+    "size": 8670
+  },
+  {
+    "url": "https://zeta.pama.workers.dev/assets/Logo-CRtv6zIO.js",
+    "status": 200,
+    "size": 2028
+  },
+  {
+    "url": "https://zeta.pama.workers.dev/assets/AuthShell-B70WOLxm.js",
+    "status": 200,
+    "size": 434
+  },
+  {
+    "url": "https://zeta.pama.workers.dev/favicon.svg",
+    "status": 200,
+    "size": 1820
+  },
+  {
+    "url": "https://zeta.pama.workers.dev/assets/icons-vendor-BAzgn9lt.js",
+    "status": 200,
+    "size": 15157
+  },
+  {
+    "url": "https://zeta.pama.workers.dev/api/auth/register-status",
+    "status": 200,
+    "size": 17
+  }
+]
