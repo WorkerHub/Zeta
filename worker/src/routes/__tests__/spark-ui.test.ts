@@ -591,6 +591,27 @@ describe('/spark-ui proxying with signed cookie', () => {
         '/spark-ui/static/webui.css'
       )
     })
+
+    it('rewrites arbitrary-host absolute URLs already carrying the /spark-ui prefix to same-origin', () => {
+      // Upstream Spark configured with a fixed proxyBase host (spark.ui.reverseProxy=true) that
+      // differs from the private ui_url — its resources arrive as absolute URLs like
+      // https://zeta.oneboy.app/spark-ui/proxy/local-<appId>/static/webui.css.
+      const proxyBase = 'https://zeta.oneboy.app'
+      expect(rewriteSparkUiUrl(`${proxyBase}/spark-ui/proxy/local-1795879633814/static/webui.css`, UI_URL)).toBe(
+        '/spark-ui/proxy/local-1795879633814/static/webui.css'
+      )
+      expect(rewriteSparkUiUrl(`${proxyBase}/spark-ui/proxy/local-1795879633814/static/sorttable.js`, UI_URL)).toBe(
+        '/spark-ui/proxy/local-1795879633814/static/sorttable.js'
+      )
+      expect(rewriteSparkUiUrl(`${proxyBase}/spark-ui/jobs/`, UI_URL)).toBe('/spark-ui/jobs/')
+      expect(rewriteSparkUiUrl(`${proxyBase}/spark-ui/`, UI_URL)).toBe('/spark-ui/')
+      expect(rewriteSparkUiUrl(`${proxyBase}/spark-ui?db=sp1`, UI_URL)).toBe('/spark-ui?db=sp1')
+    })
+
+    it('does not double prefix an absolute ui_url URL whose path already starts with /spark-ui', () => {
+      expect(rewriteSparkUiUrl(`${UI_URL}/spark-ui/static/webui.css`, UI_URL)).toBe('/spark-ui/static/webui.css')
+      expect(rewriteSparkUiUrl(`${UI_URL}/spark-ui/jobs/`, UI_URL)).toBe('/spark-ui/jobs/')
+    })
   })
 
   describe('rewriteSparkUiHtml', () => {
@@ -658,6 +679,27 @@ describe('/spark-ui proxying with signed cookie', () => {
       expect(rewritten).not.toContain(UI_URL)
       expect(rewritten).toContain('href="/spark-ui/jobs/"')
       expect(rewritten).toContain('src="/spark-ui/static/logo.png"')
+    })
+
+    it('rewrites absolute proxyBase-host resource links to same-origin /spark-ui paths', () => {
+      // The upstream Spark emits absolute URLs with its configured proxyBase host (a different
+      // host from the private ui_url). These must be dropped to relative so the browser fetches
+      // them from the current origin and CSP style-src/script-src 'self' admits them.
+      const proxyBase = 'https://zeta.oneboy.app'
+      const raw = `
+        <link rel="stylesheet" href="${proxyBase}/spark-ui/proxy/local-1795879633814/static/bootstrap.min.css" type="text/css"/>
+        <link rel="stylesheet" href="${proxyBase}/spark-ui/proxy/local-1795879633814/static/webui.css" type="text/css"/>
+        <script src="${proxyBase}/spark-ui/proxy/local-1795879633814/static/webui.js"></script>
+        <img src="${proxyBase}/spark-ui/proxy/local-1795879633814/static/spark-logo.svg"/>
+        <a href="${proxyBase}/spark-ui/proxy/local-1795879633814/stages/">Stages</a>
+      `
+      const rewritten = rewriteSparkUiHtml(raw, UI_URL)
+      expect(rewritten).not.toContain(proxyBase)
+      expect(rewritten).toContain('href="/spark-ui/proxy/local-1795879633814/static/bootstrap.min.css"')
+      expect(rewritten).toContain('href="/spark-ui/proxy/local-1795879633814/static/webui.css"')
+      expect(rewritten).toContain('src="/spark-ui/proxy/local-1795879633814/static/webui.js"')
+      expect(rewritten).toContain('src="/spark-ui/proxy/local-1795879633814/static/spark-logo.svg"')
+      expect(rewritten).toContain('href="/spark-ui/proxy/local-1795879633814/stages/"')
     })
   })
 

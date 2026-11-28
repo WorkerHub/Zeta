@@ -72,15 +72,33 @@ export function rewriteSparkUiUrl(val: string, uiUrl: string, _requestUrl?: stri
   try {
     const parsed = new URL(trimmed)
     const target = new URL(uiUrl)
+
+    // The upstream Spark is configured with spark.ui.reverseProxy + a fixed proxyBase whose host
+    // (e.g. https://zeta.oneboy.app) differs from the private ui_url. Its HTML therefore carries
+    // absolute URLs such as https://zeta.oneboy.app/spark-ui/proxy/<appId>/static/webui.css.
+    // Drop the host so they resolve against the current origin: that keeps them behind this
+    // reverse proxy and admits them under the /spark-ui CSP's 'self' source whitelist, no matter
+    // which deployment domain (custom or *.workers.dev) the browser actually used.
+    const pathAndQuery = parsed.pathname + parsed.search + parsed.hash
+    if (
+      pathAndQuery === '/spark-ui' ||
+      pathAndQuery.startsWith('/spark-ui/') ||
+      pathAndQuery.startsWith('/spark-ui?') ||
+      pathAndQuery.startsWith('/spark-ui#')
+    ) {
+      return pathAndQuery
+    }
+
+    // Absolute URL on the private ui_url origin (the upstream echoed its own address).
     if (parsed.origin === target.origin) {
-      let pathAndQuery = parsed.pathname + parsed.search + parsed.hash
-      if (target.pathname && target.pathname !== '/' && pathAndQuery.startsWith(target.pathname)) {
-        pathAndQuery = pathAndQuery.slice(target.pathname.length)
+      let p = pathAndQuery
+      if (target.pathname && target.pathname !== '/' && p.startsWith(target.pathname)) {
+        p = p.slice(target.pathname.length)
       }
-      if (!pathAndQuery.startsWith('/')) {
-        pathAndQuery = `/${pathAndQuery}`
+      if (!p.startsWith('/')) {
+        p = `/${p}`
       }
-      return `/spark-ui${pathAndQuery}`
+      return `/spark-ui${p}`
     }
     // External absolute URL (e.g. https://spark.apache.org)
     return val
