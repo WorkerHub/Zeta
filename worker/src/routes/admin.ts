@@ -13,7 +13,7 @@ import { effectiveProvider, normalizeProvider } from '../lib/provider'
 import { MAX_RUN_LIMIT, MAX_RUN_QUOTA_MB, parseBoundedInt, pruneRuns } from '../lib/runs'
 import { openSecret, sealLegacySecret, sealSecret } from '../lib/secrets'
 import { runSetup } from '../lib/setup'
-import { checkDatabaseHasSparkUi, normalizeSparkAccess } from '../lib/spark-access'
+import { checkDatabaseHasSparkUi, checkHasLivy, normalizeSparkAccess } from '../lib/spark-access'
 import { SparkQueryError, testSparkConnection } from '../lib/spark-executor'
 import { sparkSessionKey } from '../lib/spark-profile'
 import { requireAdmin } from '../middleware/auth'
@@ -300,6 +300,8 @@ interface ConnectionBody {
   app_token?: unknown
   ui_url?: unknown
   ui_platform_token?: unknown
+  livy_url?: unknown
+  livy_platform_token?: unknown
 }
 
 // Proves pasted credentials against the real server before anything is saved. Registration,
@@ -323,6 +325,8 @@ async function verifyConnection(
       app_token: body.app_token,
       ui_url: body.ui_url,
       ui_platform_token: body.ui_platform_token,
+      livy_url: body.livy_url,
+      livy_platform_token: body.livy_platform_token,
     })
     if (!access.ok) return c.json({ error: access.error }, 400)
     try {
@@ -374,6 +378,7 @@ async function adminDatabaseDto(env: Env, row: DatabaseRow) {
   const { connection_secret, ...rest } = row
   const kind = rest.kind ?? 'sqlite'
   const has_spark_ui = await checkDatabaseHasSparkUi(env, row)
+  const has_livy = await checkHasLivy(env, row)
   return {
     ...rest,
     kind,
@@ -381,6 +386,7 @@ async function adminDatabaseDto(env: Env, row: DatabaseRow) {
     provider_custom: rest.provider ?? null,
     has_connection: connection_secret !== null && connection_secret !== undefined,
     has_spark_ui,
+    has_livy,
     is_app_db: isAppDb(env, row.cf_database_id),
   }
 }
@@ -397,7 +403,14 @@ admin.get('/databases', async (c) => {
 // existed. Admin-only, so the provider's message is shown as-is (redacted of the URL and tokens).
 admin.post('/databases/test-connection', async (c) => {
   const body = await c.req
-    .json<{ connection_url?: unknown; kind?: unknown; platform_token?: unknown; app_token?: unknown }>()
+    .json<{
+      connection_url?: unknown
+      kind?: unknown
+      platform_token?: unknown
+      app_token?: unknown
+      livy_url?: unknown
+      livy_platform_token?: unknown
+    }>()
     .catch(() => null)
   if (!body) return c.json({ error: 'Invalid body' }, 400)
   const kind = body.kind ?? 'postgres'
@@ -462,6 +475,8 @@ admin.post('/databases', async (c) => {
       app_token?: unknown
       ui_url?: unknown
       ui_platform_token?: unknown
+      livy_url?: unknown
+      livy_platform_token?: unknown
       provider?: unknown
     }>()
     .catch(() => null)
@@ -469,6 +484,13 @@ admin.post('/databases', async (c) => {
 
   const kind = body.kind ?? 'sqlite'
   if (kind !== 'sqlite' && !isConnectionKind(kind)) return c.json({ error: 'Invalid database kind' }, 400)
+
+  if (kind !== 'spark' && (body.ui_url !== undefined || body.ui_platform_token !== undefined)) {
+    return c.json({ error: 'Spark UI is only available for Spark databases.' }, 400)
+  }
+  if (kind !== 'spark' && (body.livy_url !== undefined || body.livy_platform_token !== undefined)) {
+    return c.json({ error: 'Livy configuration is only available for Spark databases.' }, 400)
+  }
 
   // Display-only label; a blank value keeps the engine's own provider.
   const provider = normalizeProvider(body.provider)
@@ -579,6 +601,8 @@ admin.patch('/databases/:id', async (c) => {
       app_token?: unknown
       ui_url?: unknown
       ui_platform_token?: unknown
+      livy_url?: unknown
+      livy_platform_token?: unknown
       provider?: unknown
     }>()
     .catch(() => null)
@@ -609,6 +633,10 @@ admin.patch('/databases/:id', async (c) => {
     return c.json({ error: 'Spark UI is only available for Spark databases.' }, 400)
   }
 
+  if (rowKind !== 'spark' && (body.livy_url !== undefined || body.livy_platform_token !== undefined)) {
+    return c.json({ error: 'Livy configuration is only available for Spark databases.' }, 400)
+  }
+
   const updates: string[] = []
   const bindings: unknown[] = []
   let i = 1
@@ -617,11 +645,45 @@ admin.patch('/databases/:id', async (c) => {
     if (rowKind === 'sqlite') {
       return c.json({ error: 'Only connection-string databases take a connection string.' }, 400)
     }
-    const verified = await verifyConnection(c, rowKind, body)
+    let uiUrlToPass = body.ui_url
+    let uiTokenToPass = body.ui_platform_token
+    let livyUrlToPass = body.livy_url
+    let livyTokenToPass = body.livy_platform_token
+    if (
+      rowKind === 'spark' &&
+      row.connection_secret &&
+      (uiUrlToPass === undefined ||
+        uiTokenToPass === undefined ||
+        livyUrlToPass === undefined ||
+        livyTokenToPass === undefined)
+    ) {
+      try {
+        const existing = JSON.parse(await openSecret(c.env, row.connection_secret))
+        if (uiUrlToPass === undefined) uiUrlToPass = existing.ui_url
+        if (uiTokenToPass === undefined) uiTokenToPass = existing.ui_platform_token
+        if (livyUrlToPass === undefined) livyUrlToPass = existing.livy_url
+        if (livyTokenToPass === undefined) livyTokenToPass = existing.livy_platform_token
+      } catch {
+        /* ignore */
+      }
+    }
+    const verified = await verifyConnection(c, rowKind, {
+      ...body,
+      ui_url: uiUrlToPass,
+      ui_platform_token: uiTokenToPass,
+      livy_url: livyUrlToPass,
+      livy_platform_token: livyTokenToPass,
+    })
     if (verified instanceof Response) return verified
     updates.push(`connection_secret = ?${i++}`)
     bindings.push(await sealSecret(c.env, JSON.stringify(verified.stored)))
-  } else if (rowKind === 'spark' && (body.ui_url !== undefined || body.ui_platform_token !== undefined)) {
+  } else if (
+    rowKind === 'spark' &&
+    (body.ui_url !== undefined ||
+      body.ui_platform_token !== undefined ||
+      body.livy_url !== undefined ||
+      body.livy_platform_token !== undefined)
+  ) {
     if (!row.connection_secret) {
       return c.json({ error: 'Database has no connection credentials configured.' }, 400)
     }
@@ -646,6 +708,18 @@ admin.patch('/databases/:id', async (c) => {
             ? undefined
             : body.ui_platform_token
           : storedAccess.ui_platform_token,
+      livy_url:
+        body.livy_url !== undefined
+          ? body.livy_url === '' || body.livy_url === null
+            ? undefined
+            : body.livy_url
+          : storedAccess.livy_url,
+      livy_platform_token:
+        body.livy_platform_token !== undefined
+          ? body.livy_platform_token === '' || body.livy_platform_token === null
+            ? undefined
+            : body.livy_platform_token
+          : storedAccess.livy_platform_token,
     }
     const normalized = normalizeSparkAccess(merged)
     if (!normalized.ok) return c.json({ error: normalized.error }, 400)

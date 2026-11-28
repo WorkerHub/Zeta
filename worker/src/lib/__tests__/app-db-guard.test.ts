@@ -31,6 +31,7 @@ describe('appInternalTables', () => {
         'zeta_executions',
         'zeta_spark_config_profiles',
         'zeta_spark_instance_configs',
+        'zeta_livy_batches',
         // The schema-migration ledger is internal too (ONE-352)
         '_zeta_schema_migrations',
       ].sort()

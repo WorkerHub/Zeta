@@ -211,6 +211,7 @@ describe('GET /api/admin/databases (kind=spark)', () => {
       kind: 'spark',
       has_connection: true,
       has_spark_ui: false,
+      has_livy: false,
       is_app_db: false,
     })
   })
@@ -234,6 +235,40 @@ describe('GET /api/admin/databases (kind=spark)', () => {
     expect(text).not.toContain(uiToken)
     const json = JSON.parse(text) as { results: Array<Record<string, unknown>> }
     expect(json.results[0]).toMatchObject({ kind: 'spark', has_connection: true, has_spark_ui: true })
+  })
+
+  it('reports has_livy: true when livy fields are configured, and never returns them in clear', async () => {
+    const e = env()
+    spark.queue.push({ kind: 'ok' })
+    const livyUrl = 'https://livy-dev.example.com'
+    const livyToken = 'livy-secret-token'
+    await callWorker(
+      e,
+      '/api/admin/databases',
+      postJson(body({ livy_url: livyUrl, livy_platform_token: livyToken }), { headers: await adminHeaders(e) })
+    )
+
+    const adminRes = await callWorker(e, '/api/admin/databases', { headers: await adminHeaders(e) })
+    expect(adminRes.status).toBe(200)
+    const adminJson = (await adminRes.json()) as { results: Array<Record<string, unknown>> }
+    expect(adminJson.results[0]).toMatchObject({ kind: 'spark', has_connection: true, has_livy: true })
+    expect(JSON.stringify(adminJson)).not.toContain(livyToken)
+    expect(JSON.stringify(adminJson)).not.toContain(livyUrl)
+
+    // Member endpoint also has has_livy: true and no clear credentials
+    await e.DB.prepare(
+      `INSERT INTO user_database_permissions (id, user_id, database_id, permission, granted_at)
+       VALUES ('p1', 'u1', ?1, 'read', 0)`
+    )
+      .bind(adminJson.results[0]!.id)
+      .run()
+
+    const memberRes = await callWorker(e, '/api/databases', { headers: await bearer(e, 'u1', 'member') })
+    expect(memberRes.status).toBe(200)
+    const memberJson = (await memberRes.json()) as Array<Record<string, unknown>>
+    expect(memberJson[0]).toMatchObject({ kind: 'spark', has_livy: true })
+    expect(JSON.stringify(memberJson)).not.toContain(livyToken)
+    expect(JSON.stringify(memberJson)).not.toContain(livyUrl)
   })
 })
 
@@ -350,5 +385,113 @@ describe('PATCH /api/admin/databases/:id (kind=spark)', () => {
     })
     expect(res.status).toBe(400)
     expect(((await res.json()) as { error: string }).error).toContain('both be provided or both omitted')
+  })
+
+  it('updates Livy fields on an existing spark row without re-testing or re-entering connection_url', async () => {
+    const e = env()
+    const id = await seed(e)
+    const res = await callWorker(e, `/api/admin/databases/${id}`, {
+      ...postJson(
+        { livy_url: 'https://livy-target.example.dev', livy_platform_token: 'livy-tok-123' },
+        { headers: await adminHeaders(e) }
+      ),
+      method: 'PATCH',
+    })
+    expect(res.status).toBe(200)
+    const json = (await res.json()) as { database: Record<string, unknown> }
+    expect(json.database).toMatchObject({ has_livy: true })
+    expect(spark.calls).toEqual([]) // Did not invoke Spark health check
+
+    const sealed = (await listRows(e))[0]!.connection_secret as string
+    expect(JSON.parse(await openSecret(e, sealed))).toMatchObject({
+      url: URL,
+      platform_token: PLATFORM,
+      app_token: APP,
+      livy_url: 'https://livy-target.example.dev',
+      livy_platform_token: 'livy-tok-123',
+    })
+  })
+
+  it('clears Livy fields when both are set to empty string', async () => {
+    const e = env()
+    const sealed = await sealSecret(
+      e,
+      JSON.stringify({
+        url: URL,
+        platform_token: PLATFORM,
+        app_token: APP,
+        livy_url: 'https://livy.example.dev',
+        livy_platform_token: 'tok',
+      })
+    )
+    await e.DB.prepare(
+      `INSERT INTO d1_databases (id, name, binding_name, cf_database_id, kind, connection_secret, is_active, created_at)
+       VALUES ('sp2', 'spark2', 'spark:sp2', NULL, 'spark', ?1, 1, 0)`
+    )
+      .bind(sealed)
+      .run()
+
+    const res = await callWorker(e, '/api/admin/databases/sp2', {
+      ...postJson({ livy_url: '', livy_platform_token: '' }, { headers: await adminHeaders(e) }),
+      method: 'PATCH',
+    })
+    expect(res.status).toBe(200)
+    const json = (await res.json()) as { database: Record<string, unknown> }
+    expect(json.database).toMatchObject({ has_livy: false })
+
+    const unsealed = JSON.parse(await openSecret(e, (await listRows(e))[0]!.connection_secret as string))
+    expect(unsealed.livy_url).toBeUndefined()
+    expect(unsealed.livy_platform_token).toBeUndefined()
+  })
+
+  it('rejects unpaired Livy fields in PATCH with 400', async () => {
+    const e = env()
+    const id = await seed(e)
+    const res = await callWorker(e, `/api/admin/databases/${id}`, {
+      ...postJson({ livy_url: 'https://livy.example.dev' }, { headers: await adminHeaders(e) }),
+      method: 'PATCH',
+    })
+    expect(res.status).toBe(400)
+  })
+
+  it('rejects Livy fields on POST for non-spark targets with 400', async () => {
+    const e = env()
+    const res = await callWorker(
+      e,
+      '/api/admin/databases',
+      postJson(
+        {
+          kind: 'postgres',
+          name: 'pg-test',
+          connection_url: 'postgres://u:p@localhost:5432/db',
+          livy_url: 'https://livy.example.dev',
+          livy_platform_token: 'tok',
+        },
+        { headers: await adminHeaders(e) }
+      )
+    )
+    expect(res.status).toBe(400)
+    expect(((await res.json()) as { error: string }).error).toContain(
+      'Livy configuration is only available for Spark databases'
+    )
+  })
+
+  it('rejects Livy fields on PATCH for non-spark targets with 400', async () => {
+    const e = env()
+    await e.DB.prepare(
+      `INSERT INTO d1_databases (id, name, binding_name, cf_database_id, kind, connection_secret, is_active, created_at)
+       VALUES ('pg1', 'pg-test', 'pg:pg1', NULL, 'postgres', NULL, 1, 0)`
+    ).run()
+    const res = await callWorker(e, '/api/admin/databases/pg1', {
+      ...postJson(
+        { livy_url: 'https://livy.example.dev', livy_platform_token: 'tok' },
+        { headers: await adminHeaders(e) }
+      ),
+      method: 'PATCH',
+    })
+    expect(res.status).toBe(400)
+    expect(((await res.json()) as { error: string }).error).toContain(
+      'Livy configuration is only available for Spark databases'
+    )
   })
 })

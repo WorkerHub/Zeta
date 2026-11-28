@@ -39,6 +39,7 @@ describe('getMigrations', () => {
       'schema_v5',
       'schema_v6',
       'schema_v7',
+      'schema_v8',
     ])
     expect(migrations[0]!.sql).not.toMatch(/PRAGMA/)
     expect(migrations[0]!.sql).not.toMatch(/\bALTER TABLE\b/)
@@ -113,10 +114,13 @@ describe('getMigrations', () => {
   it('parameterises every table and index name by the effective prefix', () => {
     const sql = getMigrations(env('ZETA')).find((m) => m.name === 'schema_v1')!.sql
     const T = tables(env('ZETA'))
-    // Every table schema_v1 creates (executions arrives in schema_v5, the two Spark tables in schema_v7)
+    // Every table schema_v1 creates (executions arrives in schema_v5, the two Spark tables in schema_v7, livy_batches in schema_v8)
     for (const name of Object.values(T).filter(
       (n) =>
-        !n.endsWith('_executions') && !n.endsWith('_spark_config_profiles') && !n.endsWith('_spark_instance_configs')
+        !n.endsWith('_executions') &&
+        !n.endsWith('_spark_config_profiles') &&
+        !n.endsWith('_spark_instance_configs') &&
+        !n.endsWith('_livy_batches')
     )) {
       expect(sql).toContain(name)
     }
@@ -147,7 +151,8 @@ describe('schema_v1 applied to a real database', () => {
           (t) =>
             !t.endsWith('_executions') &&
             !t.endsWith('_spark_config_profiles') &&
-            !t.endsWith('_spark_instance_configs')
+            !t.endsWith('_spark_instance_configs') &&
+            !t.endsWith('_livy_batches')
         )
         .sort()
     )
@@ -442,5 +447,59 @@ describe('schema_v7 (Spark config tables + the manage permission)', () => {
         .all() as Array<{ name: string }>
     ).map((r) => r.name)
     expect(indexes).toContain('idx_spark_config_profiles_user_db')
+  })
+})
+
+describe('schema_v8 (Livy batch job registrations)', () => {
+  it('creates the livy_batches table, prefix-aware, with unique constraint and indexes', async () => {
+    const { db, sqlite } = sqliteD1()
+    const env = fakeEnv({ DB: db, TABLE_PREFIX: '' })
+    await runMigrations(env)
+
+    const columns = (table: string) =>
+      (sqlite.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>).map((c) => c.name)
+
+    expect(columns('livy_batches')).toEqual([
+      'id',
+      'database_id',
+      'batch_id',
+      'user_id',
+      'file',
+      'class_name',
+      'created_at',
+    ])
+
+    const indexes = (
+      sqlite
+        .prepare("SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name = 'livy_batches'")
+        .all() as Array<{ name: string }>
+    ).map((r) => r.name)
+    expect(indexes).toContain('idx_livy_batches_user_db')
+    expect(indexes).toContain('idx_livy_batches_created')
+
+    // Seed prerequisite rows
+    sqlite.exec(`
+      INSERT INTO users (id, email, name, role, created_at, updated_at)
+      VALUES ('u1', 'u1@example.com', 'U1', 'member', 0, 0);
+      INSERT INTO d1_databases (id, name, binding_name, created_at)
+      VALUES ('db1', 'one', 'spark:db1', 0);
+      INSERT INTO livy_batches (id, database_id, batch_id, user_id, file, class_name, created_at)
+      VALUES ('b1', 'db1', 101, 'u1', 'hdfs:///app.jar', 'org.example.Main', 1000);
+    `)
+
+    // Enforces unique constraint on (database_id, batch_id)
+    expect(() =>
+      sqlite.exec(`
+        INSERT INTO livy_batches (id, database_id, batch_id, user_id, file, class_name, created_at)
+        VALUES ('b2', 'db1', 101, 'u1', 'hdfs:///other.jar', NULL, 1001);
+      `)
+    ).toThrow()
+
+    // Different batch_id on same database succeeds
+    sqlite.exec(`
+      INSERT INTO livy_batches (id, database_id, batch_id, user_id, file, class_name, created_at)
+      VALUES ('b2', 'db1', 102, 'u1', 'hdfs:///app.jar', NULL, 1002);
+    `)
+    expect(sqlite.prepare('SELECT COUNT(*) as n FROM livy_batches').all()).toEqual([{ n: 2 }])
   })
 })

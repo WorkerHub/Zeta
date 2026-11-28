@@ -312,5 +312,27 @@ export function getMigrations(env: Pick<Env, 'TABLE_PREFIX'>): Migration[] {
         )`,
       ].join(';\n'),
     },
+    {
+      // Livy batch job submissions.
+      //
+      // `livy_batches` records Spark batch jobs submitted through Zeta to a Spark Livy instance.
+      // `database_id` targets the Spark database; `batch_id` is the Livy-assigned batch ID.
+      // Real-time job state and logs are fetched from Livy on demand.
+      name: 'schema_v8',
+      sql: [
+        `CREATE TABLE IF NOT EXISTS ${T.livy_batches} (
+          id TEXT PRIMARY KEY,
+          database_id TEXT NOT NULL REFERENCES ${T.d1_databases}(id) ON DELETE CASCADE,
+          batch_id INTEGER NOT NULL,
+          user_id TEXT NOT NULL REFERENCES ${T.users}(id) ON DELETE CASCADE,
+          file TEXT NOT NULL,
+          class_name TEXT,
+          created_at INTEGER NOT NULL,
+          UNIQUE (database_id, batch_id)
+        )`,
+        `CREATE INDEX IF NOT EXISTS idx_${T.livy_batches}_user_db ON ${T.livy_batches}(database_id, user_id, created_at)`,
+        `CREATE INDEX IF NOT EXISTS idx_${T.livy_batches}_created ON ${T.livy_batches}(created_at)`,
+      ].join(';\n'),
+    },
   ]
 }

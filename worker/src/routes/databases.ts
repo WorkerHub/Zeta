@@ -6,7 +6,7 @@ import { audit, now, tables } from '../lib/db'
 import { effectiveProvider } from '../lib/provider'
 import { openSecret } from '../lib/secrets'
 import type { SparkAccess } from '../lib/spark-access'
-import { checkDatabaseHasSparkUi, normalizeSparkAccess } from '../lib/spark-access'
+import { checkDatabaseHasSparkUi, checkHasLivy, normalizeSparkAccess } from '../lib/spark-access'
 import type { JarRef } from '../lib/spark-config'
 import { validateInstanceEntries, validateInstanceJars } from '../lib/spark-config'
 import { applySparkConfig, fetchSparkConfigStatus, fetchSparkJars, SparkQueryError } from '../lib/spark-executor'
@@ -63,6 +63,7 @@ databases.get('/', async (c) => {
         const base: Permission = role === 'admin' ? 'manage' : ((permMap.get(db.id) ?? 'read') as Permission)
         const kind = db.kind ?? 'sqlite'
         const has_spark_ui = await checkDatabaseHasSparkUi(c.env, db)
+        const has_livy = await checkHasLivy(c.env, db)
         return {
           id: db.id,
           name: db.name,
@@ -76,6 +77,7 @@ databases.get('/', async (c) => {
           is_app_db: appDb,
           permission: appDb ? capAppDbPermission(base) : base,
           has_spark_ui,
+          has_livy,
         }
       })
     )

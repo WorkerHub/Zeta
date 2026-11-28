@@ -40,6 +40,8 @@ export function tables(env: Pick<Env, 'TABLE_PREFIX'>) {
     // instance config, both added by schema_v7 (see lib/migrations.ts).
     spark_config_profiles: `${p}spark_config_profiles`,
     spark_instance_configs: `${p}spark_instance_configs`,
+    // Livy batch job submissions, added by schema_v8.
+    livy_batches: `${p}livy_batches`,
   }
 }
 
@@ -59,7 +61,7 @@ export function migrationsTable(env: Pick<Env, 'TABLE_PREFIX'>): string {
 
 // ── Existing-schema detection (anti-silent-switch guard) ─────────────────────────────────────
 
-// The unprefixed names of the 14 Zeta tables double as the family suffixes: any table named
+// The unprefixed names of the 15 Zeta tables double as the family suffixes: any table named
 // `<something>users`, `<something>settings` … belongs to the family, with `<something>_` as its
 // prefix (and a bare `users` means an unprefixed schema).
 const FAMILY_TABLES = Object.values(tables({ TABLE_PREFIX: '' }))

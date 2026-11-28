@@ -309,6 +309,22 @@ describe('openSparkSession', () => {
     expect(error.message).toContain('[redacted]')
     expect(error.message.length).toBeLessThanOrEqual(1500)
   })
+
+  it('redacts livy_url and livy_platform_token when present in access', async () => {
+    const accessWithLivy = {
+      ...ACCESS,
+      livy_url: 'https://livy-internal.example.dev',
+      livy_platform_token: 'livy-secret-token-999',
+    }
+    const leaked = `failed contacting livy at ${accessWithLivy.livy_url} with auth ${accessWithLivy.livy_platform_token}`
+    script.push(healthOk(), json({ error: leaked }))
+    const session = await openSparkSession(accessWithLivy)
+    const error = await session.run('select 1', 'read', 1).catch((err) => err)
+    expect(error.kind).toBe('sql')
+    expect(error.message).not.toContain(accessWithLivy.livy_url)
+    expect(error.message).not.toContain(accessWithLivy.livy_platform_token)
+    expect(error.message).toContain('[redacted]')
+  })
 })
 
 describe('budgets', () => {
