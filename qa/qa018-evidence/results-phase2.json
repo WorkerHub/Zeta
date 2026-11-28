@@ -1,0 +1,22 @@
+{
+  "run_at": "2026-11-28T15:52:49.591Z",
+  "base": "https://zeta.pama.workers.dev",
+  "all_pass": false,
+  "checks": [
+    {
+      "id": "P0",
+      "name": "登录态 + Apollo has_spark_ui=true(已填口径门槛)",
+      "pass": false,
+      "detail": "refresh=401 apollo=missing dbs=n/a switcher=false"
+    }
+  ],
+  "page_errors": [],
+  "databases": null,
+  "query_result": null,
+  "session_post": null,
+  "first_hit": null,
+  "style_probes": {},
+  "failed_resources_count": 0,
+  "console_flagged_count": 1,
+  "elapsed_ms": 40874
+}

@@ -1,0 +1,4 @@
+{
+  "note": "静态资源失败清单(4xx 或 MIME=text/html 的样式/脚本);URL 中 query 参数已脱敏",
+  "failed": []
+}

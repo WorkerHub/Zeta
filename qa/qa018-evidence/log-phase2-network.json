@@ -1,0 +1,387 @@
+[
+  {
+    "section": "login",
+    "url": "https://zeta.pama.workers.dev/query",
+    "status": 200,
+    "ctype": "text/html",
+    "rtype": "document"
+  },
+  {
+    "section": "login",
+    "url": "https://zeta.pama.workers.dev/assets/rolldown-runtime-XKyaHtl9.js",
+    "status": 200,
+    "ctype": "text/javascript",
+    "rtype": "script"
+  },
+  {
+    "section": "login",
+    "url": "https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap",
+    "status": 200,
+    "ctype": "text/css",
+    "rtype": "stylesheet"
+  },
+  {
+    "section": "login",
+    "url": "https://zeta.pama.workers.dev/assets/react-vendor-U3SKuzn8.js",
+    "status": 200,
+    "ctype": "text/javascript",
+    "rtype": "script"
+  },
+  {
+    "section": "login",
+    "url": "https://zeta.pama.workers.dev/theme-init.js",
+    "status": 200,
+    "ctype": "text/javascript",
+    "rtype": "script"
+  },
+  {
+    "section": "login",
+    "url": "https://zeta.pama.workers.dev/assets/index-CapO-46D.js",
+    "status": 200,
+    "ctype": "text/javascript",
+    "rtype": "script"
+  },
+  {
+    "section": "login",
+    "url": "https://zeta.pama.workers.dev/assets/vendor-C0MbsHBK.js",
+    "status": 200,
+    "ctype": "text/javascript",
+    "rtype": "script"
+  },
+  {
+    "section": "login",
+    "url": "https://zeta.pama.workers.dev/assets/index-pMC2Hisp.css",
+    "status": 200,
+    "ctype": "text/css",
+    "rtype": "stylesheet"
+  },
+  {
+    "section": "login",
+    "url": "https://zeta.pama.workers.dev/assets/editor-vendor-DCJYUCJf.js",
+    "status": 200,
+    "ctype": "text/javascript",
+    "rtype": "script"
+  },
+  {
+    "section": "login",
+    "url": "https://zeta.pama.workers.dev/assets/api-DfRmstIT.js",
+    "status": 200,
+    "ctype": "text/javascript",
+    "rtype": "script"
+  },
+  {
+    "section": "login",
+    "url": "https://fonts.gstatic.com/s/inter/v20/UcC73FwrK3iLTeHuS_nVMrMxCp50SjIa1ZL7W0Q5nw.woff2",
+    "status": 200,
+    "ctype": "font/woff2",
+    "rtype": "font"
+  },
+  {
+    "section": "login",
+    "url": "https://zeta.pama.workers.dev/sw.js",
+    "status": 200,
+    "ctype": "text/javascript",
+    "rtype": "script"
+  },
+  {
+    "section": "login",
+    "url": "https://zeta.pama.workers.dev/favicon.svg",
+    "status": 200,
+    "ctype": "image/svg+xml",
+    "rtype": "other"
+  },
+  {
+    "section": "login",
+    "url": "https://zeta.pama.workers.dev/api/auth/refresh",
+    "status": 401,
+    "ctype": "application/json",
+    "rtype": "fetch"
+  },
+  {
+    "section": "login",
+    "url": "https://zeta.pama.workers.dev/theme-init.js",
+    "status": 200,
+    "ctype": "text/javascript",
+    "rtype": "fetch"
+  },
+  {
+    "section": "login",
+    "url": "https://zeta.pama.workers.dev/favicon.svg",
+    "status": 200,
+    "ctype": "image/svg+xml",
+    "rtype": "other"
+  },
+  {
+    "section": "login",
+    "url": "https://zeta.pama.workers.dev/assets/Login-Bh9LnIYd.js",
+    "status": 200,
+    "ctype": "text/javascript",
+    "rtype": "script"
+  },
+  {
+    "section": "login",
+    "url": "https://zeta.pama.workers.dev/assets/icons-vendor-DtOS_uJ2.js",
+    "status": 200,
+    "ctype": "text/javascript",
+    "rtype": "script"
+  },
+  {
+    "section": "login",
+    "url": "https://zeta.pama.workers.dev/assets/AuthShell-B70WOLxm.js",
+    "status": 200,
+    "ctype": "text/javascript",
+    "rtype": "script"
+  },
+  {
+    "section": "login",
+    "url": "https://zeta.pama.workers.dev/assets/Logo-CRtv6zIO.js",
+    "status": 200,
+    "ctype": "text/javascript",
+    "rtype": "script"
+  },
+  {
+    "section": "login",
+    "url": "https://zeta.pama.workers.dev/index.html",
+    "status": 307,
+    "ctype": "",
+    "rtype": "fetch"
+  },
+  {
+    "section": "login",
+    "url": "https://zeta.pama.workers.dev/",
+    "status": 200,
+    "ctype": "text/html",
+    "rtype": "fetch"
+  },
+  {
+    "section": "login",
+    "url": "https://zeta.pama.workers.dev/favicon.svg",
+    "status": 200,
+    "ctype": "image/svg+xml",
+    "rtype": "fetch"
+  },
+  {
+    "section": "login",
+    "url": "https://zeta.pama.workers.dev/api/auth/register-status",
+    "status": 200,
+    "ctype": "application/json",
+    "rtype": "fetch"
+  },
+  {
+    "section": "login",
+    "url": "https://zeta.pama.workers.dev/pwa/maskable-512x512.png",
+    "status": 200,
+    "ctype": "image/png",
+    "rtype": "fetch"
+  },
+  {
+    "section": "login",
+    "url": "https://zeta.pama.workers.dev/pwa/icon-512x512.png",
+    "status": 200,
+    "ctype": "image/png",
+    "rtype": "fetch"
+  },
+  {
+    "section": "login",
+    "url": "https://zeta.pama.workers.dev/pwa/icon-192x192.png",
+    "status": 200,
+    "ctype": "image/png",
+    "rtype": "fetch"
+  },
+  {
+    "section": "login",
+    "url": "https://zeta.pama.workers.dev/pwa/apple-touch-icon-180x180.png",
+    "status": 200,
+    "ctype": "image/png",
+    "rtype": "fetch"
+  },
+  {
+    "section": "login",
+    "url": "https://zeta.pama.workers.dev/pwa/app-icon.svg",
+    "status": 200,
+    "ctype": "image/svg+xml",
+    "rtype": "fetch"
+  },
+  {
+    "section": "login",
+    "url": "https://zeta.pama.workers.dev/assets/vendor-C0MbsHBK.js",
+    "status": 200,
+    "ctype": "text/javascript",
+    "rtype": "fetch"
+  },
+  {
+    "section": "login",
+    "url": "https://zeta.pama.workers.dev/assets/setup-BmxDElWe.js",
+    "status": 200,
+    "ctype": "text/javascript",
+    "rtype": "fetch"
+  },
+  {
+    "section": "login",
+    "url": "https://zeta.pama.workers.dev/assets/rolldown-runtime-XKyaHtl9.js",
+    "status": 200,
+    "ctype": "text/javascript",
+    "rtype": "fetch"
+  },
+  {
+    "section": "login",
+    "url": "https://zeta.pama.workers.dev/assets/react-vendor-U3SKuzn8.js",
+    "status": 200,
+    "ctype": "text/javascript",
+    "rtype": "fetch"
+  },
+  {
+    "section": "login",
+    "url": "https://zeta.pama.workers.dev/assets/index-pMC2Hisp.css",
+    "status": 200,
+    "ctype": "text/css",
+    "rtype": "fetch"
+  },
+  {
+    "section": "login",
+    "url": "https://zeta.pama.workers.dev/assets/index-CapO-46D.js",
+    "status": 200,
+    "ctype": "text/javascript",
+    "rtype": "fetch"
+  },
+  {
+    "section": "login",
+    "url": "https://zeta.pama.workers.dev/assets/icons-vendor-DtOS_uJ2.js",
+    "status": 200,
+    "ctype": "text/javascript",
+    "rtype": "fetch"
+  },
+  {
+    "section": "login",
+    "url": "https://zeta.pama.workers.dev/assets/error-copy-BeTs-5d4.js",
+    "status": 200,
+    "ctype": "text/javascript",
+    "rtype": "fetch"
+  },
+  {
+    "section": "login",
+    "url": "https://zeta.pama.workers.dev/assets/editor-vendor-DCJYUCJf.js",
+    "status": 200,
+    "ctype": "text/javascript",
+    "rtype": "fetch"
+  },
+  {
+    "section": "login",
+    "url": "https://zeta.pama.workers.dev/assets/api-DfRmstIT.js",
+    "status": 200,
+    "ctype": "text/javascript",
+    "rtype": "fetch"
+  },
+  {
+    "section": "login",
+    "url": "https://zeta.pama.workers.dev/assets/VerifyEmail-zwUj2bEf.js",
+    "status": 200,
+    "ctype": "text/javascript",
+    "rtype": "fetch"
+  },
+  {
+    "section": "login",
+    "url": "https://zeta.pama.workers.dev/assets/StickySaveBar-Dm26lKc1.js",
+    "status": 200,
+    "ctype": "text/javascript",
+    "rtype": "fetch"
+  },
+  {
+    "section": "login",
+    "url": "https://zeta.pama.workers.dev/assets/Setup-BmR6TeFi.js",
+    "status": 200,
+    "ctype": "text/javascript",
+    "rtype": "fetch"
+  },
+  {
+    "section": "login",
+    "url": "https://zeta.pama.workers.dev/assets/Security-CszXqeWn.js",
+    "status": 200,
+    "ctype": "text/javascript",
+    "rtype": "fetch"
+  },
+  {
+    "section": "login",
+    "url": "https://zeta.pama.workers.dev/assets/ResetPassword-xY0Ao2lz.js",
+    "status": 200,
+    "ctype": "text/javascript",
+    "rtype": "fetch"
+  },
+  {
+    "section": "login",
+    "url": "https://zeta.pama.workers.dev/assets/Register-DRqABwkW.js",
+    "status": 200,
+    "ctype": "text/javascript",
+    "rtype": "fetch"
+  },
+  {
+    "section": "login",
+    "url": "https://zeta.pama.workers.dev/assets/Query-DVmNqiNZ.js",
+    "status": 200,
+    "ctype": "text/javascript",
+    "rtype": "fetch"
+  },
+  {
+    "section": "login",
+    "url": "https://zeta.pama.workers.dev/assets/Profile-d7We8pOZ.js",
+    "status": 200,
+    "ctype": "text/javascript",
+    "rtype": "fetch"
+  },
+  {
+    "section": "login",
+    "url": "https://zeta.pama.workers.dev/assets/Logo-CRtv6zIO.js",
+    "status": 200,
+    "ctype": "text/javascript",
+    "rtype": "fetch"
+  },
+  {
+    "section": "login",
+    "url": "https://zeta.pama.workers.dev/assets/Login-Bh9LnIYd.js",
+    "status": 200,
+    "ctype": "text/javascript",
+    "rtype": "fetch"
+  },
+  {
+    "section": "login",
+    "url": "https://zeta.pama.workers.dev/assets/ForgotPassword-eLVm6Du2.js",
+    "status": 200,
+    "ctype": "text/javascript",
+    "rtype": "fetch"
+  },
+  {
+    "section": "login",
+    "url": "https://zeta.pama.workers.dev/assets/AuthShell-B70WOLxm.js",
+    "status": 200,
+    "ctype": "text/javascript",
+    "rtype": "fetch"
+  },
+  {
+    "section": "login",
+    "url": "https://zeta.pama.workers.dev/assets/AdminLayout-BGp3LFzy.js",
+    "status": 200,
+    "ctype": "text/javascript",
+    "rtype": "fetch"
+  },
+  {
+    "section": "login",
+    "url": "https://zeta.pama.workers.dev/assets/AccountLayout-ColdwHNk.js",
+    "status": 200,
+    "ctype": "text/javascript",
+    "rtype": "fetch"
+  },
+  {
+    "section": "login",
+    "url": "https://zeta.pama.workers.dev/assets/About-BO2aN602.js",
+    "status": 200,
+    "ctype": "text/javascript",
+    "rtype": "fetch"
+  },
+  {
+    "section": "login",
+    "url": "https://zeta.pama.workers.dev/manifest.webmanifest",
+    "status": 200,
+    "ctype": "application/manifest+json",
+    "rtype": "fetch"
+  }
+]

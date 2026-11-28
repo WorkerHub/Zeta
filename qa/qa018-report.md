@@ -34,4 +34,5 @@
 - **run 1（部分有效）**：注入 refresh_token 后登录态建立成功（A1/B1/B2/B3/C0/C1 + Apple/Deer/Tree 三个非 Spark 菜单项全过，`has_spark_ui=false` 口径确认，全 session `/spark-ui` 请求 0 次），但 6 项因脚本层缺陷失败（菜单开合状态未感知、锚定正则失配按钮 innerText、未先走显式连接流程、移动端预开状态误触发）——均为脚本缺陷非产品问题。部分结果与截图存档于 `results-phase1-run1-partial.json`、`shots-run1/`。
 - **run 2（终止）**：refresh=401。原因：refresh 端点为严格一次性轮换（`worker/src/routes/auth.ts` refresh 处理器验证后即 `revokeRefreshToken(payload.jti)` 再发新值），run 1 的 SPA 挂载刷新已消费注入原值。run 1 的 results JSON 被覆盖，已重建存档。
 - **run 3（2026-11-28，完整一击，17/17 PASS）**：第 2 枚 refresh_token 注入后单会话跑完全部第一段断言，无页面错误、session 内 `/spark-ui` 请求 0 次。关键值：Apollo `has_spark_ui=false`（B1）；选中 Apollo 后桌面与移动菜单均无入口且页面级扫描为 0（C1/C2）；六个非 Spark 数据源菜单均无入口（D-menu）；Apple 上显式连接（probe 200）后 `SELECT 1` 返回 200 + 1 结果集（D-query）；Bubble/Tree 编辑表单不渲染 UI 字段、Apollo 编辑表单 kind=SparkSQL 且 UI 两字段回显为空（E1/E2）。证据：`results-phase1.json`、`log-phase1-network.json`、`shots/phase1-*.png`。
-- **待办**：第二段等用户填好 Apollo 的 ui_url/ui_platform_token 后执行（#4–#7 + 疑点定性）。
+- **run 4（2026-11-28 15:52 UTC，第二段首试，门槛即停）**：第 3 枚 refresh_token 注入后 SPA 挂载即 `POST /api/auth/refresh` → **401**（值在首次使用前已被轮换吊销；注入机制与 run 3 完全一致）。按约定不重跑，第二段未执行。证据：`results-phase2.json`（P0 失败记录）、`log-phase2-network.json`。待第 4 枚令牌。
+- **待办**：第二段（#4–#7 + 静态资源阻断级取证）待有效令牌后一击执行；脚本 `scripts/qa018-phase2.js` 已就绪（含 #6 硬性检查：href/src 原值清单、失败资源清单、样式探针、控制台 MIME 报错取证）。
