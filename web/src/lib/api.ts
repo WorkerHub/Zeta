@@ -48,6 +48,7 @@ async function apiFetch<T>(path: string, init: RequestInit = {}, opts: ApiOption
         const err = await retry.json().catch(() => ({}) as { error?: string })
         throw new ApiError((err as { error?: string }).error ?? retry.statusText, retry.status, err)
       }
+      if (retry.status === 204) return undefined as unknown as T
       return retry.json() as Promise<T>
     }
     clearSession()
@@ -58,6 +59,10 @@ async function apiFetch<T>(path: string, init: RequestInit = {}, opts: ApiOption
   if (!res.ok) {
     const err = await res.json().catch(() => ({}) as { error?: string })
     throw new ApiError((err as { error?: string }).error ?? res.statusText, res.status, err)
+  }
+
+  if (res.status === 204) {
+    return undefined as unknown as T
   }
 
   return res.json() as Promise<T>
@@ -300,6 +305,16 @@ export const sparkInstanceConfigApi = {
   apply: (databaseId: string) =>
     apiFetch<{ state: 'running' | 'draining' | 'restarting' }>(`/databases/${databaseId}/spark-instance-config/apply`, {
       method: 'POST',
+    }),
+}
+
+// ── Spark UI session bootstrap endpoint ───────────────────────────────────────
+
+export const sparkUiApi = {
+  createSession: (db: string) =>
+    apiFetch<void>('/spark-ui/session', {
+      method: 'POST',
+      body: JSON.stringify({ db }),
     }),
 }
 
