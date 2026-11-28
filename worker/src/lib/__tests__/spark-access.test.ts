@@ -1,11 +1,13 @@
 import { describe, expect, it } from 'vitest'
-import { normalizeSparkAccess } from '../spark-access'
+import { hasLivyConfig, normalizeSparkAccess } from '../spark-access'
 
 // A made-up published address: no real host or token appears here.
 
 const URL = 'https://spark-3f9a.publish.example.dev'
 const PLATFORM = 'platform-token-abc123'
 const APP = 'app-token-xyz789'
+const LIVY_URL = 'https://livy-3f9a.publish.example.dev'
+const LIVY_TOKEN = 'livy-token-qwe456'
 
 const payload = (over: Record<string, unknown> = {}) => ({
   url: URL,
@@ -99,5 +101,86 @@ describe('normalizeSparkAccess', () => {
       expect(error).not.toContain(PLATFORM)
       expect(error).not.toContain(APP)
     }
+  })
+
+  describe('livy fields', () => {
+    it('accepts valid livy_url and livy_platform_token and normalises the URL', () => {
+      const result = normalizeSparkAccess(
+        payload({
+          livy_url: `${LIVY_URL}/?x=1#frag`,
+          livy_platform_token: `  ${LIVY_TOKEN}  `,
+        })
+      )
+      expect(result.ok).toBe(true)
+      if (!result.ok) return
+      expect(result.access.livy_url).toBe(LIVY_URL)
+      expect(result.access.livy_platform_token).toBe(LIVY_TOKEN)
+      expect(hasLivyConfig(result.access)).toBe(true)
+    })
+
+    it('requires livy_url and livy_platform_token to be paired (both present or both absent)', () => {
+      const onlyUrl = normalizeSparkAccess(payload({ livy_url: LIVY_URL }))
+      expect(onlyUrl.ok).toBe(false)
+      expect(!onlyUrl.ok && onlyUrl.error).toContain('together')
+
+      const onlyToken = normalizeSparkAccess(payload({ livy_platform_token: LIVY_TOKEN }))
+      expect(onlyToken.ok).toBe(false)
+      expect(!onlyToken.ok && onlyToken.error).toContain('together')
+
+      const bothEmpty = normalizeSparkAccess(payload({ livy_url: '  ', livy_platform_token: '' }))
+      expect(bothEmpty.ok).toBe(true)
+      if (!bothEmpty.ok) return
+      expect(bothEmpty.access.livy_url).toBeUndefined()
+      expect(bothEmpty.access.livy_platform_token).toBeUndefined()
+      expect(hasLivyConfig(bothEmpty.access)).toBe(false)
+    })
+
+    it('refuses invalid Livy URL (http, credentials, address tokens, too long)', () => {
+      const http = normalizeSparkAccess(
+        payload({ livy_url: 'http://livy.example.com', livy_platform_token: LIVY_TOKEN })
+      )
+      expect(http.ok).toBe(false)
+
+      const creds = normalizeSparkAccess(
+        payload({ livy_url: 'https://user:pass@livy.example.com', livy_platform_token: LIVY_TOKEN })
+      )
+      expect(creds.ok).toBe(false)
+
+      const tokenParam = normalizeSparkAccess(
+        payload({ livy_url: `${LIVY_URL}?_token=123`, livy_platform_token: LIVY_TOKEN })
+      )
+      expect(tokenParam.ok).toBe(false)
+
+      const tooLong = normalizeSparkAccess(
+        payload({ livy_url: `${LIVY_URL}/${'a'.repeat(2048)}`, livy_platform_token: LIVY_TOKEN })
+      )
+      expect(tooLong.ok).toBe(false)
+    })
+
+    it('refuses invalid Livy platform token (whitespace, control characters, too long)', () => {
+      for (const token of ['a b', 'a\nb', 'a\tb', 'a\u0000b']) {
+        const res = normalizeSparkAccess(payload({ livy_url: LIVY_URL, livy_platform_token: token }))
+        expect(res.ok).toBe(false)
+        expect(!res.ok && res.error).toContain('spaces or line breaks')
+      }
+
+      const tooLong = normalizeSparkAccess(payload({ livy_url: LIVY_URL, livy_platform_token: 'a'.repeat(4097) }))
+      expect(tooLong.ok).toBe(false)
+    })
+
+    it('never echoes Livy URL or Livy token in errors', () => {
+      const cases = [
+        payload({ livy_url: 'http://livy.example.com', livy_platform_token: LIVY_TOKEN }),
+        payload({ livy_url: `${LIVY_URL}?_token=secret`, livy_platform_token: LIVY_TOKEN }),
+        payload({ livy_url: LIVY_URL, livy_platform_token: 'bad token' }),
+      ]
+      for (const input of cases) {
+        const result = normalizeSparkAccess(input)
+        expect(result.ok).toBe(false)
+        const error = (result as { error: string }).error
+        expect(error).not.toContain(LIVY_URL)
+        expect(error).not.toContain(LIVY_TOKEN)
+      }
+    })
   })
 })

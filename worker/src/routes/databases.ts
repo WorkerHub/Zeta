@@ -6,7 +6,7 @@ import { audit, now, tables } from '../lib/db'
 import { effectiveProvider } from '../lib/provider'
 import { openSecret } from '../lib/secrets'
 import type { SparkAccess } from '../lib/spark-access'
-import { normalizeSparkAccess } from '../lib/spark-access'
+import { checkHasLivy, normalizeSparkAccess } from '../lib/spark-access'
 import type { JarRef } from '../lib/spark-config'
 import { validateInstanceEntries, validateInstanceJars } from '../lib/spark-config'
 import { applySparkConfig, fetchSparkConfigStatus, fetchSparkJars, SparkQueryError } from '../lib/spark-executor'
@@ -55,26 +55,30 @@ databases.get('/', async (c) => {
   }
 
   return c.json(
-    rows.map((db) => {
-      const appDb = isAppDb(c.env, db.cf_database_id)
-      // The application database's permission is capped at write: the admin's implicit manage
-      // and any stored write_drop/manage are reported at their effective level, never above write.
-      const base: Permission = role === 'admin' ? 'manage' : ((permMap.get(db.id) ?? 'read') as Permission)
-      const kind = db.kind ?? 'sqlite'
-      return {
-        id: db.id,
-        name: db.name,
-        description: db.description,
-        kind,
-        // `provider` is the label to show (the registration's own, or the engine's), `provider_custom`
-        // the text it is editing — see lib/provider.ts.
-        provider: effectiveProvider(kind, db.provider),
-        provider_custom: db.provider ?? null,
-        ...(role === 'admin' ? { binding_name: db.binding_name, cf_database_id: db.cf_database_id } : {}),
-        is_app_db: appDb,
-        permission: appDb ? capAppDbPermission(base) : base,
-      }
-    })
+    await Promise.all(
+      rows.map(async (db) => {
+        const appDb = isAppDb(c.env, db.cf_database_id)
+        // The application database's permission is capped at write: the admin's implicit manage
+        // and any stored write_drop/manage are reported at their effective level, never above write.
+        const base: Permission = role === 'admin' ? 'manage' : ((permMap.get(db.id) ?? 'read') as Permission)
+        const kind = db.kind ?? 'sqlite'
+        const hasLivy = await checkHasLivy(c.env, db)
+        return {
+          id: db.id,
+          name: db.name,
+          description: db.description,
+          kind,
+          // `provider` is the label to show (the registration's own, or the engine's), `provider_custom`
+          // the text it is editing — see lib/provider.ts.
+          provider: effectiveProvider(kind, db.provider),
+          provider_custom: db.provider ?? null,
+          ...(role === 'admin' ? { binding_name: db.binding_name, cf_database_id: db.cf_database_id } : {}),
+          is_app_db: appDb,
+          permission: appDb ? capAppDbPermission(base) : base,
+          has_livy: hasLivy,
+        }
+      })
+    )
   )
 })
 

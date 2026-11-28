@@ -670,6 +670,7 @@ describe('POST /api/admin/setup', () => {
         { name: 'schema_v5', status: 'applied' },
         { name: 'schema_v6', status: 'applied' },
         { name: 'schema_v7', status: 'applied' },
+        { name: 'schema_v8', status: 'applied' },
       ],
       upgraded: [
         'schema_v1: applied',
@@ -679,6 +680,7 @@ describe('POST /api/admin/setup', () => {
         'schema_v5: applied',
         'schema_v6: applied',
         'schema_v7: applied',
+        'schema_v8: applied',
       ],
     })
     expect(calls.some((c) => c.sql.includes('CREATE TABLE IF NOT EXISTS users'))).toBe(true)
@@ -722,6 +724,7 @@ describe('POST /api/admin/setup', () => {
         { name: 'schema_v5', status: 'skipped' },
         { name: 'schema_v6', status: 'skipped' },
         { name: 'schema_v7', status: 'skipped' },
+        { name: 'schema_v8', status: 'skipped' },
       ],
     })
     expect(body).not.toHaveProperty('upgraded')

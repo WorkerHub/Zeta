@@ -11,9 +11,9 @@ import { PostgresQueryError, testPostgresConnection } from '../lib/pg-executor'
 import { normalizePostgresUrl } from '../lib/pg-url'
 import { effectiveProvider, normalizeProvider } from '../lib/provider'
 import { MAX_RUN_LIMIT, MAX_RUN_QUOTA_MB, parseBoundedInt, pruneRuns } from '../lib/runs'
-import { sealLegacySecret, sealSecret } from '../lib/secrets'
+import { openSecret, sealLegacySecret, sealSecret } from '../lib/secrets'
 import { runSetup } from '../lib/setup'
-import { normalizeSparkAccess } from '../lib/spark-access'
+import { checkHasLivy, normalizeSparkAccess } from '../lib/spark-access'
 import { SparkQueryError, testSparkConnection } from '../lib/spark-executor'
 import { sparkSessionKey } from '../lib/spark-profile'
 import { requireAdmin } from '../middleware/auth'
@@ -298,6 +298,8 @@ interface ConnectionBody {
   connection_url?: unknown
   platform_token?: unknown
   app_token?: unknown
+  livy_url?: unknown
+  livy_platform_token?: unknown
 }
 
 // Proves pasted credentials against the real server before anything is saved. Registration,
@@ -319,6 +321,8 @@ async function verifyConnection(
       url: body.connection_url,
       platform_token: body.platform_token,
       app_token: body.app_token,
+      livy_url: body.livy_url,
+      livy_platform_token: body.livy_platform_token,
     })
     if (!access.ok) return c.json({ error: access.error }, 400)
     try {
@@ -366,7 +370,7 @@ async function verifyCfDatabase(
 // never disagree. The sealed connection payload never leaves the Worker (`has_connection` is what the
 // UI needs), the provider is resolved to the label it shows, and whether a row targets the
 // application's own database is annotated on every read, not stored.
-function adminDatabaseDto(env: Env, row: DatabaseRow) {
+function adminDatabaseDto(env: Env, row: DatabaseRow, hasLivy: boolean) {
   const { connection_secret, ...rest } = row
   const kind = rest.kind ?? 'sqlite'
   return {
@@ -375,6 +379,7 @@ function adminDatabaseDto(env: Env, row: DatabaseRow) {
     provider: effectiveProvider(kind, rest.provider),
     provider_custom: rest.provider ?? null,
     has_connection: connection_secret !== null && connection_secret !== undefined,
+    has_livy: hasLivy,
     is_app_db: isAppDb(env, row.cf_database_id),
   }
 }
@@ -382,7 +387,13 @@ function adminDatabaseDto(env: Env, row: DatabaseRow) {
 admin.get('/databases', async (c) => {
   const T = tables(c.env)
   const rows = await c.env.DB.prepare(`SELECT * FROM ${T.d1_databases} ORDER BY name`).all<DatabaseRow>()
-  return c.json({ results: rows.results.map((row) => adminDatabaseDto(c.env, row)) })
+  const results = await Promise.all(
+    rows.results.map(async (row) => {
+      const hasLivy = await checkHasLivy(c.env, row)
+      return adminDatabaseDto(c.env, row, hasLivy)
+    })
+  )
+  return c.json({ results })
 })
 
 // Proves pasted credentials without saving anything: the admin form's "test connection" button.
@@ -390,7 +401,14 @@ admin.get('/databases', async (c) => {
 // existed. Admin-only, so the provider's message is shown as-is (redacted of the URL and tokens).
 admin.post('/databases/test-connection', async (c) => {
   const body = await c.req
-    .json<{ connection_url?: unknown; kind?: unknown; platform_token?: unknown; app_token?: unknown }>()
+    .json<{
+      connection_url?: unknown
+      kind?: unknown
+      platform_token?: unknown
+      app_token?: unknown
+      livy_url?: unknown
+      livy_platform_token?: unknown
+    }>()
     .catch(() => null)
   if (!body) return c.json({ error: 'Invalid body' }, 400)
   const kind = body.kind ?? 'postgres'
@@ -453,6 +471,8 @@ admin.post('/databases', async (c) => {
       connection_url?: unknown
       platform_token?: unknown
       app_token?: unknown
+      livy_url?: unknown
+      livy_platform_token?: unknown
       provider?: unknown
     }>()
     .catch(() => null)
@@ -568,6 +588,8 @@ admin.patch('/databases/:id', async (c) => {
       connection_url?: unknown
       platform_token?: unknown
       app_token?: unknown
+      livy_url?: unknown
+      livy_platform_token?: unknown
       provider?: unknown
     }>()
     .catch(() => null)
@@ -576,11 +598,13 @@ admin.patch('/databases/:id', async (c) => {
   const T = tables(c.env)
   // The row's engine decides what may be edited: a credential-based row (PostgreSQL/MySQL/Spark) takes
   // its own registration fields, a SQLite row takes a Cloudflare database link.
-  let row: { id: string; kind: string | null; cf_database_id: string | null } | null
+  let row: { id: string; kind: string | null; cf_database_id: string | null; connection_secret: string | null } | null
   try {
-    row = await c.env.DB.prepare(`SELECT id, kind, cf_database_id FROM ${T.d1_databases} WHERE id = ?1`)
+    row = await c.env.DB.prepare(
+      `SELECT id, kind, cf_database_id, connection_secret FROM ${T.d1_databases} WHERE id = ?1`
+    )
       .bind(c.req.param('id'))
-      .first<{ id: string; kind: string | null; cf_database_id: string | null }>()
+      .first<{ id: string; kind: string | null; cf_database_id: string | null; connection_secret: string | null }>()
   } catch (err) {
     const missing = missingColumnResponse(c, err)
     if (missing) return missing
@@ -593,6 +617,10 @@ admin.patch('/databases/:id', async (c) => {
     return c.json({ error: `A ${CONNECTION_LABELS[rowKind]} database is not linked to a Cloudflare database.` }, 400)
   }
 
+  if (rowKind !== 'spark' && (body.livy_url !== undefined || body.livy_platform_token !== undefined)) {
+    return c.json({ error: 'Livy configuration is only available for Spark databases.' }, 400)
+  }
+
   const updates: string[] = []
   const bindings: unknown[] = []
   let i = 1
@@ -601,10 +629,44 @@ admin.patch('/databases/:id', async (c) => {
     if (rowKind === 'sqlite') {
       return c.json({ error: 'Only connection-string databases take a connection string.' }, 400)
     }
-    const verified = await verifyConnection(c, rowKind, body)
+    let livyUrlToPass = body.livy_url
+    let livyTokenToPass = body.livy_platform_token
+    if (rowKind === 'spark' && livyUrlToPass === undefined && livyTokenToPass === undefined && row.connection_secret) {
+      try {
+        const existing = JSON.parse(await openSecret(c.env, row.connection_secret))
+        livyUrlToPass = existing.livy_url
+        livyTokenToPass = existing.livy_platform_token
+      } catch {
+        /* ignore */
+      }
+    }
+    const verified = await verifyConnection(c, rowKind, {
+      ...body,
+      livy_url: livyUrlToPass,
+      livy_platform_token: livyTokenToPass,
+    })
     if (verified instanceof Response) return verified
     updates.push(`connection_secret = ?${i++}`)
     bindings.push(await sealSecret(c.env, JSON.stringify(verified.stored)))
+  } else if (rowKind === 'spark' && (body.livy_url !== undefined || body.livy_platform_token !== undefined)) {
+    if (!row.connection_secret) {
+      return c.json({ error: 'Database has no connection configuration.' }, 400)
+    }
+    let existingAccess: Record<string, unknown> = {}
+    try {
+      existingAccess = JSON.parse(await openSecret(c.env, row.connection_secret))
+    } catch {
+      return c.json({ error: 'Failed to read existing connection configuration.' }, 500)
+    }
+    const merged = {
+      ...existingAccess,
+      livy_url: body.livy_url,
+      livy_platform_token: body.livy_platform_token,
+    }
+    const normalized = normalizeSparkAccess(merged)
+    if (!normalized.ok) return c.json({ error: normalized.error }, 400)
+    updates.push(`connection_secret = ?${i++}`)
+    bindings.push(await sealSecret(c.env, JSON.stringify(normalized.access)))
   }
 
   if (body.cf_database_id !== undefined) {
@@ -678,7 +740,8 @@ admin.patch('/databases/:id', async (c) => {
       ip: c.req.header('cf-connecting-ip'),
     })
   )
-  return c.json({ message: 'Updated', database: adminDatabaseDto(c.env, updated) })
+  const hasLivy = await checkHasLivy(c.env, updated)
+  return c.json({ message: 'Updated', database: adminDatabaseDto(c.env, updated, hasLivy) })
 })
 
 admin.delete('/databases/:id', async (c) => {

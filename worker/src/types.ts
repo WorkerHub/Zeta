@@ -154,3 +154,13 @@ export interface NotebookRunRow {
   executed_at: number // milliseconds
   results: string // JSON: the run's statement results
 }
+
+export interface LivyBatchRow {
+  id: string
+  database_id: string
+  batch_id: number
+  user_id: string
+  file: string
+  class_name: string | null
+  created_at: number
+}

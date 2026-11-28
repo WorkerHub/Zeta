@@ -13,6 +13,8 @@ export interface SparkAccess {
   url: string
   platform_token: string
   app_token: string
+  livy_url?: string
+  livy_platform_token?: string
 }
 
 export interface SparkAccessOk {
@@ -60,6 +62,9 @@ function readToken(value: unknown, label: string): { ok: true; token: string } |
 // Validates one payload — a pasted registration or a stored, unsealed one — and rewrites it into the
 // exact form that is sealed and handed to the executor. Errors are deliberately generic: the input
 // carries both tokens.
+import type { Env } from '../types'
+import { openSecret } from './secrets'
+
 export function normalizeSparkAccess(input: unknown): SparkAccessResult {
   const payload = (input && typeof input === 'object' ? input : {}) as Record<string, unknown>
 
@@ -100,5 +105,91 @@ export function normalizeSparkAccess(input: unknown): SparkAccessResult {
   // a published address does not use) are dropped, and the trailing slash is removed here once
   // instead of at every call site.
   const url = `${parsed.origin}${parsed.pathname.replace(/\/+$/, '')}`
-  return { ok: true, access: { url, platform_token: platform.token, app_token: app.token }, host: parsed.hostname }
+
+  // Livy publish configuration (optional, but livy_url and livy_platform_token must be paired)
+  const rawLivyUrl = typeof payload.livy_url === 'string' ? payload.livy_url.trim() : ''
+  const hasLivyUrl = rawLivyUrl.length > 0
+  const rawLivyToken = typeof payload.livy_platform_token === 'string' ? payload.livy_platform_token.trim() : ''
+  const hasLivyToken = rawLivyToken.length > 0
+
+  if (hasLivyUrl !== hasLivyToken) {
+    return {
+      ok: false,
+      error: 'livy_url and livy_platform_token must be provided together, or both omitted.',
+    }
+  }
+
+  let livy_url: string | undefined
+  let livy_platform_token: string | undefined
+
+  if (hasLivyUrl && hasLivyToken) {
+    const livyToken = readToken(payload.livy_platform_token, 'Livy platform token')
+    if (!livyToken.ok) return livyToken
+
+    if (rawLivyUrl.length > MAX_URL_LENGTH) return { ok: false, error: 'The Livy publish URL is too long.' }
+
+    let parsedLivy: URL
+    try {
+      parsedLivy = new URL(rawLivyUrl)
+    } catch {
+      return { ok: false, error: 'That is not a valid Livy publish URL.' }
+    }
+    if (parsedLivy.protocol !== 'https:') return { ok: false, error: 'The Livy publish URL must start with https://.' }
+    if (!parsedLivy.hostname) return { ok: false, error: 'The Livy publish URL is missing a host.' }
+    if (parsedLivy.username || parsedLivy.password) {
+      return {
+        ok: false,
+        error: 'The Livy publish URL must not carry a username or password.',
+      }
+    }
+    for (const key of parsedLivy.searchParams.keys()) {
+      if (!URL_TOKEN_PARAMETERS.has(key.toLowerCase())) continue
+      return {
+        ok: false,
+        error:
+          'The Livy publish URL carries an address token; paste it without the ?_token= part and enter the token as its own field.',
+      }
+    }
+    livy_url = `${parsedLivy.origin}${parsedLivy.pathname.replace(/\/+$/, '')}`
+    livy_platform_token = livyToken.token
+  }
+
+  return {
+    ok: true,
+    access: {
+      url,
+      platform_token: platform.token,
+      app_token: app.token,
+      ...(livy_url && livy_platform_token ? { livy_url, livy_platform_token } : {}),
+    },
+    host: parsed.hostname,
+  }
+}
+
+export function hasLivyConfig(access: SparkAccess | null | undefined): boolean {
+  return (
+    typeof access?.livy_url === 'string' &&
+    access.livy_url.trim().length > 0 &&
+    typeof access?.livy_platform_token === 'string' &&
+    access.livy_platform_token.trim().length > 0
+  )
+}
+
+export async function checkHasLivy(
+  env: Env,
+  row: { kind?: string | null; connection_secret?: string | null }
+): Promise<boolean> {
+  if (row.kind !== 'spark' || !row.connection_secret) return false
+  try {
+    const raw = await openSecret(env, row.connection_secret)
+    const parsed = JSON.parse(raw) as Record<string, unknown>
+    return (
+      typeof parsed.livy_url === 'string' &&
+      parsed.livy_url.trim().length > 0 &&
+      typeof parsed.livy_platform_token === 'string' &&
+      parsed.livy_platform_token.trim().length > 0
+    )
+  } catch {
+    return false
+  }
 }
