@@ -18,6 +18,8 @@ export interface SparkAccess {
   app_token: string
   ui_url?: string
   ui_platform_token?: string
+  livy_url?: string
+  livy_platform_token?: string
 }
 
 export interface SparkAccessOk {
@@ -159,6 +161,54 @@ export function normalizeSparkAccess(input: unknown): SparkAccessResult {
     ui_platform_token = uiPlatform.token
   }
 
+  // Livy publish configuration (optional, but livy_url and livy_platform_token must be paired)
+  const rawLivyUrl = typeof payload.livy_url === 'string' ? payload.livy_url.trim() : ''
+  const hasLivyUrl = rawLivyUrl.length > 0
+  const rawLivyToken = typeof payload.livy_platform_token === 'string' ? payload.livy_platform_token.trim() : ''
+  const hasLivyToken = rawLivyToken.length > 0
+
+  if (hasLivyUrl !== hasLivyToken) {
+    return {
+      ok: false,
+      error: 'livy_url and livy_platform_token must be provided together, or both omitted.',
+    }
+  }
+
+  let livy_url: string | undefined
+  let livy_platform_token: string | undefined
+
+  if (hasLivyUrl && hasLivyToken) {
+    const livyToken = readToken(payload.livy_platform_token, 'Livy platform token')
+    if (!livyToken.ok) return livyToken
+
+    if (rawLivyUrl.length > MAX_URL_LENGTH) return { ok: false, error: 'The Livy publish URL is too long.' }
+
+    let parsedLivy: URL
+    try {
+      parsedLivy = new URL(rawLivyUrl)
+    } catch {
+      return { ok: false, error: 'That is not a valid Livy publish URL.' }
+    }
+    if (parsedLivy.protocol !== 'https:') return { ok: false, error: 'The Livy publish URL must start with https://.' }
+    if (!parsedLivy.hostname) return { ok: false, error: 'The Livy publish URL is missing a host.' }
+    if (parsedLivy.username || parsedLivy.password) {
+      return {
+        ok: false,
+        error: 'The Livy publish URL must not carry a username or password.',
+      }
+    }
+    for (const key of parsedLivy.searchParams.keys()) {
+      if (!URL_TOKEN_PARAMETERS.has(key.toLowerCase())) continue
+      return {
+        ok: false,
+        error:
+          'The Livy publish URL carries an address token; paste it without the ?_token= part and enter the token as its own field.',
+      }
+    }
+    livy_url = `${parsedLivy.origin}${parsedLivy.pathname.replace(/\/+$/, '')}`
+    livy_platform_token = livyToken.token
+  }
+
   return {
     ok: true,
     access: {
@@ -166,6 +216,7 @@ export function normalizeSparkAccess(input: unknown): SparkAccessResult {
       platform_token: platform.token,
       app_token: app.token,
       ...(ui_url && ui_platform_token ? { ui_url, ui_platform_token } : {}),
+      ...(livy_url && livy_platform_token ? { livy_url, livy_platform_token } : {}),
     },
     host: parsed.hostname,
   }
@@ -182,6 +233,17 @@ export function hasSparkUi(access: unknown): boolean {
   )
 }
 
+export function hasLivyConfig(access: unknown): boolean {
+  if (!access || typeof access !== 'object') return false
+  const a = access as Record<string, unknown>
+  return (
+    typeof a.livy_url === 'string' &&
+    a.livy_url.trim().length > 0 &&
+    typeof a.livy_platform_token === 'string' &&
+    a.livy_platform_token.trim().length > 0
+  )
+}
+
 export async function checkDatabaseHasSparkUi(
   env: Env,
   row: { kind?: string | null; connection_secret?: string | null }
@@ -191,6 +253,20 @@ export async function checkDatabaseHasSparkUi(
     const raw = await openSecret(env, row.connection_secret)
     const payload = JSON.parse(raw)
     return hasSparkUi(payload)
+  } catch {
+    return false
+  }
+}
+
+export async function checkHasLivy(
+  env: Env,
+  row: { kind?: string | null; connection_secret?: string | null }
+): Promise<boolean> {
+  if (row.kind !== 'spark' || !row.connection_secret) return false
+  try {
+    const raw = await openSecret(env, row.connection_secret)
+    const payload = JSON.parse(raw)
+    return hasLivyConfig(payload)
   } catch {
     return false
   }

@@ -42,7 +42,7 @@ describe('runSetup anti-silent-switch guard', () => {
       ok: false,
       errors: [
         expect.stringMatching(
-          /table prefix ZETA_ \(14 tables\).*resolved table prefix is zeta_.*set TABLE_PREFIX=ZETA/s
+          /table prefix ZETA_ \(15 tables\).*resolved table prefix is zeta_.*set TABLE_PREFIX=ZETA/s
         ),
       ],
     })

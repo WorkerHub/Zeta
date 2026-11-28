@@ -61,15 +61,15 @@ describe('detectExistingTableFamily', () => {
   it('finds a complete family under a custom prefix', async () => {
     expect(await detectExistingTableFamily(names(...family('ZETA')))).toEqual({
       prefix: 'ZETA_',
-      tableCount: 14,
+      tableCount: 15,
     })
   })
 
   it('finds an unprefixed family (prefix is the empty string)', async () => {
-    expect(await detectExistingTableFamily(names(...family('')))).toEqual({ prefix: '', tableCount: 14 })
+    expect(await detectExistingTableFamily(names(...family('')))).toEqual({ prefix: '', tableCount: 15 })
   })
 
-  it('still detects a family that predates the newest three tables (9 of 14)', async () => {
+  it('still detects a family that predates the newest four tables (9 of 15)', async () => {
     expect(await detectExistingTableFamily(names(...family('kp').slice(0, 9)))).toEqual({
       prefix: 'kp_',
       tableCount: 9,
@@ -95,7 +95,7 @@ describe('detectExistingTableFamily', () => {
   it('detects the real family even when other projects share the database', async () => {
     expect(await detectExistingTableFamily(names('SL_perm', 'eNotify_users', ...family('ZETA')))).toEqual({
       prefix: 'ZETA_',
-      tableCount: 14,
+      tableCount: 15,
     })
   })
 })

@@ -232,10 +232,12 @@ const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout
 
 // Never echo the publish URL or either token back to a caller or into a log: an endpoint error can
 // quote whatever it was sent.
-function sanitize(detail: string, access: SparkAccess): string {
+export function sanitize(detail: string, access: SparkAccess): string {
   let out = detail
-  for (const part of [access.url, access.platform_token, access.app_token]) {
-    if (part) out = out.split(part).join('[redacted]')
+  for (const val of Object.values(access)) {
+    if (typeof val === 'string' && val.length > 0) {
+      out = out.split(val).join('[redacted]')
+    }
   }
   return out.slice(0, MAX_ERROR_CHARS).trim()
 }
