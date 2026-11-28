@@ -94,6 +94,39 @@ async function resolveTargetDatabase(
   }
 }
 
+async function setSparkUiSessionCookie(
+  c: Context<{ Bindings: Env; Variables: Variables }>,
+  databaseId: string
+): Promise<void> {
+  const sessionToken = await createSparkUiSessionToken(
+    {
+      userId: c.get('userId'),
+      role: c.get('userRole'),
+      databaseId,
+    },
+    c.env
+  )
+  const secure = isSecure(c)
+  const flags = `HttpOnly; Path=/spark-ui; Max-Age=86400; SameSite=Lax${secure ? '; Secure' : ''}`
+  c.header('Set-Cookie', `spark_ui_session=${sessionToken}; ${flags}`)
+}
+
+export const sparkUiApi = new Hono<{ Bindings: Env; Variables: Variables }>()
+sparkUiApi.use('*', requireAuth)
+
+sparkUiApi.post('/session', async (c) => {
+  const body = await c.req.json<{ db?: unknown }>().catch(() => null)
+  if (!body || typeof body.db !== 'string' || !body.db.trim()) {
+    return c.json({ error: 'db is required' }, 400)
+  }
+
+  const resolved = await resolveTargetDatabase(c, body.db.trim())
+  if (resolved instanceof Response) return resolved
+
+  await setSparkUiSessionCookie(c, resolved.db.id)
+  return c.body(null, 204)
+})
+
 async function handleSparkUi(c: Context<{ Bindings: Env; Variables: Variables }>) {
   const dbParam = c.req.query('db')
 
@@ -102,17 +135,7 @@ async function handleSparkUi(c: Context<{ Bindings: Env; Variables: Variables }>
     const resolved = await resolveTargetDatabase(c, dbParam)
     if (resolved instanceof Response) return resolved
 
-    const sessionToken = await createSparkUiSessionToken(
-      {
-        userId: c.get('userId'),
-        role: c.get('userRole'),
-        databaseId: resolved.db.id,
-      },
-      c.env
-    )
-    const secure = isSecure(c)
-    const flags = `HttpOnly; Path=/spark-ui; Max-Age=86400; SameSite=Lax${secure ? '; Secure' : ''}`
-    c.header('Set-Cookie', `spark_ui_session=${sessionToken}; ${flags}`)
+    await setSparkUiSessionCookie(c, resolved.db.id)
     return c.redirect('/spark-ui/', 302)
   }
 
