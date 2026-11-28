@@ -1,7 +1,155 @@
 {
-  "run_at": "2026-11-28T15:10:37.092Z",
-  "fatal": "no /api/databases body captured",
-  "refresh": 401,
-  "switcher_visible": false,
-  "page_errors": []
+  "run_at": "2026-11-28T15:19:57.892Z",
+  "base": "https://zeta.pama.workers.dev",
+  "all_pass": true,
+  "checks": [
+    {
+      "id": "A1",
+      "name": "登录态建立(refresh 200 + /api/databases 200 + 查询页切换器渲染)",
+      "pass": true,
+      "detail": "refresh=200 dbs=7 switcher=true"
+    },
+    {
+      "id": "B1",
+      "name": "Apollo(spark) has_spark_ui=false(未填口径)",
+      "pass": true,
+      "detail": "{\"has_spark_ui\":false}"
+    },
+    {
+      "id": "B2",
+      "name": "Spark 数据源恰好一个且为 Apollo",
+      "pass": true,
+      "detail": "Apollo"
+    },
+    {
+      "id": "B3",
+      "name": "非 Spark 数据源 has_spark_ui 均为假值",
+      "pass": true,
+      "detail": "Apple(postgres),Bubble(postgres),Deer(sqlite),Moss(postgres),Tree(mysql),Workerhub(sqlite)"
+    },
+    {
+      "id": "C0",
+      "name": "切换器显示 Apollo(选中成功)",
+      "pass": true,
+      "detail": "switcher=\"ApolloDefault config\""
+    },
+    {
+      "id": "C1",
+      "name": "桌面菜单(未填 Apollo)无 Spark UI 入口",
+      "pass": true,
+      "detail": "menu_open=true contains_apollo=true scoped={\"btn\":0,\"link\":0,\"total\":0} page_wide={\"btn\":0,\"link\":0,\"total\":0}"
+    },
+    {
+      "id": "C2",
+      "name": "移动菜单(未填 Apollo)无 Spark UI 入口",
+      "pass": true,
+      "detail": "menu_open=true scoped={\"btn\":0,\"link\":0,\"total\":0} page_wide={\"btn\":0,\"link\":0,\"total\":0} "
+    },
+    {
+      "id": "D-menu-postgres",
+      "name": "Apple(postgres)桌面菜单无 Spark UI 入口",
+      "pass": true,
+      "detail": "menu_open=true entry={\"btn\":0,\"link\":0,\"total\":0}"
+    },
+    {
+      "id": "D-menu-postgres",
+      "name": "Bubble(postgres)桌面菜单无 Spark UI 入口",
+      "pass": true,
+      "detail": "menu_open=true entry={\"btn\":0,\"link\":0,\"total\":0}"
+    },
+    {
+      "id": "D-menu-sqlite",
+      "name": "Deer(sqlite)桌面菜单无 Spark UI 入口",
+      "pass": true,
+      "detail": "menu_open=true entry={\"btn\":0,\"link\":0,\"total\":0}"
+    },
+    {
+      "id": "D-menu-postgres",
+      "name": "Moss(postgres)桌面菜单无 Spark UI 入口",
+      "pass": true,
+      "detail": "menu_open=true entry={\"btn\":0,\"link\":0,\"total\":0}"
+    },
+    {
+      "id": "D-menu-mysql",
+      "name": "Tree(mysql)桌面菜单无 Spark UI 入口",
+      "pass": true,
+      "detail": "menu_open=true entry={\"btn\":0,\"link\":0,\"total\":0}"
+    },
+    {
+      "id": "D-menu-sqlite",
+      "name": "Workerhub(sqlite)桌面菜单无 Spark UI 入口",
+      "pass": true,
+      "detail": "menu_open=true entry={\"btn\":0,\"link\":0,\"total\":0}"
+    },
+    {
+      "id": "D-query",
+      "name": "Apple 上 SELECT 1 行为正常(连接+200+结果集)",
+      "pass": true,
+      "detail": "probe=200 aria=true result={\"status\":200,\"results\":1,\"error\":null}"
+    },
+    {
+      "id": "E1",
+      "name": "Apollo 编辑表单:kind=SparkSQL 且 UI 两字段未填回显(空)",
+      "pass": true,
+      "detail": "kind_spark=true ui_url_len=0 token_len=0"
+    },
+    {
+      "id": "E2-Bubble",
+      "name": "Bubble 编辑表单不渲染 Spark UI 字段",
+      "pass": true,
+      "detail": "field_count=0 text_present=false"
+    },
+    {
+      "id": "E2-Tree",
+      "name": "Tree 编辑表单不渲染 Spark UI 字段",
+      "pass": true,
+      "detail": "field_count=0 text_present=false"
+    }
+  ],
+  "spark_ui_requests_during_session": 0,
+  "page_errors": [],
+  "databases": [
+    {
+      "name": "Apollo",
+      "kind": "spark",
+      "has_spark_ui": false,
+      "id": "ddda2673-29d0-4292-af9f-ea51c0e653c1"
+    },
+    {
+      "name": "Apple",
+      "kind": "postgres",
+      "has_spark_ui": false,
+      "id": "cb159d84-b22f-4b2e-83c0-478607957eb4"
+    },
+    {
+      "name": "Bubble",
+      "kind": "postgres",
+      "has_spark_ui": false,
+      "id": "a30955da-b84f-4f11-9d49-bc730c7db2a5"
+    },
+    {
+      "name": "Deer",
+      "kind": "sqlite",
+      "has_spark_ui": false,
+      "id": "05161753-810d-4be2-a212-ad9a67d0d7e4"
+    },
+    {
+      "name": "Moss",
+      "kind": "postgres",
+      "has_spark_ui": false,
+      "id": "fd0a7778-9eb6-4e96-921a-0f7faff8f3ad"
+    },
+    {
+      "name": "Tree",
+      "kind": "mysql",
+      "has_spark_ui": false,
+      "id": "dd12e13d-aedc-4fa1-aad8-a01e64e1bb52"
+    },
+    {
+      "name": "Workerhub",
+      "kind": "sqlite",
+      "has_spark_ui": false,
+      "id": "237da069-3715-4a4a-91ec-d18ae25689b1"
+    }
+  ]
 }

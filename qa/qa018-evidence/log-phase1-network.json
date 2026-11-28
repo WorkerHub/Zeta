@@ -5,9 +5,189 @@
     "size": 2103
   },
   {
+    "url": "https://zeta.pama.workers.dev/assets/rolldown-runtime-XKyaHtl9.js",
+    "status": 200,
+    "size": 726
+  },
+  {
+    "url": "https://zeta.pama.workers.dev/theme-init.js",
+    "status": 200,
+    "size": 1000
+  },
+  {
+    "url": "https://zeta.pama.workers.dev/assets/index-4rmKQB3j.css",
+    "status": 200,
+    "size": 68418
+  },
+  {
     "url": "https://zeta.pama.workers.dev/assets/api-B2BVYtf1.js",
     "status": 200,
     "size": 7423
+  },
+  {
+    "url": "https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap",
+    "status": 200,
+    "size": 15070
+  },
+  {
+    "url": "https://zeta.pama.workers.dev/assets/index-JU63q6e4.js",
+    "status": 200,
+    "size": 60590
+  },
+  {
+    "url": "https://zeta.pama.workers.dev/assets/react-vendor-U3SKuzn8.js",
+    "status": 200,
+    "size": 232364
+  },
+  {
+    "url": "https://zeta.pama.workers.dev/assets/vendor-C0MbsHBK.js",
+    "status": 200,
+    "size": 146392
+  },
+  {
+    "url": "https://zeta.pama.workers.dev/assets/editor-vendor-DCJYUCJf.js",
+    "status": 200,
+    "size": 476244
+  },
+  {
+    "url": "https://fonts.gstatic.com/s/inter/v20/UcC73FwrK3iLTeHuS_nVMrMxCp50SjIa1ZL7W0Q5nw.woff2",
+    "status": 200,
+    "size": 48432
+  },
+  {
+    "url": "https://zeta.pama.workers.dev/favicon.svg",
+    "status": 200,
+    "size": 1820
+  },
+  {
+    "url": "https://zeta.pama.workers.dev/api/auth/refresh",
+    "status": 200,
+    "size": 393
+  },
+  {
+    "url": "https://zeta.pama.workers.dev/api/profile/me",
+    "status": 200,
+    "size": 415
+  },
+  {
+    "url": "https://zeta.pama.workers.dev/api/profile/theme-color",
+    "status": 200,
+    "size": 23
+  },
+  {
+    "url": "https://zeta.pama.workers.dev/assets/icons-vendor-BAzgn9lt.js",
+    "status": 200,
+    "size": 15157
+  },
+  {
+    "url": "https://zeta.pama.workers.dev/assets/error-copy-nLjIVO8l.js",
+    "status": 200,
+    "size": 3583
+  },
+  {
+    "url": "https://zeta.pama.workers.dev/assets/Logo-CRtv6zIO.js",
+    "status": 200,
+    "size": 2028
+  },
+  {
+    "url": "https://zeta.pama.workers.dev/assets/Query-CO_bJZdJ.js",
+    "status": 200,
+    "size": 87574
+  },
+  {
+    "url": "https://zeta.pama.workers.dev/api/notebooks",
+    "status": 200,
+    "size": 5223
+  },
+  {
+    "url": "https://zeta.pama.workers.dev/api/databases",
+    "status": 200,
+    "size": 2018
+  },
+  {
+    "url": "https://fonts.gstatic.com/s/jetbrainsmono/v24/tDbv2o-flEEny0FZhsfKu5WU4zr3E_BX0PnT8RD8yKwBNntkaToggR7BYRbKPxDcwgknk-4.woff2",
+    "status": 200,
+    "size": 31340
+  },
+  {
+    "url": "https://zeta.pama.workers.dev/api/databases/ddda2673-29d0-4292-af9f-ea51c0e653c1/spark-profiles",
+    "status": 200,
+    "size": 14
+  },
+  {
+    "url": "https://zeta.pama.workers.dev/api/notebooks/8d81975c-3477-43b4-8078-0fc63edb8982/runs?limit=50",
+    "status": 200,
+    "size": 20463
+  },
+  {
+    "url": "https://zeta.pama.workers.dev/api/notebooks/8d81975c-3477-43b4-8078-0fc63edb8982/runs/2c1e4266-fd31-4368-9636-ab56fa9b90af",
+    "status": 200,
+    "size": 476
+  },
+  {
+    "url": "https://zeta.pama.workers.dev/api/notebooks/8d81975c-3477-43b4-8078-0fc63edb8982",
+    "status": 200,
+    "size": 21
+  },
+  {
+    "url": "https://zeta.pama.workers.dev/api/notebooks/8d81975c-3477-43b4-8078-0fc63edb8982",
+    "status": 200,
+    "size": 21
+  },
+  {
+    "url": "https://zeta.pama.workers.dev/api/notebooks/8d81975c-3477-43b4-8078-0fc63edb8982",
+    "status": 200,
+    "size": 21
+  },
+  {
+    "url": "https://zeta.pama.workers.dev/api/notebooks/8d81975c-3477-43b4-8078-0fc63edb8982",
+    "status": 200,
+    "size": 21
+  },
+  {
+    "url": "https://zeta.pama.workers.dev/api/notebooks/8d81975c-3477-43b4-8078-0fc63edb8982",
+    "status": 200,
+    "size": 21
+  },
+  {
+    "url": "https://zeta.pama.workers.dev/api/notebooks/8d81975c-3477-43b4-8078-0fc63edb8982",
+    "status": 200,
+    "size": 21
+  },
+  {
+    "url": "https://zeta.pama.workers.dev/api/notebooks/8d81975c-3477-43b4-8078-0fc63edb8982",
+    "status": 200,
+    "size": 21
+  },
+  {
+    "url": "https://zeta.pama.workers.dev/api/notebooks/8d81975c-3477-43b4-8078-0fc63edb8982",
+    "status": 200,
+    "size": 21
+  },
+  {
+    "url": "https://zeta.pama.workers.dev/api/query/probe",
+    "status": 200,
+    "size": 46
+  },
+  {
+    "url": "https://zeta.pama.workers.dev/api/query",
+    "status": 200,
+    "size": 173
+  },
+  {
+    "url": "https://zeta.pama.workers.dev/api/notebooks/8d81975c-3477-43b4-8078-0fc63edb8982",
+    "status": 200,
+    "size": 21
+  },
+  {
+    "url": "https://zeta.pama.workers.dev/admin/databases",
+    "status": 200,
+    "size": 2103
+  },
+  {
+    "url": "https://zeta.pama.workers.dev/theme-init.js",
+    "status": 200,
+    "size": 1000
   },
   {
     "url": "https://zeta.pama.workers.dev/assets/rolldown-runtime-XKyaHtl9.js",
@@ -25,24 +205,9 @@
     "size": 68418
   },
   {
-    "url": "https://zeta.pama.workers.dev/theme-init.js",
+    "url": "https://zeta.pama.workers.dev/assets/api-B2BVYtf1.js",
     "status": 200,
-    "size": 1000
-  },
-  {
-    "url": "https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap",
-    "status": 200,
-    "size": 15070
-  },
-  {
-    "url": "https://zeta.pama.workers.dev/assets/editor-vendor-DCJYUCJf.js",
-    "status": 200,
-    "size": 476244
-  },
-  {
-    "url": "https://zeta.pama.workers.dev/assets/react-vendor-U3SKuzn8.js",
-    "status": 200,
-    "size": 232364
+    "size": 7423
   },
   {
     "url": "https://zeta.pama.workers.dev/assets/vendor-C0MbsHBK.js",
@@ -50,9 +215,14 @@
     "size": 146392
   },
   {
-    "url": "https://fonts.gstatic.com/s/inter/v20/UcC73FwrK3iLTeHuS_nVMrMxCp50SjIa1ZL7W0Q5nw.woff2",
+    "url": "https://zeta.pama.workers.dev/assets/react-vendor-U3SKuzn8.js",
     "status": 200,
-    "size": 48432
+    "size": 232364
+  },
+  {
+    "url": "https://zeta.pama.workers.dev/assets/editor-vendor-DCJYUCJf.js",
+    "status": 200,
+    "size": 476244
   },
   {
     "url": "https://zeta.pama.workers.dev/favicon.svg",
@@ -61,28 +231,18 @@
   },
   {
     "url": "https://zeta.pama.workers.dev/api/auth/refresh",
-    "status": 401,
-    "size": 33
+    "status": 200,
+    "size": 393
   },
   {
-    "url": "https://zeta.pama.workers.dev/assets/Login-B3y674zV.js",
+    "url": "https://zeta.pama.workers.dev/api/profile/me",
     "status": 200,
-    "size": 8670
+    "size": 415
   },
   {
-    "url": "https://zeta.pama.workers.dev/assets/Logo-CRtv6zIO.js",
+    "url": "https://zeta.pama.workers.dev/api/profile/theme-color",
     "status": 200,
-    "size": 2028
-  },
-  {
-    "url": "https://zeta.pama.workers.dev/assets/AuthShell-B70WOLxm.js",
-    "status": 200,
-    "size": 434
-  },
-  {
-    "url": "https://zeta.pama.workers.dev/favicon.svg",
-    "status": 200,
-    "size": 1820
+    "size": 23
   },
   {
     "url": "https://zeta.pama.workers.dev/assets/icons-vendor-BAzgn9lt.js",
@@ -90,8 +250,33 @@
     "size": 15157
   },
   {
-    "url": "https://zeta.pama.workers.dev/api/auth/register-status",
+    "url": "https://zeta.pama.workers.dev/assets/AdminLayout-Wo0jw8nT.js",
     "status": 200,
-    "size": 17
+    "size": 52258
+  },
+  {
+    "url": "https://zeta.pama.workers.dev/assets/Logo-CRtv6zIO.js",
+    "status": 200,
+    "size": 2028
+  },
+  {
+    "url": "https://zeta.pama.workers.dev/assets/error-copy-nLjIVO8l.js",
+    "status": 200,
+    "size": 3583
+  },
+  {
+    "url": "https://zeta.pama.workers.dev/assets/setup-BmxDElWe.js",
+    "status": 200,
+    "size": 560
+  },
+  {
+    "url": "https://zeta.pama.workers.dev/assets/StickySaveBar-Bxj-DPLP.js",
+    "status": 200,
+    "size": 2146
+  },
+  {
+    "url": "https://zeta.pama.workers.dev/api/admin/databases",
+    "status": 200,
+    "size": 2663
   }
 ]
