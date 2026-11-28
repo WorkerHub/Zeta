@@ -7,6 +7,11 @@ import type {
   DatabaseGrant,
   DbKind,
   JarRef,
+  LivyBatch,
+  LivyBatchLog,
+  LivySession,
+  LivySessionKind,
+  LivyStatement,
   Notebook,
   NotebookRun,
   NotebookRunSummary,
@@ -493,6 +498,8 @@ export const adminApi = {
     app_token?: string
     ui_url?: string
     ui_platform_token?: string
+    livy_url?: string
+    livy_platform_token?: string
     cf_database_id?: string
     name?: string
     description?: string
@@ -511,6 +518,8 @@ export const adminApi = {
       app_token?: string
       ui_url?: string
       ui_platform_token?: string
+      livy_url?: string
+      livy_platform_token?: string
     }
   ) => apiFetch<{ message: string }>(`/admin/databases/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
   deleteDatabase: (id: string) => apiFetch<{ message: string }>(`/admin/databases/${id}`, { method: 'DELETE' }),
@@ -552,4 +561,58 @@ export const notebooksApi = {
   deleteRun: (id: string, runId: string) =>
     apiFetch<{ message: string }>(`/notebooks/${id}/runs/${runId}`, { method: 'DELETE' }),
   clearRuns: (id: string) => apiFetch<{ message: string }>(`/notebooks/${id}/runs`, { method: 'DELETE' }),
+}
+
+// ── Livy endpoints ────────────────────────────────────────────────────────────
+
+export const livyApi = {
+  createSession: (databaseId: string, kind: LivySessionKind) =>
+    apiFetch<LivySession>(`/databases/${encodeURIComponent(databaseId)}/livy/sessions`, {
+      method: 'POST',
+      body: JSON.stringify({ kind }),
+    }),
+
+  getSession: (databaseId: string, sessionId: number | string) =>
+    apiFetch<LivySession>(
+      `/databases/${encodeURIComponent(databaseId)}/livy/sessions/${encodeURIComponent(String(sessionId))}`
+    ),
+
+  deleteSession: (databaseId: string, sessionId: number | string) =>
+    apiFetch<{ message: string }>(
+      `/databases/${encodeURIComponent(databaseId)}/livy/sessions/${encodeURIComponent(String(sessionId))}`,
+      { method: 'DELETE' }
+    ),
+
+  runStatement: (databaseId: string, sessionId: number | string, code: string, kind?: LivySessionKind) =>
+    apiFetch<LivyStatement>(
+      `/databases/${encodeURIComponent(databaseId)}/livy/sessions/${encodeURIComponent(String(sessionId))}/statements`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ code, ...(kind ? { kind } : {}) }),
+      }
+    ),
+
+  getStatement: (databaseId: string, sessionId: number | string, statementId: number | string) =>
+    apiFetch<LivyStatement>(
+      `/databases/${encodeURIComponent(databaseId)}/livy/sessions/${encodeURIComponent(String(sessionId))}/statements/${encodeURIComponent(String(statementId))}`
+    ),
+
+  submitBatch: (databaseId: string, body: { file: string; className?: string; args?: string[] }) =>
+    apiFetch<LivyBatch>(`/databases/${encodeURIComponent(databaseId)}/livy/batches`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+
+  listBatches: (databaseId: string) =>
+    apiFetch<{ results: LivyBatch[] }>(`/databases/${encodeURIComponent(databaseId)}/livy/batches`),
+
+  getBatchLog: (databaseId: string, batchId: number | string, params: { from?: number; size?: number } = {}) => {
+    const q = new URLSearchParams()
+    if (params.from !== undefined) q.set('from', String(params.from))
+    if (params.size !== undefined) q.set('size', String(params.size))
+    const queryStr = q.toString() ? `?${q.toString()}` : ''
+    return apiFetch<LivyBatchLog>(
+      `/databases/${encodeURIComponent(databaseId)}/livy/batches/${encodeURIComponent(String(batchId))}/log${queryStr}`
+    )
+  },
 }

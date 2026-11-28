@@ -31,6 +31,7 @@ export interface Database {
   permission: DbPermission
   is_app_db?: boolean
   has_spark_ui?: boolean
+  has_livy?: boolean
 }
 
 // A registered database as the admin API returns it
@@ -48,6 +49,56 @@ export interface AdminDatabase {
   created_at: number
   is_app_db?: boolean
   has_spark_ui?: boolean
+  has_livy?: boolean
+}
+
+export type LivySessionKind = 'spark' | 'pyspark' | 'sql'
+
+export interface LivySession {
+  id: number
+  state: string
+  kind: string
+  appId: string | null
+  log?: string[]
+}
+
+export interface LivyStatementOutput {
+  status: string
+  execution_count?: number
+  data?: {
+    'text/plain'?: string
+    'application/json'?: unknown
+    [key: string]: unknown
+  }
+  ename?: string
+  evalue?: string
+  traceback?: string[]
+}
+
+export interface LivyStatement {
+  id: number
+  code: string
+  state: string
+  output: LivyStatementOutput | null
+  progress: number
+}
+
+export interface LivyBatch {
+  id: string | number
+  batch_id?: number
+  file: string
+  class_name: string | null
+  created_at: number
+  state: string
+  appId: string | null
+}
+
+export interface LivyBatchLog {
+  id: number
+  from: number
+  size: number
+  total: number
+  log: string[]
 }
 
 // A Cloudflare account D1 database as returned by GET /admin/d1/databases

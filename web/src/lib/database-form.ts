@@ -23,6 +23,10 @@ export interface ConnectionValues {
   uiUrl?: string
   /** Spark only: optional Spark UI platform token. */
   uiPlatformToken?: string
+  /** Spark only: optional Livy publish address. */
+  livyUrl?: string
+  /** Spark only: optional Livy platform token. */
+  livyPlatformToken?: string
 }
 
 /**
@@ -45,6 +49,11 @@ export function sparkUiTouched(values: ConnectionValues): boolean {
   return [values.uiUrl, values.uiPlatformToken].some((v) => (v?.trim() ?? '') !== '')
 }
 
+/** Whether the admin typed any Livy field. */
+export function sparkLivyTouched(values: ConnectionValues): boolean {
+  return [values.livyUrl, values.livyPlatformToken].some((v) => (v?.trim() ?? '') !== '')
+}
+
 /**
  * Spark UI publish address and platform token travel as a pair: both filled, or both left blank.
  * Filling only one is an incomplete pair that the server refuses with 400.
@@ -52,6 +61,16 @@ export function sparkUiTouched(values: ConnectionValues): boolean {
 export function sparkUiPairValid(uiUrl?: string, uiPlatformToken?: string): boolean {
   const u = uiUrl?.trim() ?? ''
   const p = uiPlatformToken?.trim() ?? ''
+  return (u === '' && p === '') || (u !== '' && p !== '')
+}
+
+/**
+ * Livy publish address and platform token travel as a pair: both filled, or both left blank.
+ * Filling only one is an incomplete pair that the server refuses with 400.
+ */
+export function sparkLivyPairValid(livyUrl?: string, livyPlatformToken?: string): boolean {
+  const u = livyUrl?.trim() ?? ''
+  const p = livyPlatformToken?.trim() ?? ''
   return (u === '' && p === '') || (u !== '' && p !== '')
 }
 
@@ -69,6 +88,9 @@ export function canSaveForm(args: {
   if (mode === 'edit' && name.trim() === '') return false
 
   if (kind === 'spark' && !sparkUiPairValid(values.uiUrl, values.uiPlatformToken)) {
+    return false
+  }
+  if (kind === 'spark' && !sparkLivyPairValid(values.livyUrl, values.livyPlatformToken)) {
     return false
   }
 
@@ -93,6 +115,8 @@ export interface ConnectionPatch {
   app_token?: string
   ui_url?: string
   ui_platform_token?: string
+  livy_url?: string
+  livy_platform_token?: string
 }
 
 /**
@@ -104,10 +128,12 @@ export interface ConnectionPatch {
 export function connectionPatch(kind: ConnectionKind, values: ConnectionValues): ConnectionPatch | null {
   const touched = connectionTouched(values)
   const uiTouched = kind === 'spark' && sparkUiTouched(values)
+  const livyTouched = kind === 'spark' && sparkLivyTouched(values)
 
-  if (!touched && !uiTouched) return null
+  if (!touched && !uiTouched && !livyTouched) return null
   if (touched && connectionSignature({ kind, ...values }) === null) return null
   if (uiTouched && !sparkUiPairValid(values.uiUrl, values.uiPlatformToken)) return null
+  if (livyTouched && !sparkLivyPairValid(values.livyUrl, values.livyPlatformToken)) return null
 
   const result: ConnectionPatch = {}
 
@@ -122,6 +148,11 @@ export function connectionPatch(kind: ConnectionKind, values: ConnectionValues):
   if (uiTouched && values.uiUrl && values.uiPlatformToken) {
     result.ui_url = values.uiUrl.trim()
     result.ui_platform_token = values.uiPlatformToken.trim()
+  }
+
+  if (livyTouched && values.livyUrl && values.livyPlatformToken) {
+    result.livy_url = values.livyUrl.trim()
+    result.livy_platform_token = values.livyPlatformToken.trim()
   }
 
   return result
