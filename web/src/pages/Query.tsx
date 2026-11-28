@@ -1,62 +1,62 @@
-import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
-import { Link } from 'react-router-dom'
-import CodeMirror from '@uiw/react-codemirror'
 import { sql } from '@codemirror/lang-sql'
+import { Prec } from '@codemirror/state'
 import { oneDark } from '@codemirror/theme-one-dark'
 import { keymap } from '@codemirror/view'
-import { Prec } from '@codemirror/state'
+import CodeMirror from '@uiw/react-codemirror'
 import {
-  ChevronDown,
-  LogOut,
-  User as UserIcon,
-  History,
   AlertCircle,
   AlertTriangle,
-  Shield,
-  Monitor,
-  Sun,
-  Moon,
-  X,
-  Globe,
-  Plus,
-  Info,
+  ChevronDown,
   Columns2,
+  Globe,
+  History,
+  Info,
   LayoutPanelTop,
-  ExternalLink,
+  LogOut,
+  Monitor,
+  Moon,
+  Plus,
+  Shield,
+  Sun,
+  User as UserIcon,
+  X,
 } from 'lucide-react'
-import { databasesApi, queryApi, ApiError } from '../lib/api'
-import { useAuthContext } from '../hooks/useAuth'
-import { useTheme } from '../hooks/useTheme'
-import { useLocale } from '../hooks/useLocale'
-import { useNotebooks } from '../hooks/useNotebooks'
-import { useNotebookRuns } from '../hooks/useNotebookRuns'
-import QueryResults from '../components/QueryResults'
-import DbKindMeta from '../components/DbKindMeta'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Link } from 'react-router-dom'
+import ConfirmDialog from '../components/ConfirmDialog'
 import ConnectButton from '../components/ConnectButton'
+import DbKindMeta from '../components/DbKindMeta'
+import Logo from '../components/Logo'
+import QueryResults from '../components/QueryResults'
+import RunActionButton from '../components/RunActionButton'
+import RunHistoryDrawer from '../components/RunHistoryDrawer'
 import SparkGearMenu from '../components/SparkGearMenu'
 import SparkInstanceConfigDialog from '../components/SparkInstanceConfigDialog'
 import SparkProfilesDialog from '../components/SparkProfilesDialog'
-import RunActionButton from '../components/RunActionButton'
-import RunHistoryDrawer from '../components/RunHistoryDrawer'
-import ConfirmDialog from '../components/ConfirmDialog'
-import Logo from '../components/Logo'
+import SparkUiMenuLink from '../components/SparkUiMenuLink'
+import { useAuthContext } from '../hooks/useAuth'
 import { useConnections } from '../hooks/useConnections'
+import { useLocale } from '../hooks/useLocale'
+import { useNotebookRuns } from '../hooks/useNotebookRuns'
+import { useNotebooks } from '../hooks/useNotebooks'
 import { useSparkProfiles } from '../hooks/useSparkProfiles'
+import { useTheme } from '../hooks/useTheme'
+import { ApiError, databasesApi, queryApi } from '../lib/api'
 import { knocksBack } from '../lib/connection-state'
+import { sqlLightFunctionCalls, sqlLightHighlighting } from '../lib/editor-highlight'
+import { errorCodeText, sparkErrorKind } from '../lib/error-copy'
+import { cancelNotice, haltNotice } from '../lib/runs'
+import { missingSessionDatabase } from '../lib/session-database'
 import {
   connectedProfileOf,
   forgetConnectedProfile,
   needsReconnect,
   readConnectedProfiles,
   rememberConnectedProfile,
-  writeConnectedProfiles,
   type SparkProfileMap,
+  writeConnectedProfiles,
 } from '../lib/spark-profile'
-import { errorCodeText, sparkErrorKind } from '../lib/error-copy'
 import { splitSqlStatements, usedDatabaseOf } from '../lib/sql'
-import { sqlLightFunctionCalls, sqlLightHighlighting } from '../lib/editor-highlight'
-import { haltNotice, cancelNotice } from '../lib/runs'
-import { missingSessionDatabase } from '../lib/session-database'
 import type { Database as DbType, NotebookRunSummary, StatementResult } from '../types'
 
 const THEME_ICONS = { auto: Monitor, light: Sun, dark: Moon }
@@ -670,21 +670,7 @@ export default function QueryPage() {
                     </button>
                   ))
                 )}
-                {selectedDb?.kind === 'spark' && selectedDb.has_spark_ui && (
-                  <>
-                    <hr className="h-px bg-ink-200 border-0" />
-                    <a
-                      href={`/spark-ui/?db=${encodeURIComponent(selectedDb.id)}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      onClick={() => setShowDbMenu(false)}
-                      className="flex items-center justify-between w-full px-4 py-2.5 text-body text-ink-700 hover:bg-ink-100 transition-colors duration-(--duration-base)"
-                    >
-                      <span>{t('spark.spark_ui')}</span>
-                      <ExternalLink size={13} className="text-ink-400 shrink-0" aria-hidden="true" />
-                    </a>
-                  </>
-                )}
+                <SparkUiMenuLink selectedDb={selectedDb} onSelect={() => setShowDbMenu(false)} />
               </div>
             )}
           </div>
@@ -1075,21 +1061,7 @@ export default function QueryPage() {
                   </span>
                 </button>
               ))}
-              {selectedDb?.kind === 'spark' && selectedDb.has_spark_ui && (
-                <>
-                  <hr className="h-px bg-ink-200 border-0" />
-                  <a
-                    href={`/spark-ui/?db=${encodeURIComponent(selectedDb.id)}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    onClick={() => setShowDbMenu(false)}
-                    className="flex items-center justify-between w-full px-4 py-2.5 text-body text-ink-700 hover:bg-ink-100 transition-colors duration-(--duration-base)"
-                  >
-                    <span>{t('spark.spark_ui')}</span>
-                    <ExternalLink size={13} className="text-ink-400 shrink-0" aria-hidden="true" />
-                  </a>
-                </>
-              )}
+              <SparkUiMenuLink selectedDb={selectedDb} onSelect={() => setShowDbMenu(false)} />
             </div>
           )}
         </div>
