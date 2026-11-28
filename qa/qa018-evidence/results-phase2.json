@@ -1,22 +1,226 @@
 {
-  "run_at": "2026-11-28T15:52:49.591Z",
+  "run_at": "2026-11-28T15:58:26.563Z",
   "base": "https://zeta.pama.workers.dev",
   "all_pass": false,
   "checks": [
     {
       "id": "P0",
       "name": "登录态 + Apollo has_spark_ui=true(已填口径门槛)",
+      "pass": true,
+      "detail": "refresh=200 apollo={\"has_spark_ui\":true} dbs=7 switcher=true"
+    },
+    {
+      "id": "P0b",
+      "name": "/api/databases 响应无 ui_url/ui_platform_token 键(字段不回显)",
+      "pass": true,
+      "detail": "keys=[\"id\",\"name\",\"description\",\"kind\",\"provider\",\"provider_custom\",\"binding_name\",\"cf_database_id\",\"is_app_db\",\"permission\",\"has_spark_ui\",\"has_livy\"]"
+    },
+    {
+      "id": "P1",
+      "name": "Apollo 连接成功(ConnectButton aria-pressed=true,probe 200)",
+      "pass": true,
+      "detail": "aria=false→true probe=200 switcher=\"ApolloDefault config\""
+    },
+    {
+      "id": "P4pre",
+      "name": "已填状态下桌面菜单出现 Spark UI 入口",
+      "pass": true,
+      "detail": "entry_count=1"
+    },
+    {
+      "id": "P4b",
+      "name": "菜单点击 → 新标签页落在 /spark-ui/* 且渲染 Jobs 内容",
+      "pass": true,
+      "detail": "popup_url=https://zeta.pama.workers.dev/spark-ui/jobs/ jobs_text=true"
+    },
+    {
+      "id": "P4a",
+      "name": "POST /api/spark-ui/session 建会话(204 + Set-Cookie spark_ui_session)",
+      "pass": true,
+      "detail": "{\"status\":204,\"setCookie\":{\"name\":\"spark_ui_session\",\"flags\":\"HttpOnly; Path=/spark-ui; Max-Age=86400; SameSite=Lax; Secure\"}}"
+    },
+    {
+      "id": "P4c",
+      "name": "spark_ui_session cookie 口径(HttpOnly/Path=/spark-ui/Max-Age≈86400/SameSite=Lax/Secure)",
+      "pass": true,
+      "detail": "{\"httpOnly\":true,\"path\":\"/spark-ui\",\"sameSite\":\"Lax\",\"secure\":true,\"maxAgeApprox\":86397}"
+    },
+    {
+      "id": "P6-landing-style",
+      "name": "落地页(Jobs)带样式渲染(styleSheets>0 且样式表全部加载成功)",
       "pass": false,
-      "detail": "refresh=401 apollo=missing dbs=n/a switcher=false"
+      "detail": "null"
+    },
+    {
+      "id": "P6-landing-assets",
+      "name": "落地页静态资源加载失败清单(4xx 或 MIME=text/html)",
+      "pass": true,
+      "detail": "failed=0 sample=[]"
+    },
+    {
+      "id": "P5a",
+      "name": "长查询运行期间 Jobs 页可观测(轮询快照≥1 且作业行出现)",
+      "pass": true,
+      "detail": "snapshots=1 rows_seen=68 query={\"status\":200,\"results\":1,\"error\":null,\"duration_ms\":2663,\"keys\":[\"results\",\"meta\",\"truncated\",\"duration_ms\",\"cancelled\",\"run_id\",\"executed_at\",\"seq\"]}"
+    },
+    {
+      "id": "P5b",
+      "name": "job group 文本可见且含 zeta 标识(会话/执行口径,文本留档比对)",
+      "pass": true,
+      "detail": "zeta_lines=[\"67 (zeta:dac03cb2-5502-4371-8be6-758936e94b20:default:ae191e99-7852-4159-948b-f94c1edfc751)\\tzeta query collect at /opt/spark-app/service.py:749\\t2026/11/28 15:58:04\\t0.1 s\\t1/1 (1 skipped)\",\"66 (zeta:dac03cb2-5502-4371-8be6-758936e94b20:default:ae191e99-7852-4159-948b-f94c1edfc751)\\tzeta query collect at /opt/spark-app/service.py:749\\t2026/11/28 15:58:02\\t1 s\\t1/1\",\"64 (zeta:dac03cb2-5502-4371-8be6-758936e94b20:default)\\tzeta query collect at /opt/spark-app/service.py:749\\t2026/11/28 15:57:58\\t10 ms\\t1/1\",\"18 (zeta:dac03cb2-5502-4371-8be6-758936e94b20:default:8e5dc255-d8bf-4488-bc20-60614f291b41)\\tzeta query collect at /opt/spark-app/service.py:749\\t2026/11/28 15:35:21\\t12 ms\\t1/1\"]"
+    },
+    {
+      "id": "P5c",
+      "name": "SQL 页可见执行记录(描述含本查询 SQL 片段或 zeta 标识)",
+      "pass": false,
+      "detail": "fragment=false zeta=[]"
+    },
+    {
+      "id": "P5d",
+      "name": "查询完成(200 且无错误;失败/取消如实记录)",
+      "pass": true,
+      "detail": "{\"status\":200,\"results\":1,\"error\":null,\"duration_ms\":2663,\"keys\":[\"results\",\"meta\",\"truncated\",\"duration_ms\",\"cancelled\",\"run_id\",\"executed_at\",\"seq\"]}"
+    },
+    {
+      "id": "P6a",
+      "name": "四页逐页打开:HTML 200、最终 URL 保持在 /spark-ui/ 前缀、页内链接不逃出前缀",
+      "pass": true,
+      "detail": "pages={\"jobs\":{\"finalUrl\":\"https://zeta.pama.workers.dev/spark-ui/jobs/\",\"inPrefix\":true,\"markerOk\":true,\"navLinksCount\":82},\"stages\":{\"finalUrl\":\"https://zeta.pama.workers.dev/spark-ui/stages/\",\"inPrefix\":true,\"markerOk\":true,\"navLinksCount\":98},\"sql\":{\"finalUrl\":\"https://zeta.pama.workers.dev/spark-ui/jobs/\",\"inPrefix\":true,\"markerOk\":true,\"navLinksCount\":82},\"environment\":{\"finalUrl\":\"https://zeta.pama.workers.dev/spark-ui/environment/\",\"inPrefix\":true,\"markerOk\":true,\"navLinksCount\":7}} nav_violations=[]"
+    },
+    {
+      "id": "P6b",
+      "name": "四页带样式渲染(样式表实际加载;非裸 HTML)",
+      "pass": false,
+      "detail": "probes={\"page-jobs\":null,\"page-stages\":null,\"page-sql\":null,\"page-environment\":null}"
+    },
+    {
+      "id": "P6c",
+      "name": "静态资源失败清单(全部页面合计;4xx 或 MIME=text/html)",
+      "pass": true,
+      "detail": "total_failed=0 kinds={}"
+    },
+    {
+      "id": "P4d",
+      "name": "首击 /spark-ui/?db=<id> → 302 + Set-Cookie + 落地 /spark-ui/*",
+      "pass": true,
+      "detail": "status=302 location=/spark-ui/ set_cookie={\"name\":\"spark_ui_session\",\"flags\":\"HttpOnly; Path=/spark-ui; Max-Age=86400; SameSite=Lax; Secure\"} final_url=https://zeta.pama.workers.dev/spark-ui/jobs/"
+    },
+    {
+      "id": "Q7a",
+      "name": "全部请求主机 = 生产 origin(无第三方/上游主机)",
+      "pass": false,
+      "detail": "origins={\"https://zeta.pama.workers.dev\":84,\"https://fonts.googleapis.com\":1,\"https://fonts.gstatic.com\":2} foreign=[\"https://fonts.googleapis.com\",\"https://fonts.gstatic.com\"]"
+    },
+    {
+      "id": "Q7b",
+      "name": "accessToken 不出现在任何请求 URL",
+      "pass": true,
+      "detail": "hits=0"
+    },
+    {
+      "id": "Q7c",
+      "name": "UI 发布地址痕迹(:4040)不出现在请求 URL 与 /api/* 响应体",
+      "pass": true,
+      "detail": "url_hits=0 api_body_hits= ui_key_hits="
+    },
+    {
+      "id": "Q7d",
+      "name": "/api/databases 响应无 UI 字段回显(仅 has_spark_ui)",
+      "pass": true,
+      "detail": "keys=[\"id\",\"name\",\"description\",\"kind\",\"provider\",\"provider_custom\",\"binding_name\",\"cf_database_id\",\"is_app_db\",\"permission\",\"has_spark_ui\",\"has_livy\"]"
+    },
+    {
+      "id": "Q7e",
+      "name": "观察项:反代页面内容 4040 字样(不定性,留报告判断)",
+      "pass": true,
+      "detail": "environment 页面内容含 4040 字样(见 HTML 存档,待定性)"
     }
   ],
   "page_errors": [],
-  "databases": null,
-  "query_result": null,
-  "session_post": null,
-  "first_hit": null,
-  "style_probes": {},
+  "databases": [
+    {
+      "name": "Apollo",
+      "kind": "spark",
+      "has_spark_ui": true,
+      "id": "ddda2673-29d0-4292-af9f-ea51c0e653c1"
+    },
+    {
+      "name": "Apple",
+      "kind": "postgres",
+      "has_spark_ui": false,
+      "id": "cb159d84-b22f-4b2e-83c0-478607957eb4"
+    },
+    {
+      "name": "Bubble",
+      "kind": "postgres",
+      "has_spark_ui": false,
+      "id": "a30955da-b84f-4f11-9d49-bc730c7db2a5"
+    },
+    {
+      "name": "Deer",
+      "kind": "sqlite",
+      "has_spark_ui": false,
+      "id": "05161753-810d-4be2-a212-ad9a67d0d7e4"
+    },
+    {
+      "name": "Moss",
+      "kind": "postgres",
+      "has_spark_ui": false,
+      "id": "fd0a7778-9eb6-4e96-921a-0f7faff8f3ad"
+    },
+    {
+      "name": "Tree",
+      "kind": "mysql",
+      "has_spark_ui": false,
+      "id": "dd12e13d-aedc-4fa1-aad8-a01e64e1bb52"
+    },
+    {
+      "name": "Workerhub",
+      "kind": "sqlite",
+      "has_spark_ui": false,
+      "id": "237da069-3715-4a4a-91ec-d18ae25689b1"
+    }
+  ],
+  "query_result": {
+    "status": 200,
+    "results": 1,
+    "error": null,
+    "duration_ms": 2663,
+    "keys": [
+      "results",
+      "meta",
+      "truncated",
+      "duration_ms",
+      "cancelled",
+      "run_id",
+      "executed_at",
+      "seq"
+    ]
+  },
+  "session_post": {
+    "status": 204,
+    "setCookie": {
+      "name": "spark_ui_session",
+      "flags": "HttpOnly; Path=/spark-ui; Max-Age=86400; SameSite=Lax; Secure"
+    }
+  },
+  "first_hit": {
+    "status": 302,
+    "location": "/spark-ui/",
+    "setCookie": {
+      "name": "spark_ui_session",
+      "flags": "HttpOnly; Path=/spark-ui; Max-Age=86400; SameSite=Lax; Secure"
+    },
+    "url": "https://zeta.pama.workers.dev/spark-ui/?db=<redacted>"
+  },
+  "style_probes": {
+    "landing-jobs": null,
+    "page-jobs": null,
+    "page-stages": null,
+    "page-sql": null,
+    "page-environment": null
+  },
   "failed_resources_count": 0,
-  "console_flagged_count": 1,
-  "elapsed_ms": 40874
+  "console_flagged_count": 149,
+  "elapsed_ms": 48790
 }

@@ -1,1 +1,472 @@
-{}
+{
+  "landing-jobs": {
+    "pageUrl": "https://zeta.pama.workers.dev/spark-ui/jobs/",
+    "items": [
+      {
+        "tag": "link",
+        "rel": "stylesheet",
+        "raw": "https://zeta.oneboy.app/spark-ui/proxy/local-1795879633814/static/bootstrap.min.css",
+        "resolved": "https://zeta.oneboy.app/spark-ui/proxy/local-1795879633814/static/bootstrap.min.css",
+        "classification": "outside-prefix(逃出 /spark-ui 前缀)"
+      },
+      {
+        "tag": "link",
+        "rel": "stylesheet",
+        "raw": "https://zeta.oneboy.app/spark-ui/proxy/local-1795879633814/static/vis-timeline-graph2d.min.css",
+        "resolved": "https://zeta.oneboy.app/spark-ui/proxy/local-1795879633814/static/vis-timeline-graph2d.min.css",
+        "classification": "outside-prefix(逃出 /spark-ui 前缀)"
+      },
+      {
+        "tag": "link",
+        "rel": "stylesheet",
+        "raw": "https://zeta.oneboy.app/spark-ui/proxy/local-1795879633814/static/webui.css",
+        "resolved": "https://zeta.oneboy.app/spark-ui/proxy/local-1795879633814/static/webui.css",
+        "classification": "outside-prefix(逃出 /spark-ui 前缀)"
+      },
+      {
+        "tag": "link",
+        "rel": "stylesheet",
+        "raw": "https://zeta.oneboy.app/spark-ui/proxy/local-1795879633814/static/timeline-view.css",
+        "resolved": "https://zeta.oneboy.app/spark-ui/proxy/local-1795879633814/static/timeline-view.css",
+        "classification": "outside-prefix(逃出 /spark-ui 前缀)"
+      },
+      {
+        "tag": "link",
+        "rel": "shortcut icon",
+        "raw": "https://zeta.oneboy.app/spark-ui/proxy/local-1795879633814/static/spark-logo-77x50px-hd.png",
+        "resolved": "https://zeta.oneboy.app/spark-ui/proxy/local-1795879633814/static/spark-logo-77x50px-hd.png",
+        "classification": "outside-prefix(逃出 /spark-ui 前缀)"
+      },
+      {
+        "tag": "script",
+        "raw": "https://zeta.oneboy.app/spark-ui/proxy/local-1795879633814/static/sorttable.js",
+        "resolved": "https://zeta.oneboy.app/spark-ui/proxy/local-1795879633814/static/sorttable.js",
+        "classification": "outside-prefix(逃出 /spark-ui 前缀)"
+      },
+      {
+        "tag": "script",
+        "raw": "https://zeta.oneboy.app/spark-ui/proxy/local-1795879633814/static/jquery-3.5.1.min.js",
+        "resolved": "https://zeta.oneboy.app/spark-ui/proxy/local-1795879633814/static/jquery-3.5.1.min.js",
+        "classification": "outside-prefix(逃出 /spark-ui 前缀)"
+      },
+      {
+        "tag": "script",
+        "raw": "https://zeta.oneboy.app/spark-ui/proxy/local-1795879633814/static/vis-timeline-graph2d.min.js",
+        "resolved": "https://zeta.oneboy.app/spark-ui/proxy/local-1795879633814/static/vis-timeline-graph2d.min.js",
+        "classification": "outside-prefix(逃出 /spark-ui 前缀)"
+      },
+      {
+        "tag": "script",
+        "raw": "https://zeta.oneboy.app/spark-ui/proxy/local-1795879633814/static/bootstrap.bundle.min.js",
+        "resolved": "https://zeta.oneboy.app/spark-ui/proxy/local-1795879633814/static/bootstrap.bundle.min.js",
+        "classification": "outside-prefix(逃出 /spark-ui 前缀)"
+      },
+      {
+        "tag": "script",
+        "raw": "https://zeta.oneboy.app/spark-ui/proxy/local-1795879633814/static/initialize-tooltips.js",
+        "resolved": "https://zeta.oneboy.app/spark-ui/proxy/local-1795879633814/static/initialize-tooltips.js",
+        "classification": "outside-prefix(逃出 /spark-ui 前缀)"
+      },
+      {
+        "tag": "script",
+        "raw": "https://zeta.oneboy.app/spark-ui/proxy/local-1795879633814/static/table.js",
+        "resolved": "https://zeta.oneboy.app/spark-ui/proxy/local-1795879633814/static/table.js",
+        "classification": "outside-prefix(逃出 /spark-ui 前缀)"
+      },
+      {
+        "tag": "script",
+        "raw": "https://zeta.oneboy.app/spark-ui/proxy/local-1795879633814/static/timeline-view.js",
+        "resolved": "https://zeta.oneboy.app/spark-ui/proxy/local-1795879633814/static/timeline-view.js",
+        "classification": "outside-prefix(逃出 /spark-ui 前缀)"
+      },
+      {
+        "tag": "script",
+        "raw": "https://zeta.oneboy.app/spark-ui/proxy/local-1795879633814/static/log-view.js",
+        "resolved": "https://zeta.oneboy.app/spark-ui/proxy/local-1795879633814/static/log-view.js",
+        "classification": "outside-prefix(逃出 /spark-ui 前缀)"
+      },
+      {
+        "tag": "script",
+        "raw": "https://zeta.oneboy.app/spark-ui/proxy/local-1795879633814/static/webui.js",
+        "resolved": "https://zeta.oneboy.app/spark-ui/proxy/local-1795879633814/static/webui.js",
+        "classification": "outside-prefix(逃出 /spark-ui 前缀)"
+      }
+    ]
+  },
+  "page-jobs": {
+    "pageUrl": "https://zeta.pama.workers.dev/spark-ui/jobs/",
+    "items": [
+      {
+        "tag": "link",
+        "rel": "stylesheet",
+        "raw": "https://zeta.oneboy.app/spark-ui/proxy/local-1795879633814/static/bootstrap.min.css",
+        "resolved": "https://zeta.oneboy.app/spark-ui/proxy/local-1795879633814/static/bootstrap.min.css",
+        "classification": "outside-prefix(逃出 /spark-ui 前缀)"
+      },
+      {
+        "tag": "link",
+        "rel": "stylesheet",
+        "raw": "https://zeta.oneboy.app/spark-ui/proxy/local-1795879633814/static/vis-timeline-graph2d.min.css",
+        "resolved": "https://zeta.oneboy.app/spark-ui/proxy/local-1795879633814/static/vis-timeline-graph2d.min.css",
+        "classification": "outside-prefix(逃出 /spark-ui 前缀)"
+      },
+      {
+        "tag": "link",
+        "rel": "stylesheet",
+        "raw": "https://zeta.oneboy.app/spark-ui/proxy/local-1795879633814/static/webui.css",
+        "resolved": "https://zeta.oneboy.app/spark-ui/proxy/local-1795879633814/static/webui.css",
+        "classification": "outside-prefix(逃出 /spark-ui 前缀)"
+      },
+      {
+        "tag": "link",
+        "rel": "stylesheet",
+        "raw": "https://zeta.oneboy.app/spark-ui/proxy/local-1795879633814/static/timeline-view.css",
+        "resolved": "https://zeta.oneboy.app/spark-ui/proxy/local-1795879633814/static/timeline-view.css",
+        "classification": "outside-prefix(逃出 /spark-ui 前缀)"
+      },
+      {
+        "tag": "link",
+        "rel": "shortcut icon",
+        "raw": "https://zeta.oneboy.app/spark-ui/proxy/local-1795879633814/static/spark-logo-77x50px-hd.png",
+        "resolved": "https://zeta.oneboy.app/spark-ui/proxy/local-1795879633814/static/spark-logo-77x50px-hd.png",
+        "classification": "outside-prefix(逃出 /spark-ui 前缀)"
+      },
+      {
+        "tag": "script",
+        "raw": "https://zeta.oneboy.app/spark-ui/proxy/local-1795879633814/static/sorttable.js",
+        "resolved": "https://zeta.oneboy.app/spark-ui/proxy/local-1795879633814/static/sorttable.js",
+        "classification": "outside-prefix(逃出 /spark-ui 前缀)"
+      },
+      {
+        "tag": "script",
+        "raw": "https://zeta.oneboy.app/spark-ui/proxy/local-1795879633814/static/jquery-3.5.1.min.js",
+        "resolved": "https://zeta.oneboy.app/spark-ui/proxy/local-1795879633814/static/jquery-3.5.1.min.js",
+        "classification": "outside-prefix(逃出 /spark-ui 前缀)"
+      },
+      {
+        "tag": "script",
+        "raw": "https://zeta.oneboy.app/spark-ui/proxy/local-1795879633814/static/vis-timeline-graph2d.min.js",
+        "resolved": "https://zeta.oneboy.app/spark-ui/proxy/local-1795879633814/static/vis-timeline-graph2d.min.js",
+        "classification": "outside-prefix(逃出 /spark-ui 前缀)"
+      },
+      {
+        "tag": "script",
+        "raw": "https://zeta.oneboy.app/spark-ui/proxy/local-1795879633814/static/bootstrap.bundle.min.js",
+        "resolved": "https://zeta.oneboy.app/spark-ui/proxy/local-1795879633814/static/bootstrap.bundle.min.js",
+        "classification": "outside-prefix(逃出 /spark-ui 前缀)"
+      },
+      {
+        "tag": "script",
+        "raw": "https://zeta.oneboy.app/spark-ui/proxy/local-1795879633814/static/initialize-tooltips.js",
+        "resolved": "https://zeta.oneboy.app/spark-ui/proxy/local-1795879633814/static/initialize-tooltips.js",
+        "classification": "outside-prefix(逃出 /spark-ui 前缀)"
+      },
+      {
+        "tag": "script",
+        "raw": "https://zeta.oneboy.app/spark-ui/proxy/local-1795879633814/static/table.js",
+        "resolved": "https://zeta.oneboy.app/spark-ui/proxy/local-1795879633814/static/table.js",
+        "classification": "outside-prefix(逃出 /spark-ui 前缀)"
+      },
+      {
+        "tag": "script",
+        "raw": "https://zeta.oneboy.app/spark-ui/proxy/local-1795879633814/static/timeline-view.js",
+        "resolved": "https://zeta.oneboy.app/spark-ui/proxy/local-1795879633814/static/timeline-view.js",
+        "classification": "outside-prefix(逃出 /spark-ui 前缀)"
+      },
+      {
+        "tag": "script",
+        "raw": "https://zeta.oneboy.app/spark-ui/proxy/local-1795879633814/static/log-view.js",
+        "resolved": "https://zeta.oneboy.app/spark-ui/proxy/local-1795879633814/static/log-view.js",
+        "classification": "outside-prefix(逃出 /spark-ui 前缀)"
+      },
+      {
+        "tag": "script",
+        "raw": "https://zeta.oneboy.app/spark-ui/proxy/local-1795879633814/static/webui.js",
+        "resolved": "https://zeta.oneboy.app/spark-ui/proxy/local-1795879633814/static/webui.js",
+        "classification": "outside-prefix(逃出 /spark-ui 前缀)"
+      }
+    ]
+  },
+  "page-stages": {
+    "pageUrl": "https://zeta.pama.workers.dev/spark-ui/stages/",
+    "items": [
+      {
+        "tag": "link",
+        "rel": "stylesheet",
+        "raw": "https://zeta.oneboy.app/spark-ui/proxy/local-1795879633814/static/bootstrap.min.css",
+        "resolved": "https://zeta.oneboy.app/spark-ui/proxy/local-1795879633814/static/bootstrap.min.css",
+        "classification": "outside-prefix(逃出 /spark-ui 前缀)"
+      },
+      {
+        "tag": "link",
+        "rel": "stylesheet",
+        "raw": "https://zeta.oneboy.app/spark-ui/proxy/local-1795879633814/static/vis-timeline-graph2d.min.css",
+        "resolved": "https://zeta.oneboy.app/spark-ui/proxy/local-1795879633814/static/vis-timeline-graph2d.min.css",
+        "classification": "outside-prefix(逃出 /spark-ui 前缀)"
+      },
+      {
+        "tag": "link",
+        "rel": "stylesheet",
+        "raw": "https://zeta.oneboy.app/spark-ui/proxy/local-1795879633814/static/webui.css",
+        "resolved": "https://zeta.oneboy.app/spark-ui/proxy/local-1795879633814/static/webui.css",
+        "classification": "outside-prefix(逃出 /spark-ui 前缀)"
+      },
+      {
+        "tag": "link",
+        "rel": "stylesheet",
+        "raw": "https://zeta.oneboy.app/spark-ui/proxy/local-1795879633814/static/timeline-view.css",
+        "resolved": "https://zeta.oneboy.app/spark-ui/proxy/local-1795879633814/static/timeline-view.css",
+        "classification": "outside-prefix(逃出 /spark-ui 前缀)"
+      },
+      {
+        "tag": "link",
+        "rel": "shortcut icon",
+        "raw": "https://zeta.oneboy.app/spark-ui/proxy/local-1795879633814/static/spark-logo-77x50px-hd.png",
+        "resolved": "https://zeta.oneboy.app/spark-ui/proxy/local-1795879633814/static/spark-logo-77x50px-hd.png",
+        "classification": "outside-prefix(逃出 /spark-ui 前缀)"
+      },
+      {
+        "tag": "script",
+        "raw": "https://zeta.oneboy.app/spark-ui/proxy/local-1795879633814/static/sorttable.js",
+        "resolved": "https://zeta.oneboy.app/spark-ui/proxy/local-1795879633814/static/sorttable.js",
+        "classification": "outside-prefix(逃出 /spark-ui 前缀)"
+      },
+      {
+        "tag": "script",
+        "raw": "https://zeta.oneboy.app/spark-ui/proxy/local-1795879633814/static/jquery-3.5.1.min.js",
+        "resolved": "https://zeta.oneboy.app/spark-ui/proxy/local-1795879633814/static/jquery-3.5.1.min.js",
+        "classification": "outside-prefix(逃出 /spark-ui 前缀)"
+      },
+      {
+        "tag": "script",
+        "raw": "https://zeta.oneboy.app/spark-ui/proxy/local-1795879633814/static/vis-timeline-graph2d.min.js",
+        "resolved": "https://zeta.oneboy.app/spark-ui/proxy/local-1795879633814/static/vis-timeline-graph2d.min.js",
+        "classification": "outside-prefix(逃出 /spark-ui 前缀)"
+      },
+      {
+        "tag": "script",
+        "raw": "https://zeta.oneboy.app/spark-ui/proxy/local-1795879633814/static/bootstrap.bundle.min.js",
+        "resolved": "https://zeta.oneboy.app/spark-ui/proxy/local-1795879633814/static/bootstrap.bundle.min.js",
+        "classification": "outside-prefix(逃出 /spark-ui 前缀)"
+      },
+      {
+        "tag": "script",
+        "raw": "https://zeta.oneboy.app/spark-ui/proxy/local-1795879633814/static/initialize-tooltips.js",
+        "resolved": "https://zeta.oneboy.app/spark-ui/proxy/local-1795879633814/static/initialize-tooltips.js",
+        "classification": "outside-prefix(逃出 /spark-ui 前缀)"
+      },
+      {
+        "tag": "script",
+        "raw": "https://zeta.oneboy.app/spark-ui/proxy/local-1795879633814/static/table.js",
+        "resolved": "https://zeta.oneboy.app/spark-ui/proxy/local-1795879633814/static/table.js",
+        "classification": "outside-prefix(逃出 /spark-ui 前缀)"
+      },
+      {
+        "tag": "script",
+        "raw": "https://zeta.oneboy.app/spark-ui/proxy/local-1795879633814/static/timeline-view.js",
+        "resolved": "https://zeta.oneboy.app/spark-ui/proxy/local-1795879633814/static/timeline-view.js",
+        "classification": "outside-prefix(逃出 /spark-ui 前缀)"
+      },
+      {
+        "tag": "script",
+        "raw": "https://zeta.oneboy.app/spark-ui/proxy/local-1795879633814/static/log-view.js",
+        "resolved": "https://zeta.oneboy.app/spark-ui/proxy/local-1795879633814/static/log-view.js",
+        "classification": "outside-prefix(逃出 /spark-ui 前缀)"
+      },
+      {
+        "tag": "script",
+        "raw": "https://zeta.oneboy.app/spark-ui/proxy/local-1795879633814/static/webui.js",
+        "resolved": "https://zeta.oneboy.app/spark-ui/proxy/local-1795879633814/static/webui.js",
+        "classification": "outside-prefix(逃出 /spark-ui 前缀)"
+      }
+    ]
+  },
+  "page-sql": {
+    "pageUrl": "https://zeta.pama.workers.dev/spark-ui/jobs/",
+    "items": [
+      {
+        "tag": "link",
+        "rel": "stylesheet",
+        "raw": "https://zeta.oneboy.app/spark-ui/proxy/local-1795879633814/static/bootstrap.min.css",
+        "resolved": "https://zeta.oneboy.app/spark-ui/proxy/local-1795879633814/static/bootstrap.min.css",
+        "classification": "outside-prefix(逃出 /spark-ui 前缀)"
+      },
+      {
+        "tag": "link",
+        "rel": "stylesheet",
+        "raw": "https://zeta.oneboy.app/spark-ui/proxy/local-1795879633814/static/vis-timeline-graph2d.min.css",
+        "resolved": "https://zeta.oneboy.app/spark-ui/proxy/local-1795879633814/static/vis-timeline-graph2d.min.css",
+        "classification": "outside-prefix(逃出 /spark-ui 前缀)"
+      },
+      {
+        "tag": "link",
+        "rel": "stylesheet",
+        "raw": "https://zeta.oneboy.app/spark-ui/proxy/local-1795879633814/static/webui.css",
+        "resolved": "https://zeta.oneboy.app/spark-ui/proxy/local-1795879633814/static/webui.css",
+        "classification": "outside-prefix(逃出 /spark-ui 前缀)"
+      },
+      {
+        "tag": "link",
+        "rel": "stylesheet",
+        "raw": "https://zeta.oneboy.app/spark-ui/proxy/local-1795879633814/static/timeline-view.css",
+        "resolved": "https://zeta.oneboy.app/spark-ui/proxy/local-1795879633814/static/timeline-view.css",
+        "classification": "outside-prefix(逃出 /spark-ui 前缀)"
+      },
+      {
+        "tag": "link",
+        "rel": "shortcut icon",
+        "raw": "https://zeta.oneboy.app/spark-ui/proxy/local-1795879633814/static/spark-logo-77x50px-hd.png",
+        "resolved": "https://zeta.oneboy.app/spark-ui/proxy/local-1795879633814/static/spark-logo-77x50px-hd.png",
+        "classification": "outside-prefix(逃出 /spark-ui 前缀)"
+      },
+      {
+        "tag": "script",
+        "raw": "https://zeta.oneboy.app/spark-ui/proxy/local-1795879633814/static/sorttable.js",
+        "resolved": "https://zeta.oneboy.app/spark-ui/proxy/local-1795879633814/static/sorttable.js",
+        "classification": "outside-prefix(逃出 /spark-ui 前缀)"
+      },
+      {
+        "tag": "script",
+        "raw": "https://zeta.oneboy.app/spark-ui/proxy/local-1795879633814/static/jquery-3.5.1.min.js",
+        "resolved": "https://zeta.oneboy.app/spark-ui/proxy/local-1795879633814/static/jquery-3.5.1.min.js",
+        "classification": "outside-prefix(逃出 /spark-ui 前缀)"
+      },
+      {
+        "tag": "script",
+        "raw": "https://zeta.oneboy.app/spark-ui/proxy/local-1795879633814/static/vis-timeline-graph2d.min.js",
+        "resolved": "https://zeta.oneboy.app/spark-ui/proxy/local-1795879633814/static/vis-timeline-graph2d.min.js",
+        "classification": "outside-prefix(逃出 /spark-ui 前缀)"
+      },
+      {
+        "tag": "script",
+        "raw": "https://zeta.oneboy.app/spark-ui/proxy/local-1795879633814/static/bootstrap.bundle.min.js",
+        "resolved": "https://zeta.oneboy.app/spark-ui/proxy/local-1795879633814/static/bootstrap.bundle.min.js",
+        "classification": "outside-prefix(逃出 /spark-ui 前缀)"
+      },
+      {
+        "tag": "script",
+        "raw": "https://zeta.oneboy.app/spark-ui/proxy/local-1795879633814/static/initialize-tooltips.js",
+        "resolved": "https://zeta.oneboy.app/spark-ui/proxy/local-1795879633814/static/initialize-tooltips.js",
+        "classification": "outside-prefix(逃出 /spark-ui 前缀)"
+      },
+      {
+        "tag": "script",
+        "raw": "https://zeta.oneboy.app/spark-ui/proxy/local-1795879633814/static/table.js",
+        "resolved": "https://zeta.oneboy.app/spark-ui/proxy/local-1795879633814/static/table.js",
+        "classification": "outside-prefix(逃出 /spark-ui 前缀)"
+      },
+      {
+        "tag": "script",
+        "raw": "https://zeta.oneboy.app/spark-ui/proxy/local-1795879633814/static/timeline-view.js",
+        "resolved": "https://zeta.oneboy.app/spark-ui/proxy/local-1795879633814/static/timeline-view.js",
+        "classification": "outside-prefix(逃出 /spark-ui 前缀)"
+      },
+      {
+        "tag": "script",
+        "raw": "https://zeta.oneboy.app/spark-ui/proxy/local-1795879633814/static/log-view.js",
+        "resolved": "https://zeta.oneboy.app/spark-ui/proxy/local-1795879633814/static/log-view.js",
+        "classification": "outside-prefix(逃出 /spark-ui 前缀)"
+      },
+      {
+        "tag": "script",
+        "raw": "https://zeta.oneboy.app/spark-ui/proxy/local-1795879633814/static/webui.js",
+        "resolved": "https://zeta.oneboy.app/spark-ui/proxy/local-1795879633814/static/webui.js",
+        "classification": "outside-prefix(逃出 /spark-ui 前缀)"
+      }
+    ]
+  },
+  "page-environment": {
+    "pageUrl": "https://zeta.pama.workers.dev/spark-ui/environment/",
+    "items": [
+      {
+        "tag": "link",
+        "rel": "stylesheet",
+        "raw": "https://zeta.oneboy.app/spark-ui/proxy/local-1795879633814/static/bootstrap.min.css",
+        "resolved": "https://zeta.oneboy.app/spark-ui/proxy/local-1795879633814/static/bootstrap.min.css",
+        "classification": "outside-prefix(逃出 /spark-ui 前缀)"
+      },
+      {
+        "tag": "link",
+        "rel": "stylesheet",
+        "raw": "https://zeta.oneboy.app/spark-ui/proxy/local-1795879633814/static/vis-timeline-graph2d.min.css",
+        "resolved": "https://zeta.oneboy.app/spark-ui/proxy/local-1795879633814/static/vis-timeline-graph2d.min.css",
+        "classification": "outside-prefix(逃出 /spark-ui 前缀)"
+      },
+      {
+        "tag": "link",
+        "rel": "stylesheet",
+        "raw": "https://zeta.oneboy.app/spark-ui/proxy/local-1795879633814/static/webui.css",
+        "resolved": "https://zeta.oneboy.app/spark-ui/proxy/local-1795879633814/static/webui.css",
+        "classification": "outside-prefix(逃出 /spark-ui 前缀)"
+      },
+      {
+        "tag": "link",
+        "rel": "stylesheet",
+        "raw": "https://zeta.oneboy.app/spark-ui/proxy/local-1795879633814/static/timeline-view.css",
+        "resolved": "https://zeta.oneboy.app/spark-ui/proxy/local-1795879633814/static/timeline-view.css",
+        "classification": "outside-prefix(逃出 /spark-ui 前缀)"
+      },
+      {
+        "tag": "link",
+        "rel": "shortcut icon",
+        "raw": "https://zeta.oneboy.app/spark-ui/proxy/local-1795879633814/static/spark-logo-77x50px-hd.png",
+        "resolved": "https://zeta.oneboy.app/spark-ui/proxy/local-1795879633814/static/spark-logo-77x50px-hd.png",
+        "classification": "outside-prefix(逃出 /spark-ui 前缀)"
+      },
+      {
+        "tag": "script",
+        "raw": "https://zeta.oneboy.app/spark-ui/proxy/local-1795879633814/static/sorttable.js",
+        "resolved": "https://zeta.oneboy.app/spark-ui/proxy/local-1795879633814/static/sorttable.js",
+        "classification": "outside-prefix(逃出 /spark-ui 前缀)"
+      },
+      {
+        "tag": "script",
+        "raw": "https://zeta.oneboy.app/spark-ui/proxy/local-1795879633814/static/jquery-3.5.1.min.js",
+        "resolved": "https://zeta.oneboy.app/spark-ui/proxy/local-1795879633814/static/jquery-3.5.1.min.js",
+        "classification": "outside-prefix(逃出 /spark-ui 前缀)"
+      },
+      {
+        "tag": "script",
+        "raw": "https://zeta.oneboy.app/spark-ui/proxy/local-1795879633814/static/vis-timeline-graph2d.min.js",
+        "resolved": "https://zeta.oneboy.app/spark-ui/proxy/local-1795879633814/static/vis-timeline-graph2d.min.js",
+        "classification": "outside-prefix(逃出 /spark-ui 前缀)"
+      },
+      {
+        "tag": "script",
+        "raw": "https://zeta.oneboy.app/spark-ui/proxy/local-1795879633814/static/bootstrap.bundle.min.js",
+        "resolved": "https://zeta.oneboy.app/spark-ui/proxy/local-1795879633814/static/bootstrap.bundle.min.js",
+        "classification": "outside-prefix(逃出 /spark-ui 前缀)"
+      },
+      {
+        "tag": "script",
+        "raw": "https://zeta.oneboy.app/spark-ui/proxy/local-1795879633814/static/initialize-tooltips.js",
+        "resolved": "https://zeta.oneboy.app/spark-ui/proxy/local-1795879633814/static/initialize-tooltips.js",
+        "classification": "outside-prefix(逃出 /spark-ui 前缀)"
+      },
+      {
+        "tag": "script",
+        "raw": "https://zeta.oneboy.app/spark-ui/proxy/local-1795879633814/static/table.js",
+        "resolved": "https://zeta.oneboy.app/spark-ui/proxy/local-1795879633814/static/table.js",
+        "classification": "outside-prefix(逃出 /spark-ui 前缀)"
+      },
+      {
+        "tag": "script",
+        "raw": "https://zeta.oneboy.app/spark-ui/proxy/local-1795879633814/static/timeline-view.js",
+        "resolved": "https://zeta.oneboy.app/spark-ui/proxy/local-1795879633814/static/timeline-view.js",
+        "classification": "outside-prefix(逃出 /spark-ui 前缀)"
+      },
+      {
+        "tag": "script",
+        "raw": "https://zeta.oneboy.app/spark-ui/proxy/local-1795879633814/static/log-view.js",
+        "resolved": "https://zeta.oneboy.app/spark-ui/proxy/local-1795879633814/static/log-view.js",
+        "classification": "outside-prefix(逃出 /spark-ui 前缀)"
+      },
+      {
+        "tag": "script",
+        "raw": "https://zeta.oneboy.app/spark-ui/proxy/local-1795879633814/static/webui.js",
+        "resolved": "https://zeta.oneboy.app/spark-ui/proxy/local-1795879633814/static/webui.js",
+        "classification": "outside-prefix(逃出 /spark-ui 前缀)"
+      }
+    ]
+  }
+}
