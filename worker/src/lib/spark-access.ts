@@ -1,3 +1,6 @@
+import type { Env } from '../types'
+import { openSecret } from './secrets'
+
 // ── Spark access payload (third-phase SparkSQL targets) ────────────────────────────────────────
 // A Spark target is not a connection string: the machine is reached through a published port that
 // checks two tokens — the platform one (`Authorization: Bearer`, verified by the publish proxy) and
@@ -13,6 +16,8 @@ export interface SparkAccess {
   url: string
   platform_token: string
   app_token: string
+  ui_url?: string
+  ui_platform_token?: string
 }
 
 export interface SparkAccessOk {
@@ -100,5 +105,93 @@ export function normalizeSparkAccess(input: unknown): SparkAccessResult {
   // a published address does not use) are dropped, and the trailing slash is removed here once
   // instead of at every call site.
   const url = `${parsed.origin}${parsed.pathname.replace(/\/+$/, '')}`
-  return { ok: true, access: { url, platform_token: platform.token, app_token: app.token }, host: parsed.hostname }
+
+  const rawUi = typeof payload.ui_url === 'string' ? payload.ui_url.trim() : ''
+  const rawUiToken = typeof payload.ui_platform_token === 'string' ? payload.ui_platform_token.trim() : ''
+  const hasUiUrl =
+    rawUi.length > 0 || (payload.ui_url !== undefined && payload.ui_url !== null && payload.ui_url !== '')
+  const hasUiToken =
+    rawUiToken.length > 0 ||
+    (payload.ui_platform_token !== undefined && payload.ui_platform_token !== null && payload.ui_platform_token !== '')
+
+  if (hasUiUrl !== hasUiToken) {
+    return {
+      ok: false,
+      error: 'The Spark UI publish URL and platform token must both be provided or both omitted.',
+    }
+  }
+
+  let ui_url: string | undefined
+  let ui_platform_token: string | undefined
+
+  if (hasUiUrl && hasUiToken) {
+    const uiPlatform = readToken(payload.ui_platform_token, 'Spark UI platform token')
+    if (!uiPlatform.ok) return uiPlatform
+
+    if (rawUi.length > MAX_URL_LENGTH) return { ok: false, error: 'The Spark UI publish URL is too long.' }
+
+    let parsedUi: URL
+    try {
+      parsedUi = new URL(rawUi)
+    } catch {
+      return { ok: false, error: 'That is not a valid Spark UI publish URL.' }
+    }
+    if (parsedUi.protocol !== 'https:') {
+      return { ok: false, error: 'The Spark UI publish URL must start with https://.' }
+    }
+    if (!parsedUi.hostname) return { ok: false, error: 'The Spark UI publish URL is missing a host.' }
+    if (parsedUi.username || parsedUi.password) {
+      return {
+        ok: false,
+        error:
+          'The Spark UI publish URL must not carry a username or password; the two tokens are entered as their own fields.',
+      }
+    }
+    for (const key of parsedUi.searchParams.keys()) {
+      if (!URL_TOKEN_PARAMETERS.has(key.toLowerCase())) continue
+      return {
+        ok: false,
+        error:
+          'The Spark UI publish URL carries an address token; paste it without the ?_token= part and enter the tokens as their own fields.',
+      }
+    }
+    ui_url = `${parsedUi.origin}${parsedUi.pathname.replace(/\/+$/, '')}`
+    ui_platform_token = uiPlatform.token
+  }
+
+  return {
+    ok: true,
+    access: {
+      url,
+      platform_token: platform.token,
+      app_token: app.token,
+      ...(ui_url && ui_platform_token ? { ui_url, ui_platform_token } : {}),
+    },
+    host: parsed.hostname,
+  }
+}
+
+export function hasSparkUi(access: unknown): boolean {
+  if (!access || typeof access !== 'object') return false
+  const a = access as Record<string, unknown>
+  return (
+    typeof a.ui_url === 'string' &&
+    a.ui_url.length > 0 &&
+    typeof a.ui_platform_token === 'string' &&
+    a.ui_platform_token.length > 0
+  )
+}
+
+export async function checkDatabaseHasSparkUi(
+  env: Env,
+  row: { kind?: string | null; connection_secret?: string | null }
+): Promise<boolean> {
+  if (row.kind !== 'spark' || !row.connection_secret) return false
+  try {
+    const raw = await openSecret(env, row.connection_secret)
+    const payload = JSON.parse(raw)
+    return hasSparkUi(payload)
+  } catch {
+    return false
+  }
 }

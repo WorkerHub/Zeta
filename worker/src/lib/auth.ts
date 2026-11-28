@@ -94,9 +94,20 @@ export interface Pending2faTokenPayload extends RegisteredClaims {
   type: 'pending_2fa'
 }
 
+export interface SparkUiSessionPayload extends RegisteredClaims {
+  sub: string
+  role: 'admin' | 'member'
+  db: string
+  jti: string
+  iat: number
+  exp: number
+  type: 'spark_ui'
+}
+
 const ACCESS_TTL = 15 * 60 // 15 min
 const REFRESH_TTL = 7 * 24 * 3600 // 7 days
 const PENDING_TTL = 10 * 60 // 10 min
+export const SPARK_UI_SESSION_TTL = 24 * 3600 // 24 hours
 
 async function hmacKey(secret: string): Promise<CryptoKey> {
   return crypto.subtle.importKey('raw', new TextEncoder().encode(secret), { name: 'HMAC', hash: 'SHA-256' }, false, [
@@ -227,6 +238,35 @@ export async function verifyPending2faToken(
   if (!token) return null
   const payload = await verifyJwt<Pending2faTokenPayload>(token, env)
   if (payload?.type !== 'pending_2fa') return null
+  return payload
+}
+
+export async function createSparkUiSessionToken(
+  args: { userId: string; role: 'admin' | 'member'; databaseId: string },
+  env: JwtEnv
+): Promise<string> {
+  const now = Math.floor(Date.now() / 1000)
+  return signJwt(
+    {
+      sub: args.userId,
+      role: args.role,
+      db: args.databaseId,
+      jti: crypto.randomUUID(),
+      iat: now,
+      exp: now + SPARK_UI_SESSION_TTL,
+      type: 'spark_ui',
+    },
+    env
+  )
+}
+
+export async function verifySparkUiSessionToken(
+  token: string | undefined,
+  env: JwtEnv
+): Promise<SparkUiSessionPayload | null> {
+  if (!token) return null
+  const payload = await verifyJwt<SparkUiSessionPayload>(token, env)
+  if (payload?.type !== 'spark_ui') return null
   return payload
 }
 

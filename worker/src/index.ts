@@ -12,6 +12,7 @@ import query from './routes/query'
 import notebooks from './routes/notebooks'
 import admin from './routes/admin'
 import setup from './routes/setup'
+import sparkUi from './routes/spark-ui'
 
 const app = new Hono<{ Bindings: Env; Variables: Variables }>()
 
@@ -60,6 +61,10 @@ app.route('/api/setup', setup)
 app.get('/api/health', (c) => c.json({ ok: true }))
 
 app.all('/api/*', (c) => c.json({ error: 'Not found' }, 404))
+
+// ── Spark UI proxy ────────────────────────────────────────────────────────────
+
+app.route('/spark-ui', sparkUi)
 
 // ── Serve SPA (Workers Assets fallback) ──────────────────────────────────────
 

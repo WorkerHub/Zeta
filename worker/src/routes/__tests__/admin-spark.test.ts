@@ -207,7 +207,33 @@ describe('GET /api/admin/databases (kind=spark)', () => {
     expect(text).not.toContain(PLATFORM)
     expect(text).not.toContain(APP)
     const json = JSON.parse(text) as { results: Array<Record<string, unknown>> }
-    expect(json.results[0]).toMatchObject({ kind: 'spark', has_connection: true, is_app_db: false })
+    expect(json.results[0]).toMatchObject({
+      kind: 'spark',
+      has_connection: true,
+      has_spark_ui: false,
+      is_app_db: false,
+    })
+  })
+
+  it('reports has_spark_ui: true when registered with ui_url and ui_platform_token, without echoing them', async () => {
+    const e = env()
+    spark.queue.push({ kind: 'ok' })
+    const uiUrl = 'https://spark-ui-4040.publish.example.dev'
+    const uiToken = 'spark-ui-token-secret'
+    const createRes = await callWorker(
+      e,
+      '/api/admin/databases',
+      postJson(body({ ui_url: uiUrl, ui_platform_token: uiToken }), { headers: await adminHeaders(e) })
+    )
+    expect(createRes.status).toBe(201)
+
+    const res = await callWorker(e, '/api/admin/databases', { headers: await adminHeaders(e) })
+    expect(res.status).toBe(200)
+    const text = await res.text()
+    expect(text).not.toContain(uiUrl)
+    expect(text).not.toContain(uiToken)
+    const json = JSON.parse(text) as { results: Array<Record<string, unknown>> }
+    expect(json.results[0]).toMatchObject({ kind: 'spark', has_connection: true, has_spark_ui: true })
   })
 })
 
@@ -282,5 +308,47 @@ describe('PATCH /api/admin/databases/:id (kind=spark)', () => {
     })
     expect(res.status).toBe(400)
     expect(((await res.json()) as { error: string }).error).toContain('A SparkSQL database')
+  })
+
+  it('allows updating Spark UI fields via PATCH on a spark row and reflects in has_spark_ui', async () => {
+    const e = env()
+    const id = await seed(e)
+    const uiUrl = 'https://spark-ui-4040.publish.example.dev'
+    const uiToken = 'spark-ui-token-secret'
+
+    // Add Spark UI fields
+    const patchRes = await callWorker(e, `/api/admin/databases/${id}`, {
+      ...postJson({ ui_url: uiUrl, ui_platform_token: uiToken }, { headers: await adminHeaders(e) }),
+      method: 'PATCH',
+    })
+    expect(patchRes.status).toBe(200)
+    const patchJson = (await patchRes.json()) as { database: Record<string, unknown> }
+    expect(patchJson.database).toMatchObject({ has_spark_ui: true })
+
+    // Stored secret includes the UI fields
+    const row = (await listRows(e))[0]!
+    const unsealed = JSON.parse(await openSecret(e, row.connection_secret as string)) as Record<string, unknown>
+    expect(unsealed.ui_url).toBe(uiUrl)
+    expect(unsealed.ui_platform_token).toBe(uiToken)
+
+    // Re-clearing Spark UI fields
+    const clearRes = await callWorker(e, `/api/admin/databases/${id}`, {
+      ...postJson({ ui_url: '', ui_platform_token: '' }, { headers: await adminHeaders(e) }),
+      method: 'PATCH',
+    })
+    expect(clearRes.status).toBe(200)
+    const clearJson = (await clearRes.json()) as { database: Record<string, unknown> }
+    expect(clearJson.database).toMatchObject({ has_spark_ui: false })
+  })
+
+  it('refuses invalid or unpaired Spark UI fields on PATCH', async () => {
+    const e = env()
+    const id = await seed(e)
+    const res = await callWorker(e, `/api/admin/databases/${id}`, {
+      ...postJson({ ui_url: 'https://spark-ui.dev' }, { headers: await adminHeaders(e) }),
+      method: 'PATCH',
+    })
+    expect(res.status).toBe(400)
+    expect(((await res.json()) as { error: string }).error).toContain('both be provided or both omitted')
   })
 })

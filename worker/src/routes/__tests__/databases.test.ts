@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { sealSecret } from '../../lib/secrets'
 import { bearer, callWorker, fakeD1, fakeEnv } from './fakes'
 
 const APP_DB = '11111111-1111-4111-8111-111111111111'
@@ -109,5 +110,49 @@ describe('GET /api/databases (provider label)', () => {
     expect(byId.sp).toMatchObject({ provider: null, provider_custom: null })
     // A row from before the kind column is a D1 target
     expect(byId.legacy).toMatchObject({ provider: 'D1', provider_custom: null })
+  })
+
+  it('annotates rows with has_spark_ui: true/false appropriately', async () => {
+    const dummyEnv = fakeEnv()
+    const sparkWithUi = await sealSecret(
+      dummyEnv,
+      JSON.stringify({
+        url: 'https://spark.dev',
+        platform_token: 'p',
+        app_token: 'a',
+        ui_url: 'https://spark-ui.dev',
+        ui_platform_token: 'uip',
+      })
+    )
+    const sparkWithoutUi = await sealSecret(
+      dummyEnv,
+      JSON.stringify({
+        url: 'https://spark.dev',
+        platform_token: 'p',
+        app_token: 'a',
+      })
+    )
+
+    const sampleRows = [
+      { ...rows[1], id: 'sp1', kind: 'spark', connection_secret: sparkWithUi },
+      { ...rows[1], id: 'sp2', kind: 'spark', connection_secret: sparkWithoutUi },
+      { ...rows[1], id: 'd1_1', kind: 'sqlite', connection_secret: null },
+    ]
+
+    const { db } = fakeD1((sql) => {
+      if (sql.includes('FROM d1_databases')) return sampleRows
+      if (sql.startsWith('SELECT database_id, permission')) {
+        return sampleRows.map((r) => ({ database_id: r.id, permission: 'read' }))
+      }
+      return null
+    })
+    const env = fakeEnv({ DB: db, ZETA_APP_DB_ID: APP_DB })
+    const res = await callWorker(env, '/api/databases', { headers: await bearer(env, 'u1') })
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as Array<{ id: string; has_spark_ui: boolean }>
+    const byId = new Map(body.map((r) => [r.id, r]))
+    expect(byId.get('sp1')?.has_spark_ui).toBe(true)
+    expect(byId.get('sp2')?.has_spark_ui).toBe(false)
+    expect(byId.get('d1_1')?.has_spark_ui).toBe(false)
   })
 })
