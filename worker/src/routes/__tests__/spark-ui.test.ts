@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { getMigrations } from '../../lib/migrations'
 import { sealSecret } from '../../lib/secrets'
 import type { Env } from '../../types'
-import { rewriteSparkUiHtml, rewriteSparkUiUrl } from '../spark-ui'
+import { rewriteSparkUiHtml, rewriteSparkUiLocation, rewriteSparkUiUrl } from '../spark-ui'
 import { bearer, callWorker, fakeEnv, postJson } from './fakes'
 import { sqliteD1 } from './sqlite-d1'
 
@@ -550,6 +550,7 @@ describe('/spark-ui proxying with signed cookie', () => {
   describe('rewriteSparkUiUrl', () => {
     it('leaves external absolute URLs and anchors intact', () => {
       expect(rewriteSparkUiUrl('https://spark.apache.org/docs', UI_URL)).toBe('https://spark.apache.org/docs')
+      expect(rewriteSparkUiUrl('//cdn.example.com/lib.css', UI_URL)).toBe('//cdn.example.com/lib.css')
       expect(rewriteSparkUiUrl('#section', UI_URL)).toBe('#section')
       expect(rewriteSparkUiUrl('javascript:void(0)', UI_URL)).toBe('javascript:void(0)')
       expect(rewriteSparkUiUrl('data:image/png;base64,...', UI_URL)).toBe('data:image/png;base64,...')
@@ -614,6 +615,27 @@ describe('/spark-ui proxying with signed cookie', () => {
     })
   })
 
+  describe('rewriteSparkUiLocation', () => {
+    it('normalises an absolute Location carrying the /spark-ui prefix (proxyBase host) to same-origin', () => {
+      const proxyBase = 'https://zeta.oneboy.app'
+      expect(rewriteSparkUiLocation(`${proxyBase}/spark-ui/proxy/local-1795879633814/SQL/`, UI_URL)).toBe(
+        '/spark-ui/proxy/local-1795879633814/SQL/'
+      )
+      expect(rewriteSparkUiLocation(`${proxyBase}/spark-ui/jobs/`, UI_URL)).toBe('/spark-ui/jobs/')
+      expect(rewriteSparkUiLocation(`${proxyBase}/spark-ui/`, UI_URL)).toBe('/spark-ui/')
+    })
+
+    it('keeps rewriting absolute ui_url Locations to /spark-ui and leaves external hosts untouched', () => {
+      expect(rewriteSparkUiLocation(`${UI_URL}/proxy/app-1/jobs/`, UI_URL)).toBe('/spark-ui/proxy/app-1/jobs/')
+      expect(rewriteSparkUiLocation('https://spark.apache.org/docs', UI_URL)).toBe('https://spark.apache.org/docs')
+    })
+
+    it('keeps rewriting relative Locations into /spark-ui prefix', () => {
+      expect(rewriteSparkUiLocation('/proxy/app-1/jobs/', UI_URL)).toBe('/spark-ui/proxy/app-1/jobs/')
+      expect(rewriteSparkUiLocation('/', UI_URL)).toBe('/spark-ui/')
+    })
+  })
+
   describe('rewriteSparkUiHtml', () => {
     it('rewrites stylesheet links and script tags in HTML head and body', () => {
       const raw = `
@@ -667,6 +689,14 @@ describe('/spark-ui proxying with signed cookie', () => {
       const rewritten = rewriteSparkUiHtml(raw, UI_URL)
       expect(rewritten).toContain('<base href="/spark-ui/">')
       expect(rewritten).toContain('href="/spark-ui/static/webui.css"')
+    })
+
+    it('normalises a proxyBase-hosted base href instead of hardcoding /spark-ui/', () => {
+      const proxyBase = 'https://zeta.oneboy.app'
+      const raw = `<head><base href="${proxyBase}/spark-ui/proxy/local-1795879633814/"></head>`
+      const rewritten = rewriteSparkUiHtml(raw, UI_URL)
+      expect(rewritten).not.toContain(proxyBase)
+      expect(rewritten).toContain('<base href="/spark-ui/proxy/local-1795879633814/">')
     })
 
     it('strips all mentions of upstream ui_url origin so private address is never leaked', () => {

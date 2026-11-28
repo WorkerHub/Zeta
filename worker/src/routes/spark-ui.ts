@@ -15,15 +15,31 @@ export function rewriteSparkUiLocation(location: string, uiUrl: string, requestU
   try {
     const locUrl = new URL(location)
     const targetUrl = new URL(uiUrl)
+
+    // Keep parity with rewriteSparkUiUrl: the upstream's fixed proxyBase host may differ from
+    // ui_url, so an absolute Location that already carries the /spark-ui prefix (e.g.
+    // https://zeta.oneboy.app/spark-ui/proxy/<appId>/SQL/) is normalised to same-origin instead of
+    // being returned verbatim — otherwise the browser would jump to the proxyBase host and leave
+    // this reverse proxy (and on a *.workers.dev origin it would also be cross-origin).
+    const pathAndQuery = locUrl.pathname + locUrl.search + locUrl.hash
+    if (
+      pathAndQuery === '/spark-ui' ||
+      pathAndQuery.startsWith('/spark-ui/') ||
+      pathAndQuery.startsWith('/spark-ui?') ||
+      pathAndQuery.startsWith('/spark-ui#')
+    ) {
+      return pathAndQuery
+    }
+
     if (locUrl.origin === targetUrl.origin) {
-      let pathAndQuery = locUrl.pathname + locUrl.search + locUrl.hash
-      if (targetUrl.pathname && targetUrl.pathname !== '/' && pathAndQuery.startsWith(targetUrl.pathname)) {
-        pathAndQuery = pathAndQuery.slice(targetUrl.pathname.length)
+      let p = pathAndQuery
+      if (targetUrl.pathname && targetUrl.pathname !== '/' && p.startsWith(targetUrl.pathname)) {
+        p = p.slice(targetUrl.pathname.length)
       }
-      if (!pathAndQuery.startsWith('/')) {
-        pathAndQuery = `/${pathAndQuery}`
+      if (!p.startsWith('/')) {
+        p = `/${p}`
       }
-      return `/spark-ui${pathAndQuery}`
+      return `/spark-ui${p}`
     }
     return location
   } catch {
@@ -61,6 +77,7 @@ export function rewriteSparkUiUrl(val: string, uiUrl: string, _requestUrl?: stri
   if (
     !trimmed ||
     trimmed.startsWith('#') ||
+    trimmed.startsWith('//') ||
     trimmed.startsWith('data:') ||
     trimmed.startsWith('javascript:') ||
     trimmed.startsWith('mailto:')
@@ -140,7 +157,10 @@ export function rewriteSparkUiHtml(html: string, uiUrl: string, requestUrl?: str
 
   // 1. Rewrite <base href="...">
   let result = html.replace(/<base(\s+[^>]*)?>/gi, (match) => {
-    return match.replace(/href\s*=\s*(["'])(.*?)\1/i, (_m, quote) => `href=${quote}/spark-ui/${quote}`)
+    return match.replace(/href\s*=\s*(["'])(.*?)\1/i, (_m, quote, attrVal) => {
+      const rewritten = rewriteSparkUiUrl(attrVal, uiUrl, requestUrl)
+      return `href=${quote}${rewritten}${quote}`
+    })
   })
 
   // 2. Rewrite HTML attributes (href, src, action) on elements
