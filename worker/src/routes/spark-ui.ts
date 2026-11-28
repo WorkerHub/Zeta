@@ -15,19 +15,40 @@ export function rewriteSparkUiLocation(location: string, uiUrl: string, requestU
   try {
     const locUrl = new URL(location)
     const targetUrl = new URL(uiUrl)
+
+    // Keep parity with rewriteSparkUiUrl: the upstream's fixed proxyBase host may differ from
+    // ui_url, so an absolute Location that already carries the /spark-ui prefix (e.g.
+    // https://zeta.oneboy.app/spark-ui/proxy/<appId>/SQL/) is normalised to same-origin instead of
+    // being returned verbatim — otherwise the browser would jump to the proxyBase host and leave
+    // this reverse proxy (and on a *.workers.dev origin it would also be cross-origin).
+    const pathAndQuery = locUrl.pathname + locUrl.search + locUrl.hash
+    if (
+      pathAndQuery === '/spark-ui' ||
+      pathAndQuery.startsWith('/spark-ui/') ||
+      pathAndQuery.startsWith('/spark-ui?') ||
+      pathAndQuery.startsWith('/spark-ui#')
+    ) {
+      return pathAndQuery
+    }
+
     if (locUrl.origin === targetUrl.origin) {
-      let pathAndQuery = locUrl.pathname + locUrl.search + locUrl.hash
-      if (targetUrl.pathname && targetUrl.pathname !== '/' && pathAndQuery.startsWith(targetUrl.pathname)) {
-        pathAndQuery = pathAndQuery.slice(targetUrl.pathname.length)
+      let p = pathAndQuery
+      if (targetUrl.pathname && targetUrl.pathname !== '/' && p.startsWith(targetUrl.pathname)) {
+        p = p.slice(targetUrl.pathname.length)
       }
-      if (!pathAndQuery.startsWith('/')) {
-        pathAndQuery = `/${pathAndQuery}`
+      if (!p.startsWith('/')) {
+        p = `/${p}`
       }
-      return `/spark-ui${pathAndQuery}`
+      return `/spark-ui${p}`
     }
     return location
   } catch {
-    if (location.startsWith('/spark-ui/')) {
+    if (
+      location === '/spark-ui' ||
+      location.startsWith('/spark-ui/') ||
+      location.startsWith('/spark-ui?') ||
+      location.startsWith('/spark-ui#')
+    ) {
       return location
     }
     if (location.startsWith('/')) {
@@ -48,6 +69,154 @@ export function rewriteSparkUiLocation(location: string, uiUrl: string, requestU
     const clean = location.replace(/^(\.\.\/)+/, '')
     return `/spark-ui/${clean}`
   }
+}
+
+export function rewriteSparkUiUrl(val: string, uiUrl: string, _requestUrl?: string): string {
+  if (!val || typeof val !== 'string') return val
+  const trimmed = val.trim()
+  if (
+    !trimmed ||
+    trimmed.startsWith('#') ||
+    trimmed.startsWith('//') ||
+    trimmed.startsWith('data:') ||
+    trimmed.startsWith('javascript:') ||
+    trimmed.startsWith('mailto:')
+  ) {
+    return val
+  }
+
+  // If it's an absolute URL
+  try {
+    const parsed = new URL(trimmed)
+    const target = new URL(uiUrl)
+
+    // The upstream Spark is configured with spark.ui.reverseProxy + a fixed proxyBase whose host
+    // (e.g. https://zeta.oneboy.app) differs from the private ui_url. Its HTML therefore carries
+    // absolute URLs such as https://zeta.oneboy.app/spark-ui/proxy/<appId>/static/webui.css.
+    // Drop the host so they resolve against the current origin: that keeps them behind this
+    // reverse proxy and admits them under the /spark-ui CSP's 'self' source whitelist, no matter
+    // which deployment domain (custom or *.workers.dev) the browser actually used.
+    const pathAndQuery = parsed.pathname + parsed.search + parsed.hash
+    if (
+      pathAndQuery === '/spark-ui' ||
+      pathAndQuery.startsWith('/spark-ui/') ||
+      pathAndQuery.startsWith('/spark-ui?') ||
+      pathAndQuery.startsWith('/spark-ui#')
+    ) {
+      return pathAndQuery
+    }
+
+    // Absolute URL on the private ui_url origin (the upstream echoed its own address).
+    if (parsed.origin === target.origin) {
+      let p = pathAndQuery
+      if (target.pathname && target.pathname !== '/' && p.startsWith(target.pathname)) {
+        p = p.slice(target.pathname.length)
+      }
+      if (!p.startsWith('/')) {
+        p = `/${p}`
+      }
+      return `/spark-ui${p}`
+    }
+    // External absolute URL (e.g. https://spark.apache.org)
+    return val
+  } catch {
+    // Relative or domain-relative URL
+  }
+
+  // Already prefixed
+  if (
+    trimmed === '/spark-ui' ||
+    trimmed.startsWith('/spark-ui/') ||
+    trimmed.startsWith('/spark-ui?') ||
+    trimmed.startsWith('/spark-ui#')
+  ) {
+    return val
+  }
+
+  // Root-relative
+  if (trimmed.startsWith('/')) {
+    return `/spark-ui${trimmed}`
+  }
+
+  // Relative with ./ or ../ or naked relative
+  if (trimmed.startsWith('./')) {
+    const rest = trimmed.slice(2)
+    return rest.startsWith('/') ? `/spark-ui${rest}` : `/spark-ui/${rest}`
+  }
+  if (trimmed.startsWith('../')) {
+    const clean = trimmed.replace(/^(\.\.\/)+/, '')
+    return clean.startsWith('/') ? `/spark-ui${clean}` : `/spark-ui/${clean}`
+  }
+
+  // Naked relative like "static/bootstrap.min.css" or "jobs/job?id=1"
+  return `/spark-ui/${trimmed}`
+}
+
+export function rewriteSparkUiHtml(html: string, uiUrl: string, requestUrl?: string): string {
+  if (!html || typeof html !== 'string') return html
+
+  // 1. Rewrite <base href="...">
+  let result = html.replace(/<base(\s+[^>]*)?>/gi, (match) => {
+    return match.replace(/href\s*=\s*(["'])(.*?)\1/i, (_m, quote, attrVal) => {
+      const rewritten = rewriteSparkUiUrl(attrVal, uiUrl, requestUrl)
+      return `href=${quote}${rewritten}${quote}`
+    })
+  })
+
+  // 2. Rewrite HTML attributes (href, src, action) on elements
+  result = result.replace(/<(link|script|img|a|form|source|iframe)\b([^>]*)>/gi, (_match, tag, rest) => {
+    let updatedRest = rest.replace(
+      /\b(href|src|action)\s*=\s*(["'])(.*?)\2/gi,
+      (_attrMatch: string, attrName: string, quote: string, attrVal: string) => {
+        const rewritten = rewriteSparkUiUrl(attrVal, uiUrl, requestUrl)
+        return `${attrName}=${quote}${rewritten}${quote}`
+      }
+    )
+    updatedRest = updatedRest.replace(
+      /\bsrcset\s*=\s*(["'])(.*?)\1/gi,
+      (_attrMatch: string, quote: string, attrVal: string) => {
+        const rewritten = attrVal
+          .split(',')
+          .map((part) => {
+            const trimmed = part.trim()
+            const [src, ...restTokens] = trimmed.split(/\s+/)
+            if (!src) return part
+            return [rewriteSparkUiUrl(src, uiUrl, requestUrl), ...restTokens].join(' ')
+          })
+          .join(', ')
+        return `srcset=${quote}${rewritten}${quote}`
+      }
+    )
+    return `<${tag}${updatedRest}>`
+  })
+
+  // 3. Rewrite inline script references to setUIRoot and uiRoot
+  result = result.replace(/setUIRoot\s*\(\s*(['"])(.*?)\1\s*\)/g, (_match, quote) => {
+    return `setUIRoot(${quote}/spark-ui${quote})`
+  })
+  result = result.replace(/(var\s+)?uiRoot\s*=\s*(['"])(.*?)\2/g, (_match, varKeyword, quote) => {
+    return `${varKeyword || ''}uiRoot = ${quote}/spark-ui${quote}`
+  })
+  result = result.replace(/<script\b([^>]*)>([\s\S]*?)<\/script>/gi, (_match, attrs, content) => {
+    const rewritten = content.replace(/(['"])\/(?!spark-ui\/)api\/v1\//g, '$1/spark-ui/api/v1/')
+    return `<script${attrs}>${rewritten}</script>`
+  })
+
+  // 4. Any direct mention of uiUrl origin or uiUrl base in the HTML (prevent leakage)
+  try {
+    const parsedTarget = new URL(uiUrl)
+    const fullBase = `${parsedTarget.origin}${parsedTarget.pathname.replace(/\/+$/, '')}`
+    if (result.includes(fullBase)) {
+      result = result.replaceAll(fullBase, '/spark-ui')
+    }
+    const targetOrigin = parsedTarget.origin
+    if (result.includes(targetOrigin)) {
+      result = result.replaceAll(targetOrigin, '/spark-ui')
+    }
+    result = result.replaceAll('/spark-ui/spark-ui', '/spark-ui')
+  } catch {}
+
+  return result
 }
 
 async function resolveTargetDatabase(
@@ -172,6 +341,10 @@ async function handleSparkUi(c: Context<{ Bindings: Env; Variables: Variables }>
     forwardHeaders.set(key, value)
   }
   forwardHeaders.set('Authorization', `Bearer ${resolved.ui_platform_token}`)
+  forwardHeaders.set('X-Forwarded-Context', '/spark-ui')
+  forwardHeaders.set('X-Forwarded-Prefix', '/spark-ui')
+  forwardHeaders.set('X-Forwarded-Proto', reqUrl.protocol.replace(':', ''))
+  forwardHeaders.set('X-Forwarded-Host', reqUrl.host)
 
   const fetchInit: RequestInit = {
     method: c.req.method,
@@ -198,6 +371,37 @@ async function handleSparkUi(c: Context<{ Bindings: Env; Variables: Variables }>
   const loc = resHeaders.get('location')
   if (loc) {
     resHeaders.set('location', rewriteSparkUiLocation(loc, resolved.ui_url, c.req.url))
+  }
+
+  const contentType = resHeaders.get('content-type') || ''
+  if (contentType.includes('text/html') || contentType.includes('application/xhtml+xml')) {
+    const rawHtml = await proxyRes.text()
+    const rewrittenHtml = rewriteSparkUiHtml(rawHtml, resolved.ui_url, c.req.url)
+    return new Response(rewrittenHtml, {
+      status: proxyRes.status,
+      statusText: proxyRes.statusText,
+      headers: resHeaders,
+    })
+  }
+
+  if (contentType.includes('application/json')) {
+    const rawJson = await proxyRes.text()
+    let sanitizedJson = rawJson
+    try {
+      const parsedTarget = new URL(resolved.ui_url)
+      const fullBase = `${parsedTarget.origin}${parsedTarget.pathname.replace(/\/+$/, '')}`
+      if (sanitizedJson.includes(fullBase)) {
+        sanitizedJson = sanitizedJson.replaceAll(fullBase, '/spark-ui')
+      }
+      if (sanitizedJson.includes(parsedTarget.origin)) {
+        sanitizedJson = sanitizedJson.replaceAll(parsedTarget.origin, '/spark-ui')
+      }
+    } catch {}
+    return new Response(sanitizedJson, {
+      status: proxyRes.status,
+      statusText: proxyRes.statusText,
+      headers: resHeaders,
+    })
   }
 
   return new Response(proxyRes.body, {

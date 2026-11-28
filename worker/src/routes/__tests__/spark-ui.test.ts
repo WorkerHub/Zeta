@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { getMigrations } from '../../lib/migrations'
 import { sealSecret } from '../../lib/secrets'
 import type { Env } from '../../types'
+import { rewriteSparkUiHtml, rewriteSparkUiLocation, rewriteSparkUiUrl } from '../spark-ui'
 import { bearer, callWorker, fakeEnv, postJson } from './fakes'
 import { sqliteD1 } from './sqlite-d1'
 
@@ -544,5 +545,279 @@ describe('/spark-ui proxying with signed cookie', () => {
     expect(json.error).toBe('Spark UI service unreachable')
     expect(JSON.stringify(json)).not.toContain(UI_URL)
     expect(JSON.stringify(json)).not.toContain(UI_TOKEN)
+  })
+
+  describe('rewriteSparkUiUrl', () => {
+    it('leaves external absolute URLs and anchors intact', () => {
+      expect(rewriteSparkUiUrl('https://spark.apache.org/docs', UI_URL)).toBe('https://spark.apache.org/docs')
+      expect(rewriteSparkUiUrl('//cdn.example.com/lib.css', UI_URL)).toBe('//cdn.example.com/lib.css')
+      expect(rewriteSparkUiUrl('#section', UI_URL)).toBe('#section')
+      expect(rewriteSparkUiUrl('javascript:void(0)', UI_URL)).toBe('javascript:void(0)')
+      expect(rewriteSparkUiUrl('data:image/png;base64,...', UI_URL)).toBe('data:image/png;base64,...')
+    })
+
+    it('does not double prefix paths that already start with /spark-ui', () => {
+      expect(rewriteSparkUiUrl('/spark-ui/static/webui.css', UI_URL)).toBe('/spark-ui/static/webui.css')
+      expect(rewriteSparkUiUrl('/spark-ui/jobs/', UI_URL)).toBe('/spark-ui/jobs/')
+      expect(rewriteSparkUiUrl('/spark-ui', UI_URL)).toBe('/spark-ui')
+      expect(rewriteSparkUiUrl('/spark-ui?db=sp1', UI_URL)).toBe('/spark-ui?db=sp1')
+    })
+
+    it('rewrites root-relative paths by prepending /spark-ui', () => {
+      expect(rewriteSparkUiUrl('/static/bootstrap.min.css', UI_URL)).toBe('/spark-ui/static/bootstrap.min.css')
+      expect(rewriteSparkUiUrl('/static/webui.js', UI_URL)).toBe('/spark-ui/static/webui.js')
+      expect(rewriteSparkUiUrl('/jobs/', UI_URL)).toBe('/spark-ui/jobs/')
+      expect(rewriteSparkUiUrl('/stages/stage/?id=1', UI_URL)).toBe('/spark-ui/stages/stage/?id=1')
+      expect(rewriteSparkUiUrl('/', UI_URL)).toBe('/spark-ui/')
+      expect(rewriteSparkUiUrl('/?sort=id', UI_URL)).toBe('/spark-ui/?sort=id')
+    })
+
+    it('rewrites relative paths (naked, ./, ../) into /spark-ui', () => {
+      expect(rewriteSparkUiUrl('static/webui.css', UI_URL)).toBe('/spark-ui/static/webui.css')
+      expect(rewriteSparkUiUrl('jobs/job?id=1', UI_URL)).toBe('/spark-ui/jobs/job?id=1')
+      expect(rewriteSparkUiUrl('./static/sorttable.js', UI_URL)).toBe('/spark-ui/static/sorttable.js')
+      expect(rewriteSparkUiUrl('../static/table.js', UI_URL)).toBe('/spark-ui/static/table.js')
+    })
+
+    it('rewrites absolute URLs matching upstream ui_url into /spark-ui', () => {
+      expect(rewriteSparkUiUrl(`${UI_URL}/static/spark-logo.png`, UI_URL)).toBe('/spark-ui/static/spark-logo.png')
+      expect(rewriteSparkUiUrl(`${UI_URL}/jobs/`, UI_URL)).toBe('/spark-ui/jobs/')
+      expect(rewriteSparkUiUrl(`${UI_URL}/`, UI_URL)).toBe('/spark-ui/')
+    })
+
+    it('rewrites upstream ui_url with sub-path prefix correctly', () => {
+      const subUiUrl = 'https://spark.publish.dev/proxy/app-1'
+      expect(rewriteSparkUiUrl('https://spark.publish.dev/proxy/app-1/jobs/', subUiUrl)).toBe('/spark-ui/jobs/')
+      expect(rewriteSparkUiUrl('https://spark.publish.dev/proxy/app-1/static/webui.css', subUiUrl)).toBe(
+        '/spark-ui/static/webui.css'
+      )
+    })
+
+    it('rewrites arbitrary-host absolute URLs already carrying the /spark-ui prefix to same-origin', () => {
+      // Upstream Spark configured with a fixed proxyBase host (spark.ui.reverseProxy=true) that
+      // differs from the private ui_url — its resources arrive as absolute URLs like
+      // https://zeta.oneboy.app/spark-ui/proxy/local-<appId>/static/webui.css.
+      const proxyBase = 'https://zeta.oneboy.app'
+      expect(rewriteSparkUiUrl(`${proxyBase}/spark-ui/proxy/local-1795879633814/static/webui.css`, UI_URL)).toBe(
+        '/spark-ui/proxy/local-1795879633814/static/webui.css'
+      )
+      expect(rewriteSparkUiUrl(`${proxyBase}/spark-ui/proxy/local-1795879633814/static/sorttable.js`, UI_URL)).toBe(
+        '/spark-ui/proxy/local-1795879633814/static/sorttable.js'
+      )
+      expect(rewriteSparkUiUrl(`${proxyBase}/spark-ui/jobs/`, UI_URL)).toBe('/spark-ui/jobs/')
+      expect(rewriteSparkUiUrl(`${proxyBase}/spark-ui/`, UI_URL)).toBe('/spark-ui/')
+      expect(rewriteSparkUiUrl(`${proxyBase}/spark-ui?db=sp1`, UI_URL)).toBe('/spark-ui?db=sp1')
+    })
+
+    it('does not double prefix an absolute ui_url URL whose path already starts with /spark-ui', () => {
+      expect(rewriteSparkUiUrl(`${UI_URL}/spark-ui/static/webui.css`, UI_URL)).toBe('/spark-ui/static/webui.css')
+      expect(rewriteSparkUiUrl(`${UI_URL}/spark-ui/jobs/`, UI_URL)).toBe('/spark-ui/jobs/')
+    })
+  })
+
+  describe('rewriteSparkUiLocation', () => {
+    it('normalises an absolute Location carrying the /spark-ui prefix (proxyBase host) to same-origin', () => {
+      const proxyBase = 'https://zeta.oneboy.app'
+      expect(rewriteSparkUiLocation(`${proxyBase}/spark-ui/proxy/local-1795879633814/SQL/`, UI_URL)).toBe(
+        '/spark-ui/proxy/local-1795879633814/SQL/'
+      )
+      expect(rewriteSparkUiLocation(`${proxyBase}/spark-ui/jobs/`, UI_URL)).toBe('/spark-ui/jobs/')
+      expect(rewriteSparkUiLocation(`${proxyBase}/spark-ui/`, UI_URL)).toBe('/spark-ui/')
+    })
+
+    it('keeps rewriting absolute ui_url Locations to /spark-ui and leaves external hosts untouched', () => {
+      expect(rewriteSparkUiLocation(`${UI_URL}/proxy/app-1/jobs/`, UI_URL)).toBe('/spark-ui/proxy/app-1/jobs/')
+      expect(rewriteSparkUiLocation('https://spark.apache.org/docs', UI_URL)).toBe('https://spark.apache.org/docs')
+    })
+
+    it('keeps rewriting relative Locations into /spark-ui prefix', () => {
+      expect(rewriteSparkUiLocation('/proxy/app-1/jobs/', UI_URL)).toBe('/spark-ui/proxy/app-1/jobs/')
+      expect(rewriteSparkUiLocation('/', UI_URL)).toBe('/spark-ui/')
+    })
+  })
+
+  describe('rewriteSparkUiHtml', () => {
+    it('rewrites stylesheet links and script tags in HTML head and body', () => {
+      const raw = `
+        <!DOCTYPE html>
+        <html>
+          <head>
+            <link rel="stylesheet" href="/static/bootstrap.min.css" type="text/css"/>
+            <link rel="stylesheet" href="/static/webui.css" type="text/css"/>
+            <link rel="stylesheet" href="static/timeline-view.css" type="text/css"/>
+            <script src="/static/sorttable.js"></script>
+            <script src="/static/webui.js"></script>
+          </head>
+          <body>
+            <a href="/jobs/">Jobs</a>
+            <a href="/stages/">Stages</a>
+            <a href="/">Home</a>
+            <img src="/static/spark-logo.svg"/>
+            <form action="/jobs/job/kill" method="POST"></form>
+          </body>
+        </html>
+      `
+      const rewritten = rewriteSparkUiHtml(raw, UI_URL)
+      expect(rewritten).toContain('href="/spark-ui/static/bootstrap.min.css"')
+      expect(rewritten).toContain('href="/spark-ui/static/webui.css"')
+      expect(rewritten).toContain('href="/spark-ui/static/timeline-view.css"')
+      expect(rewritten).toContain('src="/spark-ui/static/sorttable.js"')
+      expect(rewritten).toContain('src="/spark-ui/static/webui.js"')
+      expect(rewritten).toContain('href="/spark-ui/jobs/"')
+      expect(rewritten).toContain('href="/spark-ui/stages/"')
+      expect(rewritten).toContain('href="/spark-ui/"')
+      expect(rewritten).toContain('src="/spark-ui/static/spark-logo.svg"')
+      expect(rewritten).toContain('action="/spark-ui/jobs/job/kill"')
+      expect(rewritten).not.toContain('/spark-ui/spark-ui')
+    })
+
+    it('rewrites inline setUIRoot and uiRoot scripts and api/v1 calls', () => {
+      const raw = `
+        <script>setUIRoot(''); var uiRoot = "";</script>
+        <script>
+          $.getJSON('/api/v1/applications/app-1/jobs', function(data) {});
+        </script>
+      `
+      const rewritten = rewriteSparkUiHtml(raw, UI_URL)
+      expect(rewritten).toContain("setUIRoot('/spark-ui')")
+      expect(rewritten).toContain('var uiRoot = "/spark-ui"')
+      expect(rewritten).toContain('/spark-ui/api/v1/applications/app-1/jobs')
+    })
+
+    it('rewrites base tag href to /spark-ui/', () => {
+      const raw = '<head><base href="/"><link rel="stylesheet" href="static/webui.css"></head>'
+      const rewritten = rewriteSparkUiHtml(raw, UI_URL)
+      expect(rewritten).toContain('<base href="/spark-ui/">')
+      expect(rewritten).toContain('href="/spark-ui/static/webui.css"')
+    })
+
+    it('normalises a proxyBase-hosted base href instead of hardcoding /spark-ui/', () => {
+      const proxyBase = 'https://zeta.oneboy.app'
+      const raw = `<head><base href="${proxyBase}/spark-ui/proxy/local-1795879633814/"></head>`
+      const rewritten = rewriteSparkUiHtml(raw, UI_URL)
+      expect(rewritten).not.toContain(proxyBase)
+      expect(rewritten).toContain('<base href="/spark-ui/proxy/local-1795879633814/">')
+    })
+
+    it('strips all mentions of upstream ui_url origin so private address is never leaked', () => {
+      const raw = `
+        <a href="${UI_URL}/jobs/">Jobs</a>
+        <img src="${UI_URL}/static/logo.png"/>
+        <div>Server: ${UI_URL}</div>
+      `
+      const rewritten = rewriteSparkUiHtml(raw, UI_URL)
+      expect(rewritten).not.toContain(UI_URL)
+      expect(rewritten).toContain('href="/spark-ui/jobs/"')
+      expect(rewritten).toContain('src="/spark-ui/static/logo.png"')
+    })
+
+    it('rewrites absolute proxyBase-host resource links to same-origin /spark-ui paths', () => {
+      // The upstream Spark emits absolute URLs with its configured proxyBase host (a different
+      // host from the private ui_url). These must be dropped to relative so the browser fetches
+      // them from the current origin and CSP style-src/script-src 'self' admits them.
+      const proxyBase = 'https://zeta.oneboy.app'
+      const raw = `
+        <link rel="stylesheet" href="${proxyBase}/spark-ui/proxy/local-1795879633814/static/bootstrap.min.css" type="text/css"/>
+        <link rel="stylesheet" href="${proxyBase}/spark-ui/proxy/local-1795879633814/static/webui.css" type="text/css"/>
+        <script src="${proxyBase}/spark-ui/proxy/local-1795879633814/static/webui.js"></script>
+        <img src="${proxyBase}/spark-ui/proxy/local-1795879633814/static/spark-logo.svg"/>
+        <a href="${proxyBase}/spark-ui/proxy/local-1795879633814/stages/">Stages</a>
+      `
+      const rewritten = rewriteSparkUiHtml(raw, UI_URL)
+      expect(rewritten).not.toContain(proxyBase)
+      expect(rewritten).toContain('href="/spark-ui/proxy/local-1795879633814/static/bootstrap.min.css"')
+      expect(rewritten).toContain('href="/spark-ui/proxy/local-1795879633814/static/webui.css"')
+      expect(rewritten).toContain('src="/spark-ui/proxy/local-1795879633814/static/webui.js"')
+      expect(rewritten).toContain('src="/spark-ui/proxy/local-1795879633814/static/spark-logo.svg"')
+      expect(rewritten).toContain('href="/spark-ui/proxy/local-1795879633814/stages/"')
+    })
+  })
+
+  describe('proxy response rewriting and header forwarding', () => {
+    it('forwards X-Forwarded-Context and X-Forwarded-Prefix to upstream', async () => {
+      const e = env()
+      const cookie = await setupSession(e)
+
+      fetchMock.mockResolvedValueOnce(
+        new Response('<div>Jobs Content</div>', {
+          status: 200,
+          headers: { 'Content-Type': 'text/html' },
+        })
+      )
+
+      const res = await callWorker(e, '/spark-ui/jobs/', {
+        headers: { Cookie: `spark_ui_session=${cookie}` },
+      })
+      expect(res.status).toBe(200)
+      expect(fetchMock).toHaveBeenCalledTimes(1)
+      const [, init] = fetchMock.mock.calls[0] as [string, RequestInit]
+      const sentHeaders = init.headers as Headers
+      expect(sentHeaders.get('X-Forwarded-Context')).toBe('/spark-ui')
+      expect(sentHeaders.get('X-Forwarded-Prefix')).toBe('/spark-ui')
+    })
+
+    it('rewrites HTML response body on proxy hit to prevent unstyled pages', async () => {
+      const e = env()
+      const cookie = await setupSession(e)
+
+      const upstreamHtml = `
+        <!DOCTYPE html>
+        <html>
+          <head>
+            <link rel="stylesheet" href="/static/bootstrap.min.css" type="text/css"/>
+            <link rel="stylesheet" href="/static/webui.css" type="text/css"/>
+            <script src="/static/webui.js"></script>
+            <script>setUIRoot('');</script>
+          </head>
+          <body>
+            <div class="container-fluid">
+              <a href="/stages/">Stages</a>
+              <a href="/jobs/">Jobs</a>
+            </div>
+          </body>
+        </html>
+      `
+      fetchMock.mockResolvedValueOnce(
+        new Response(upstreamHtml, {
+          status: 200,
+          headers: { 'Content-Type': 'text/html; charset=utf-8' },
+        })
+      )
+
+      const res = await callWorker(e, '/spark-ui/jobs/', {
+        headers: { Cookie: `spark_ui_session=${cookie}` },
+      })
+      expect(res.status).toBe(200)
+      const body = await res.text()
+      expect(body).toContain('href="/spark-ui/static/bootstrap.min.css"')
+      expect(body).toContain('href="/spark-ui/static/webui.css"')
+      expect(body).toContain('src="/spark-ui/static/webui.js"')
+      expect(body).toContain("setUIRoot('/spark-ui')")
+      expect(body).toContain('href="/spark-ui/stages/"')
+      expect(body).toContain('href="/spark-ui/jobs/"')
+      expect(body).not.toContain('href="/static/')
+      expect(body).not.toContain('src="/static/')
+    })
+
+    it('sanitizes upstream ui_url in JSON responses to prevent leak', async () => {
+      const e = env()
+      const cookie = await setupSession(e)
+
+      fetchMock.mockResolvedValueOnce(
+        new Response(JSON.stringify({ spark_ui_link: `${UI_URL}/jobs/` }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        })
+      )
+
+      const res = await callWorker(e, '/spark-ui/api/v1/applications', {
+        headers: { Cookie: `spark_ui_session=${cookie}` },
+      })
+      expect(res.status).toBe(200)
+      const json = await res.json()
+      expect(json).toEqual({ spark_ui_link: '/spark-ui/jobs/' })
+      const raw = JSON.stringify(json)
+      expect(raw).not.toContain(UI_URL)
+    })
   })
 })
