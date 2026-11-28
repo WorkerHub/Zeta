@@ -11,9 +11,9 @@ import { PostgresQueryError, testPostgresConnection } from '../lib/pg-executor'
 import { normalizePostgresUrl } from '../lib/pg-url'
 import { effectiveProvider, normalizeProvider } from '../lib/provider'
 import { MAX_RUN_LIMIT, MAX_RUN_QUOTA_MB, parseBoundedInt, pruneRuns } from '../lib/runs'
-import { sealLegacySecret, sealSecret } from '../lib/secrets'
+import { openSecret, sealLegacySecret, sealSecret } from '../lib/secrets'
 import { runSetup } from '../lib/setup'
-import { normalizeSparkAccess } from '../lib/spark-access'
+import { checkDatabaseHasSparkUi, normalizeSparkAccess } from '../lib/spark-access'
 import { SparkQueryError, testSparkConnection } from '../lib/spark-executor'
 import { sparkSessionKey } from '../lib/spark-profile'
 import { requireAdmin } from '../middleware/auth'
@@ -298,6 +298,8 @@ interface ConnectionBody {
   connection_url?: unknown
   platform_token?: unknown
   app_token?: unknown
+  ui_url?: unknown
+  ui_platform_token?: unknown
 }
 
 // Proves pasted credentials against the real server before anything is saved. Registration,
@@ -319,6 +321,8 @@ async function verifyConnection(
       url: body.connection_url,
       platform_token: body.platform_token,
       app_token: body.app_token,
+      ui_url: body.ui_url,
+      ui_platform_token: body.ui_platform_token,
     })
     if (!access.ok) return c.json({ error: access.error }, 400)
     try {
@@ -366,15 +370,17 @@ async function verifyCfDatabase(
 // never disagree. The sealed connection payload never leaves the Worker (`has_connection` is what the
 // UI needs), the provider is resolved to the label it shows, and whether a row targets the
 // application's own database is annotated on every read, not stored.
-function adminDatabaseDto(env: Env, row: DatabaseRow) {
+async function adminDatabaseDto(env: Env, row: DatabaseRow) {
   const { connection_secret, ...rest } = row
   const kind = rest.kind ?? 'sqlite'
+  const has_spark_ui = await checkDatabaseHasSparkUi(env, row)
   return {
     ...rest,
     kind,
     provider: effectiveProvider(kind, rest.provider),
     provider_custom: rest.provider ?? null,
     has_connection: connection_secret !== null && connection_secret !== undefined,
+    has_spark_ui,
     is_app_db: isAppDb(env, row.cf_database_id),
   }
 }
@@ -382,7 +388,8 @@ function adminDatabaseDto(env: Env, row: DatabaseRow) {
 admin.get('/databases', async (c) => {
   const T = tables(c.env)
   const rows = await c.env.DB.prepare(`SELECT * FROM ${T.d1_databases} ORDER BY name`).all<DatabaseRow>()
-  return c.json({ results: rows.results.map((row) => adminDatabaseDto(c.env, row)) })
+  const results = await Promise.all(rows.results.map((row) => adminDatabaseDto(c.env, row)))
+  return c.json({ results })
 })
 
 // Proves pasted credentials without saving anything: the admin form's "test connection" button.
@@ -453,6 +460,8 @@ admin.post('/databases', async (c) => {
       connection_url?: unknown
       platform_token?: unknown
       app_token?: unknown
+      ui_url?: unknown
+      ui_platform_token?: unknown
       provider?: unknown
     }>()
     .catch(() => null)
@@ -568,6 +577,8 @@ admin.patch('/databases/:id', async (c) => {
       connection_url?: unknown
       platform_token?: unknown
       app_token?: unknown
+      ui_url?: unknown
+      ui_platform_token?: unknown
       provider?: unknown
     }>()
     .catch(() => null)
@@ -576,11 +587,13 @@ admin.patch('/databases/:id', async (c) => {
   const T = tables(c.env)
   // The row's engine decides what may be edited: a credential-based row (PostgreSQL/MySQL/Spark) takes
   // its own registration fields, a SQLite row takes a Cloudflare database link.
-  let row: { id: string; kind: string | null; cf_database_id: string | null } | null
+  let row: { id: string; kind: string | null; cf_database_id: string | null; connection_secret: string | null } | null
   try {
-    row = await c.env.DB.prepare(`SELECT id, kind, cf_database_id FROM ${T.d1_databases} WHERE id = ?1`)
+    row = await c.env.DB.prepare(
+      `SELECT id, kind, cf_database_id, connection_secret FROM ${T.d1_databases} WHERE id = ?1`
+    )
       .bind(c.req.param('id'))
-      .first<{ id: string; kind: string | null; cf_database_id: string | null }>()
+      .first<{ id: string; kind: string | null; cf_database_id: string | null; connection_secret: string | null }>()
   } catch (err) {
     const missing = missingColumnResponse(c, err)
     if (missing) return missing
@@ -591,6 +604,9 @@ admin.patch('/databases/:id', async (c) => {
 
   if (body.cf_database_id !== undefined && rowKind !== 'sqlite') {
     return c.json({ error: `A ${CONNECTION_LABELS[rowKind]} database is not linked to a Cloudflare database.` }, 400)
+  }
+  if ((body.ui_url !== undefined || body.ui_platform_token !== undefined) && rowKind !== 'spark') {
+    return c.json({ error: 'Spark UI is only available for Spark databases.' }, 400)
   }
 
   const updates: string[] = []
@@ -605,6 +621,36 @@ admin.patch('/databases/:id', async (c) => {
     if (verified instanceof Response) return verified
     updates.push(`connection_secret = ?${i++}`)
     bindings.push(await sealSecret(c.env, JSON.stringify(verified.stored)))
+  } else if (rowKind === 'spark' && (body.ui_url !== undefined || body.ui_platform_token !== undefined)) {
+    if (!row.connection_secret) {
+      return c.json({ error: 'Database has no connection credentials configured.' }, 400)
+    }
+    let storedAccess: Record<string, unknown> = {}
+    try {
+      const raw = await openSecret(c.env, row.connection_secret)
+      storedAccess = JSON.parse(raw) as Record<string, unknown>
+    } catch {
+      return c.json({ error: 'The stored connection for this database could not be read.' }, 500)
+    }
+    const merged = {
+      ...storedAccess,
+      ui_url:
+        body.ui_url !== undefined
+          ? body.ui_url === '' || body.ui_url === null
+            ? undefined
+            : body.ui_url
+          : storedAccess.ui_url,
+      ui_platform_token:
+        body.ui_platform_token !== undefined
+          ? body.ui_platform_token === '' || body.ui_platform_token === null
+            ? undefined
+            : body.ui_platform_token
+          : storedAccess.ui_platform_token,
+    }
+    const normalized = normalizeSparkAccess(merged)
+    if (!normalized.ok) return c.json({ error: normalized.error }, 400)
+    updates.push(`connection_secret = ?${i++}`)
+    bindings.push(await sealSecret(c.env, JSON.stringify(normalized.access)))
   }
 
   if (body.cf_database_id !== undefined) {
@@ -678,7 +724,7 @@ admin.patch('/databases/:id', async (c) => {
       ip: c.req.header('cf-connecting-ip'),
     })
   )
-  return c.json({ message: 'Updated', database: adminDatabaseDto(c.env, updated) })
+  return c.json({ message: 'Updated', database: await adminDatabaseDto(c.env, updated) })
 })
 
 admin.delete('/databases/:id', async (c) => {
