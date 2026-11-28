@@ -58,9 +58,54 @@ describe('ConnectionStringFields', () => {
     expect(html).toContain(t('admin_db.spark_app_token'))
     expect(html).toContain(t('admin_db.spark_url_hint'))
     expect(html).toContain(t('admin_db.spark_token_hint'))
+    // Spark UI fields
+    expect(html).toContain('id="db-spark-ui-url" type="text"')
+    expect(html).toContain('id="db-spark-ui-platform-token" type="password"')
+    expect(html).toContain(t('admin_db.spark_ui_url'))
+    expect(html).toContain(t('admin_db.spark_ui_platform_token'))
     // No SQL connection-string copy leaks into the Spark form
     expect(html).not.toContain(t('admin_db.connection_url_hint'))
     expect(html).not.toContain('type="password" data-reveal')
+  })
+
+  it('does not render Spark UI fields for non-Spark targets', () => {
+    const pgHtml = render({ kind: 'postgres', url: 'postgresql://u:p@host/db' })
+    expect(pgHtml).not.toContain('id="db-spark-ui-url"')
+    expect(pgHtml).not.toContain('id="db-spark-ui-platform-token"')
+
+    const mysqlHtml = render({ kind: 'mysql', url: 'mysql://u:p@host/db' })
+    expect(mysqlHtml).not.toContain('id="db-spark-ui-url"')
+    expect(mysqlHtml).not.toContain('id="db-spark-ui-platform-token"')
+  })
+
+  it('masks the Spark UI publish address in edit mode and offers a reveal toggle', () => {
+    const html = render({ kind: 'spark', editing: true })
+    expect(html).toContain('id="db-spark-ui-url" type="password"')
+    expect(html).toContain('id="db-spark-ui-platform-token" type="password"')
+  })
+
+  it('shows pair validation alert only when exactly one Spark UI field is filled', () => {
+    // Both empty: no alert
+    expect(render({ kind: 'spark' })).not.toContain(t('admin_db.spark_ui_pair_hint'))
+
+    // Both filled: no alert
+    expect(
+      render({
+        kind: 'spark',
+        uiUrl: 'https://spark-ui.example.com',
+        uiPlatformToken: 'ui-token',
+      })
+    ).not.toContain(t('admin_db.spark_ui_pair_hint'))
+
+    // Only uiUrl: alert
+    const onlyUrlHtml = render({ kind: 'spark', uiUrl: 'https://spark-ui.example.com', uiPlatformToken: '' })
+    expect(onlyUrlHtml).toContain('role="alert"')
+    expect(onlyUrlHtml).toContain(t('admin_db.spark_ui_pair_hint'))
+
+    // Only uiPlatformToken: alert
+    const onlyTokenHtml = render({ kind: 'spark', uiUrl: '', uiPlatformToken: 'ui-token' })
+    expect(onlyTokenHtml).toContain('role="alert"')
+    expect(onlyTokenHtml).toContain(t('admin_db.spark_ui_pair_hint'))
   })
 
   it('disables the test button until something is typed', () => {
@@ -115,6 +160,8 @@ describe('ConnectionStringFields', () => {
     expect(html).toContain('发布地址')
     expect(html).toContain('平台令牌')
     expect(html).toContain('应用令牌')
+    expect(html).toContain('Spark UI 发布地址')
+    expect(html).toContain('Spark UI 平台令牌')
     expect(html).toContain(t('admin_db.show_secret'))
   })
 })

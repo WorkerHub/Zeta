@@ -1,5 +1,12 @@
 import { describe, it, expect } from 'vitest'
-import { canSaveForm, connectionPatch, connectionTouched, providerPrefill } from '../database-form'
+import {
+  canSaveForm,
+  connectionPatch,
+  connectionTouched,
+  providerPrefill,
+  sparkUiPairValid,
+  sparkUiTouched,
+} from '../database-form'
 import { connectionSignature } from '../connection-string'
 
 const untouched = { url: '', platformToken: '', appToken: '' }
@@ -13,6 +20,36 @@ describe('connectionTouched', () => {
     expect(connectionTouched(untouched)).toBe(false)
     expect(connectionTouched({ url: '  ', platformToken: '', appToken: '' })).toBe(false)
     expect(connectionTouched({ url: '', platformToken: 'p', appToken: '' })).toBe(true)
+  })
+})
+
+describe('sparkUiTouched', () => {
+  it('is false when neither UI field is filled', () => {
+    expect(sparkUiTouched(untouched)).toBe(false)
+    expect(sparkUiTouched({ ...untouched, uiUrl: '   ', uiPlatformToken: '' })).toBe(false)
+  })
+
+  it('is true when either UI field has text', () => {
+    expect(sparkUiTouched({ ...untouched, uiUrl: 'https://ui.example.com' })).toBe(true)
+    expect(sparkUiTouched({ ...untouched, uiPlatformToken: 'token' })).toBe(true)
+  })
+})
+
+describe('sparkUiPairValid', () => {
+  it('is true when both are empty or undefined', () => {
+    expect(sparkUiPairValid()).toBe(true)
+    expect(sparkUiPairValid('', '')).toBe(true)
+    expect(sparkUiPairValid('   ', '  ')).toBe(true)
+  })
+
+  it('is true when both are provided', () => {
+    expect(sparkUiPairValid('https://ui.example.com', 'ui-token')).toBe(true)
+  })
+
+  it('is false when only one is provided', () => {
+    expect(sparkUiPairValid('https://ui.example.com', '')).toBe(false)
+    expect(sparkUiPairValid('', 'ui-token')).toBe(false)
+    expect(sparkUiPairValid('https://ui.example.com', '   ')).toBe(false)
   })
 })
 
@@ -70,6 +107,57 @@ describe('canSaveForm', () => {
     // Even with a stale signature that matched something else
     expect(canSaveForm({ ...args, testedSignature: JSON.stringify(['spark']) })).toBe(false)
   })
+
+  it('will not save a Spark target when Spark UI fields are only partly filled in', () => {
+    const sparkValues = { url: 'https://spark.example.com', platformToken: 'p', appToken: 'a' }
+    const signature = tested(sparkValues, 'spark')
+    const base = {
+      mode: 'add' as const,
+      kind: 'spark' as const,
+      name: 'Spark',
+      cfDatabaseId: '',
+      testedSignature: signature,
+    }
+
+    // Both empty: fine
+    expect(canSaveForm({ ...base, values: sparkValues })).toBe(true)
+    // Both filled: fine
+    expect(
+      canSaveForm({
+        ...base,
+        values: { ...sparkValues, uiUrl: 'https://ui.example.com', uiPlatformToken: 'ui-token' },
+      })
+    ).toBe(true)
+    // Only uiUrl: refused
+    expect(
+      canSaveForm({
+        ...base,
+        values: { ...sparkValues, uiUrl: 'https://ui.example.com', uiPlatformToken: '' },
+      })
+    ).toBe(false)
+    // Only uiPlatformToken: refused
+    expect(
+      canSaveForm({
+        ...base,
+        values: { ...sparkValues, uiUrl: '', uiPlatformToken: 'ui-token' },
+      })
+    ).toBe(false)
+  })
+
+  it('allows saving updated Spark UI fields in edit mode without re-testing unchanged connection', () => {
+    const args = {
+      mode: 'edit' as const,
+      kind: 'spark' as const,
+      name: 'Spark',
+      cfDatabaseId: '',
+      values: { ...untouched, uiUrl: 'https://ui.example.com', uiPlatformToken: 'ui-token' },
+      testedSignature: null,
+    }
+    expect(canSaveForm(args)).toBe(true)
+
+    // Refuses if UI fields are partly filled in edit mode
+    expect(canSaveForm({ ...args, values: { ...untouched, uiUrl: 'https://ui.example.com' } })).toBe(false)
+  })
 })
 
 describe('connectionPatch', () => {
@@ -88,6 +176,51 @@ describe('connectionPatch', () => {
     expect(
       connectionPatch('spark', { url: ' https://spark.example.com ', platformToken: ' p ', appToken: ' a ' })
     ).toEqual({ connection_url: 'https://spark.example.com', platform_token: 'p', app_token: 'a' })
+  })
+
+  it('includes trimmed ui_url and ui_platform_token when both are present', () => {
+    expect(
+      connectionPatch('spark', {
+        url: 'https://spark.example.com',
+        platformToken: 'p',
+        appToken: 'a',
+        uiUrl: ' https://spark-ui.example.com ',
+        uiPlatformToken: ' ui-token ',
+      })
+    ).toEqual({
+      connection_url: 'https://spark.example.com',
+      platform_token: 'p',
+      app_token: 'a',
+      ui_url: 'https://spark-ui.example.com',
+      ui_platform_token: 'ui-token',
+    })
+  })
+
+  it('sends only Spark UI fields in edit mode when SQL connection is untouched', () => {
+    expect(
+      connectionPatch('spark', {
+        url: '',
+        platformToken: '',
+        appToken: '',
+        uiUrl: 'https://spark-ui.example.com',
+        uiPlatformToken: 'ui-token',
+      })
+    ).toEqual({
+      ui_url: 'https://spark-ui.example.com',
+      ui_platform_token: 'ui-token',
+    })
+  })
+
+  it('returns null when Spark UI fields are partly filled', () => {
+    expect(
+      connectionPatch('spark', {
+        url: 'https://spark.example.com',
+        platformToken: 'p',
+        appToken: 'a',
+        uiUrl: 'https://spark-ui.example.com',
+        uiPlatformToken: '',
+      })
+    ).toBe(null)
   })
 })
 

@@ -108,6 +108,7 @@ export const translations: Record<Locale, Record<string, string>> = {
     'spark.gear_label': 'Spark config',
     'spark.manage_configs': 'Manage configs…',
     'spark.default_profile': 'Default config',
+    'spark.spark_ui': 'Spark UI',
     'spark.dialog_title': 'Manage configs',
     'spark.new_profile': '+ New',
     'spark.delete_profile': 'Delete this config',
@@ -324,6 +325,10 @@ export const translations: Record<Locale, Record<string, string>> = {
     'admin_db.spark_app_token': 'App token',
     'admin_db.spark_token_hint':
       'Both tokens are used for the live test and then stored sealed — they are never shown again, so editing means pasting them again.',
+    'admin_db.spark_ui_url': 'Spark UI publish address',
+    'admin_db.spark_ui_url_placeholder': 'https://your-spark-ui.example.com',
+    'admin_db.spark_ui_platform_token': 'Spark UI platform token',
+    'admin_db.spark_ui_pair_hint': 'Spark UI publish address and platform token must both be provided.',
     'admin_db.register_title_spark': 'Register a SparkSQL data source',
     'admin_db.register_desc_spark':
       'The whole SparkSQL service is one data source. Paste its publish address and the two tokens; it is tested live before it is stored, and a failed test saves nothing.',
@@ -643,6 +648,7 @@ export const translations: Record<Locale, Record<string, string>> = {
     'spark.gear_label': 'Spark 配置',
     'spark.manage_configs': '管理配置…',
     'spark.default_profile': '默认配置',
+    'spark.spark_ui': 'Spark UI',
     'spark.dialog_title': '管理配置',
     'spark.new_profile': '＋ 新建',
     'spark.delete_profile': '删除此配置',
@@ -847,6 +853,10 @@ export const translations: Record<Locale, Record<string, string>> = {
     'admin_db.spark_platform_token': '平台令牌',
     'admin_db.spark_app_token': '应用令牌',
     'admin_db.spark_token_hint': '两枚令牌只用于实连测试，之后密封存储、不再回显；修改登记需重新粘贴。',
+    'admin_db.spark_ui_url': 'Spark UI 发布地址',
+    'admin_db.spark_ui_url_placeholder': 'https://你的-spark-ui-服务地址',
+    'admin_db.spark_ui_platform_token': 'Spark UI 平台令牌',
+    'admin_db.spark_ui_pair_hint': 'Spark UI 发布地址与平台令牌需同时填写。',
     'admin_db.register_title_spark': '登记 SparkSQL 数据源',
     'admin_db.register_desc_spark':
       '整个 SparkSQL 服务就是一个数据源。粘贴发布地址与两枚令牌，保存前会实连测试一次，测试不通过不会落库。',

@@ -12,6 +12,10 @@ interface Props {
   platformToken: string
   /** Spark only: the service's app token. */
   appToken: string
+  /** Spark only: optional Spark UI publish address. */
+  uiUrl?: string
+  /** Spark only: optional Spark UI platform token. */
+  uiPlatformToken?: string
   testState: ConnectionTestState
   /** Error text of a failed test, shown verbatim unless it carries a translatable code. */
   testError: string
@@ -20,6 +24,8 @@ interface Props {
   onUrlChange: (url: string) => void
   onPlatformTokenChange: (token: string) => void
   onAppTokenChange: (token: string) => void
+  onUiUrlChange?: (url: string) => void
+  onUiPlatformTokenChange?: (token: string) => void
   onTest: () => void
   /**
    * Editing a saved registration: the stored values never come back, so every field starts empty
@@ -28,7 +34,7 @@ interface Props {
   editing?: boolean
 }
 
-type Field = 'url' | 'platform' | 'app'
+type Field = 'url' | 'platform' | 'app' | 'uiUrl' | 'uiPlatform'
 
 function RevealToggle({ revealed, label, onToggle }: { revealed: boolean; label: string; onToggle: () => void }) {
   return (
@@ -55,17 +61,27 @@ export default function ConnectionStringFields({
   url,
   platformToken,
   appToken,
+  uiUrl = '',
+  uiPlatformToken = '',
   testState,
   testError,
   testInfo,
   onUrlChange,
   onPlatformTokenChange,
   onAppTokenChange,
+  onUiUrlChange,
+  onUiPlatformTokenChange,
   onTest,
   editing = false,
 }: Props) {
   const { t } = useLocale()
-  const [revealed, setRevealed] = useState<Record<Field, boolean>>({ url: false, platform: false, app: false })
+  const [revealed, setRevealed] = useState<Record<Field, boolean>>({
+    url: false,
+    platform: false,
+    app: false,
+    uiUrl: false,
+    uiPlatform: false,
+  })
   const toggle = (field: Field) => setRevealed((current) => ({ ...current, [field]: !current[field] }))
   const testing = testState === 'testing'
   const spark = kind === 'spark'
@@ -76,6 +92,12 @@ export default function ConnectionStringFields({
   const incomplete = spark
     ? url.trim() === '' || platformToken.trim() === '' || appToken.trim() === ''
     : url.trim() === ''
+
+  const uiUrlTrimmed = uiUrl.trim()
+  const uiPlatformTokenTrimmed = uiPlatformToken.trim()
+  const uiPairIncomplete =
+    spark &&
+    ((uiUrlTrimmed !== '' && uiPlatformTokenTrimmed === '') || (uiUrlTrimmed === '' && uiPlatformTokenTrimmed !== ''))
 
   const urlCopy = spark
     ? { label: 'admin_db.spark_url', placeholder: 'admin_db.spark_url_placeholder', hint: 'admin_db.spark_url_hint' }
@@ -164,6 +186,60 @@ export default function ConnectionStringFields({
             </div>
           ))}
           <p className="text-caption text-ink-500">{t('admin_db.spark_token_hint')}</p>
+
+          <div className="space-y-2 pt-1">
+            <label htmlFor="db-spark-ui-url" className="label">
+              {t('admin_db.spark_ui_url')}
+            </label>
+            <div className="relative">
+              <input
+                id="db-spark-ui-url"
+                type={!editing || revealed.uiUrl ? 'text' : 'password'}
+                className="input pr-11 font-mono text-caption"
+                value={uiUrl}
+                onChange={(e) => onUiUrlChange?.(e.target.value)}
+                placeholder={t(editing ? 'admin_db.connection_unchanged' : 'admin_db.spark_ui_url_placeholder')}
+                autoComplete="off"
+                spellCheck={false}
+              />
+              {editing && (
+                <RevealToggle
+                  revealed={revealed.uiUrl}
+                  label={revealed.uiUrl ? t('admin_db.hide_connection_url') : t('admin_db.show_connection_url')}
+                  onToggle={() => toggle('uiUrl')}
+                />
+              )}
+            </div>
+          </div>
+
+          <div className="space-y-2 pt-1">
+            <label htmlFor="db-spark-ui-platform-token" className="label">
+              {t('admin_db.spark_ui_platform_token')}
+            </label>
+            <div className="relative">
+              <input
+                id="db-spark-ui-platform-token"
+                type={revealed.uiPlatform ? 'text' : 'password'}
+                className="input pr-11 font-mono text-caption"
+                value={uiPlatformToken}
+                onChange={(e) => onUiPlatformTokenChange?.(e.target.value)}
+                placeholder={editing ? t('admin_db.connection_unchanged') : undefined}
+                autoComplete="off"
+                spellCheck={false}
+              />
+              <RevealToggle
+                revealed={revealed.uiPlatform}
+                label={revealed.uiPlatform ? t('admin_db.hide_secret') : t('admin_db.show_secret')}
+                onToggle={() => toggle('uiPlatform')}
+              />
+            </div>
+          </div>
+
+          {uiPairIncomplete && (
+            <p role="alert" className="text-caption text-danger-600">
+              {t('admin_db.spark_ui_pair_hint')}
+            </p>
+          )}
         </>
       )}
 
