@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { getMigrations } from '../../lib/migrations'
 import { sealSecret } from '../../lib/secrets'
 import type { Env } from '../../types'
-import { bearer, callWorker, fakeEnv } from './fakes'
+import { bearer, callWorker, fakeEnv, postJson } from './fakes'
 import { sqliteD1 } from './sqlite-d1'
 
 const UI_URL = 'https://spark-ui-4040.publish.example.dev'
@@ -132,19 +132,18 @@ describe('/spark-ui access control', () => {
     expect(setCookie).toContain('SameSite=Lax')
   })
 
-  it('first hit works with ?token= query parameter as well', async () => {
+  it('rejects ?token= query parameter on /spark-ui/ (token in URL fallback is removed)', async () => {
     const e = env()
     await seedSparkDatabase(e, { id: 'sp1' })
     const tokenHeader = await bearer(e, 'a1', 'admin')
     const token = tokenHeader.Authorization.replace('Bearer ', '')
 
     const res = await callWorker(e, `/spark-ui/?db=sp1&token=${token}`)
-    expect(res.status).toBe(302)
-    expect(res.headers.get('Location')).toBe('/spark-ui/')
-    expect(res.headers.get('Set-Cookie')).toContain('spark_ui_session=')
+    expect(res.status).toBe(401)
+    expect(await res.json()).toEqual({ error: 'Unauthorized' })
   })
 
-  it('does NOT accept ?token= query parameter for /api/* endpoints (strictly limited to /spark-ui)', async () => {
+  it('does NOT accept ?token= query parameter for /api/* endpoints', async () => {
     const e = env()
     const tokenHeader = await bearer(e, 'a1', 'admin')
     const token = tokenHeader.Authorization.replace('Bearer ', '')
@@ -163,6 +162,163 @@ describe('/spark-ui access control', () => {
     expect(setCookie).toContain('spark_ui_session=;')
     expect(setCookie).toContain('Max-Age=0')
     expect(setCookie).toContain('Path=/spark-ui')
+  })
+})
+
+describe('POST /api/spark-ui/session', () => {
+  let fetchMock: ReturnType<typeof vi.fn>
+  const originalFetch = globalThis.fetch
+
+  beforeEach(() => {
+    fetchMock = vi.fn()
+    globalThis.fetch = fetchMock as unknown as typeof fetch
+  })
+
+  afterEach(() => {
+    globalThis.fetch = originalFetch
+  })
+
+  it('blocks unauthenticated requests with 401', async () => {
+    const e = env()
+    await seedSparkDatabase(e, { id: 'sp1' })
+    const res = await callWorker(e, '/api/spark-ui/session', postJson({ db: 'sp1' }))
+    expect(res.status).toBe(401)
+    expect(await res.json()).toEqual({ error: 'Unauthorized' })
+  })
+
+  it('rejects invalid or missing db in body with 400', async () => {
+    const e = env()
+    const headers = await bearer(e, 'a1', 'admin')
+    const res1 = await callWorker(e, '/api/spark-ui/session', postJson({}, { headers }))
+    expect(res1.status).toBe(400)
+    expect(await res1.json()).toEqual({ error: 'db is required' })
+
+    const res2 = await callWorker(e, '/api/spark-ui/session', postJson({ db: '   ' }, { headers }))
+    expect(res2.status).toBe(400)
+    expect(await res2.json()).toEqual({ error: 'db is required' })
+
+    const res3 = await callWorker(e, '/api/spark-ui/session', postJson({ db: 123 }, { headers }))
+    expect(res3.status).toBe(400)
+    expect(await res3.json()).toEqual({ error: 'db is required' })
+  })
+
+  it('rejects non-existent database with 404', async () => {
+    const e = env()
+    const headers = await bearer(e, 'a1', 'admin')
+    const res = await callWorker(e, '/api/spark-ui/session', postJson({ db: 'nonexistent' }, { headers }))
+    expect(res.status).toBe(404)
+    expect(await res.json()).toEqual({ error: 'Database not found' })
+  })
+
+  it('rejects non-spark database with 404', async () => {
+    const e = env()
+    await seedSparkDatabase(e, { id: 'pg1', kind: 'postgres' })
+    const headers = await bearer(e, 'a1', 'admin')
+    const res = await callWorker(e, '/api/spark-ui/session', postJson({ db: 'pg1' }, { headers }))
+    expect(res.status).toBe(404)
+    expect(await res.json()).toEqual({ error: 'Database is not a Spark database' })
+  })
+
+  it('rejects spark database without UI configured with 404', async () => {
+    const e = env()
+    await seedSparkDatabase(e, { id: 'sp_no_ui', withUi: false })
+    const headers = await bearer(e, 'a1', 'admin')
+    const res = await callWorker(e, '/api/spark-ui/session', postJson({ db: 'sp_no_ui' }, { headers }))
+    expect(res.status).toBe(404)
+    expect(await res.json()).toEqual({ error: 'Spark UI not configured' })
+  })
+
+  it('rejects member without permission with 403', async () => {
+    const e = env()
+    await seedSparkDatabase(e, { id: 'sp1' })
+    const headers = await bearer(e, 'u2', 'member')
+    const res = await callWorker(e, '/api/spark-ui/session', postJson({ db: 'sp1' }, { headers }))
+    expect(res.status).toBe(403)
+    expect(await res.json()).toEqual({ error: 'Forbidden' })
+  })
+
+  it('allows admin to create session and sets signed HttpOnly cookie with 204', async () => {
+    const e = env()
+    await seedSparkDatabase(e, { id: 'sp1' })
+    const headers = await bearer(e, 'a1', 'admin')
+    const res = await callWorker(e, '/api/spark-ui/session', postJson({ db: 'sp1' }, { headers }))
+    expect(res.status).toBe(204)
+    expect(await res.text()).toBe('')
+
+    const setCookie = res.headers.get('Set-Cookie') ?? ''
+    expect(setCookie).toContain('spark_ui_session=')
+    expect(setCookie).toContain('HttpOnly')
+    expect(setCookie).toContain('Path=/spark-ui')
+    expect(setCookie).toContain('Max-Age=86400')
+    expect(setCookie).toContain('SameSite=Lax')
+  })
+
+  it('allows member with read permission to create session with 204', async () => {
+    const e = env()
+    await seedSparkDatabase(e, { id: 'sp1' })
+    await grantPermission(e, 'u1', 'sp1', 'read')
+
+    const headers = await bearer(e, 'u1', 'member')
+    const res = await callWorker(e, '/api/spark-ui/session', postJson({ db: 'sp1' }, { headers }))
+    expect(res.status).toBe(204)
+    expect(await res.text()).toBe('')
+
+    const setCookie = res.headers.get('Set-Cookie') ?? ''
+    expect(setCookie).toContain('spark_ui_session=')
+    expect(setCookie).toContain('Path=/spark-ui')
+  })
+
+  it('sets Secure flag when request arrives over HTTPS', async () => {
+    const e = env()
+    await seedSparkDatabase(e, { id: 'sp1' })
+    const headers = await bearer(e, 'a1', 'admin')
+    const res = await callWorker(e, 'https://localhost:8787/api/spark-ui/session', postJson({ db: 'sp1' }, { headers }))
+    expect(res.status).toBe(204)
+    const setCookie = res.headers.get('Set-Cookie') ?? ''
+    expect(setCookie).toContain('Secure')
+  })
+
+  it('never leaks ui_url or ui_platform_token in session response', async () => {
+    const e = env()
+    await seedSparkDatabase(e, { id: 'sp1' })
+    const headers = await bearer(e, 'a1', 'admin')
+    const res = await callWorker(e, '/api/spark-ui/session', postJson({ db: 'sp1' }, { headers }))
+    for (const [k, v] of res.headers.entries()) {
+      expect(k).not.toContain(UI_TOKEN)
+      expect(v).not.toContain(UI_TOKEN)
+      expect(v).not.toContain(UI_URL)
+    }
+  })
+
+  it('cookie issued by POST /api/spark-ui/session successfully authenticates subsequent /spark-ui proxy requests', async () => {
+    const e = env()
+    await seedSparkDatabase(e, { id: 'sp1' })
+    await grantPermission(e, 'u1', 'sp1', 'read')
+
+    const headers = await bearer(e, 'u1', 'member')
+    const sessionRes = await callWorker(e, '/api/spark-ui/session', postJson({ db: 'sp1' }, { headers }))
+    expect(sessionRes.status).toBe(204)
+    const cookieHeader = sessionRes.headers.get('Set-Cookie') ?? ''
+    const match = cookieHeader.match(/spark_ui_session=([^;]+)/)
+    expect(match).not.toBeNull()
+    const cookie = match![1]!
+
+    fetchMock.mockResolvedValueOnce(
+      new Response('<html>Spark UI Via Guided Auth</html>', {
+        status: 200,
+        headers: { 'Content-Type': 'text/html' },
+      })
+    )
+
+    const proxyRes = await callWorker(e, '/spark-ui/jobs/', {
+      headers: { Cookie: `spark_ui_session=${cookie}` },
+    })
+    expect(proxyRes.status).toBe(200)
+    expect(await proxyRes.text()).toBe('<html>Spark UI Via Guided Auth</html>')
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    const [calledUrl, init] = fetchMock.mock.calls[0] as [string, RequestInit]
+    expect(calledUrl).toBe(`${UI_URL}/jobs/`)
+    expect((init.headers as Headers).get('Authorization')).toBe(`Bearer ${UI_TOKEN}`)
   })
 })
 

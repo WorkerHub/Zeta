@@ -12,7 +12,7 @@ import query from './routes/query'
 import notebooks from './routes/notebooks'
 import admin from './routes/admin'
 import setup from './routes/setup'
-import sparkUi from './routes/spark-ui'
+import sparkUi, { sparkUiApi } from './routes/spark-ui'
 
 const app = new Hono<{ Bindings: Env; Variables: Variables }>()
 
@@ -55,6 +55,7 @@ app.route('/api/query', query)
 app.route('/api/notebooks', notebooks)
 app.route('/api/admin', admin)
 app.route('/api/setup', setup)
+app.route('/api/spark-ui', sparkUiApi)
 
 // ── Health check ──────────────────────────────────────────────────────────────
 

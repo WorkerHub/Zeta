@@ -31,10 +31,8 @@ async function authenticate(c: Ctx) {
   }
 
   const authHeader = c.req.header('Authorization')?.replace(/^Bearer\s+/i, '')
-  // ?token= is ONLY accepted for the /spark-ui first hit, never on /api/* routes
-  const token = authHeader || (isSparkUi ? c.req.query('token') : undefined)
-  if (token) {
-    const payload = await verifyAccessToken(token, c.env)
+  if (authHeader) {
+    const payload = await verifyAccessToken(authHeader, c.env)
     if (!payload) return null
     const invalidatedAt = await c.env.KV.get(KV.sessionInvalidatedAt(payload.sub))
     if (invalidatedAt && payload.iat <= parseInt(invalidatedAt, 10)) return null
