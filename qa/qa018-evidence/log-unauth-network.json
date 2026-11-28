@@ -1,0 +1,30 @@
+[
+  {
+    "url": "https://zeta.pama.workers.dev/spark-ui/",
+    "status": 401,
+    "headers": {
+      "content-type": "application/json"
+    }
+  },
+  {
+    "url": "https://zeta.pama.workers.dev/spark-ui/?db=<redacted>",
+    "status": 401,
+    "headers": {
+      "content-type": "application/json"
+    }
+  },
+  {
+    "url": "https://zeta.pama.workers.dev/spark-ui/api/v1/applications/",
+    "status": 401,
+    "headers": {
+      "content-type": "application/json"
+    }
+  },
+  {
+    "url": "https://zeta.pama.workers.dev/spark-ui",
+    "status": 401,
+    "headers": {
+      "content-type": "application/json"
+    }
+  }
+]

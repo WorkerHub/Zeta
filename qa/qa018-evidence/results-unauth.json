@@ -1,0 +1,58 @@
+{
+  "item": "未登录访问 /spark-ui/ 被拦",
+  "base": "https://zeta.pama.workers.dev",
+  "run_at": "2026-11-28T13:29:27.645Z",
+  "all_pass": true,
+  "console_errors": [
+    "Failed to load resource: the server responded with a status of 401 ()",
+    "Failed to load resource: the server responded with a status of 401 ()",
+    "Failed to load resource: the server responded with a status of 401 ()",
+    "Failed to load resource: the server responded with a status of 401 ()"
+  ],
+  "cases": [
+    {
+      "case": "01-root",
+      "url": "https://zeta.pama.workers.dev/spark-ui/",
+      "status": 401,
+      "content_type": "application/json",
+      "body_excerpt": "{\"error\":\"Unauthorized\"}",
+      "location_header": null,
+      "blocked_as_401_json": true,
+      "not_redirect": true,
+      "not_spa_shell": true
+    },
+    {
+      "case": "02-with-db",
+      "url": "https://zeta.pama.workers.dev/spark-ui/?db=<redacted>",
+      "status": 401,
+      "content_type": "application/json",
+      "body_excerpt": "{\"error\":\"Unauthorized\"}",
+      "location_header": null,
+      "blocked_as_401_json": true,
+      "not_redirect": true,
+      "not_spa_shell": true
+    },
+    {
+      "case": "03-deep-path",
+      "url": "https://zeta.pama.workers.dev/spark-ui/api/v1/applications/",
+      "status": 401,
+      "content_type": "application/json",
+      "body_excerpt": "{\"error\":\"Unauthorized\"}",
+      "location_header": null,
+      "blocked_as_401_json": true,
+      "not_redirect": true,
+      "not_spa_shell": true
+    },
+    {
+      "case": "04-no-slash",
+      "url": "https://zeta.pama.workers.dev/spark-ui",
+      "status": 401,
+      "content_type": "application/json",
+      "body_excerpt": "{\"error\":\"Unauthorized\"}",
+      "location_header": null,
+      "blocked_as_401_json": true,
+      "not_redirect": true,
+      "not_spa_shell": true
+    }
+  ]
+}
