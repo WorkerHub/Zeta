@@ -19,6 +19,10 @@ export interface ConnectionValues {
   platformToken: string
   /** Spark only: the service's app token. */
   appToken: string
+  /** Spark only: optional Spark UI publish address. */
+  uiUrl?: string
+  /** Spark only: optional Spark UI platform token. */
+  uiPlatformToken?: string
 }
 
 /**
@@ -36,6 +40,21 @@ export function connectionTouched(values: ConnectionValues): boolean {
   return [values.url, values.platformToken, values.appToken].some((value) => value.trim() !== '')
 }
 
+/** Whether the admin typed any Spark UI field. */
+export function sparkUiTouched(values: ConnectionValues): boolean {
+  return [values.uiUrl, values.uiPlatformToken].some((v) => (v?.trim() ?? '') !== '')
+}
+
+/**
+ * Spark UI publish address and platform token travel as a pair: both filled, or both left blank.
+ * Filling only one is an incomplete pair that the server refuses with 400.
+ */
+export function sparkUiPairValid(uiUrl?: string, uiPlatformToken?: string): boolean {
+  const u = uiUrl?.trim() ?? ''
+  const p = uiPlatformToken?.trim() ?? ''
+  return (u === '' && p === '') || (u !== '' && p !== '')
+}
+
 /** Whether the form may save, for the engine it currently holds. */
 export function canSaveForm(args: {
   mode: FormMode
@@ -48,6 +67,10 @@ export function canSaveForm(args: {
   const { mode, kind, name, cfDatabaseId, values, testedSignature } = args
   // A PATCH only carries a name when it has one; an edit without a name has nothing to save
   if (mode === 'edit' && name.trim() === '') return false
+
+  if (kind === 'spark' && !sparkUiPairValid(values.uiUrl, values.uiPlatformToken)) {
+    return false
+  }
 
   if (!isConnectionKind(kind)) {
     // A D1 target is registered by picking an account database; editing keeps its link
@@ -64,19 +87,42 @@ export function canSaveForm(args: {
   return !connectionTouched(values) || canSaveConnection(signature, testedSignature)
 }
 
+export interface ConnectionPatch {
+  connection_url?: string
+  platform_token?: string
+  app_token?: string
+  ui_url?: string
+  ui_platform_token?: string
+}
+
 /**
  * The connection part of an edit's PATCH body, or null when every field was left blank (the stored
- * registration stays as it is). Spark's three values travel as one group, so a partial fill yields
- * null — the form's gate already refuses to save that.
+ * registration stays as it is). Spark's three connection values travel as one group, and its two
+ * optional UI values travel as another group; a partial fill in either group yields null — the form's
+ * gate already refuses to save that.
  */
-export function connectionPatch(
-  kind: ConnectionKind,
-  values: ConnectionValues
-): { connection_url: string; platform_token?: string; app_token?: string } | null {
-  if (!connectionTouched(values)) return null
-  if (connectionSignature({ kind, ...values }) === null) return null
-  return {
-    connection_url: values.url.trim(),
-    ...(kind === 'spark' ? { platform_token: values.platformToken.trim(), app_token: values.appToken.trim() } : {}),
+export function connectionPatch(kind: ConnectionKind, values: ConnectionValues): ConnectionPatch | null {
+  const touched = connectionTouched(values)
+  const uiTouched = kind === 'spark' && sparkUiTouched(values)
+
+  if (!touched && !uiTouched) return null
+  if (touched && connectionSignature({ kind, ...values }) === null) return null
+  if (uiTouched && !sparkUiPairValid(values.uiUrl, values.uiPlatformToken)) return null
+
+  const result: ConnectionPatch = {}
+
+  if (touched) {
+    result.connection_url = values.url.trim()
+    if (kind === 'spark') {
+      result.platform_token = values.platformToken.trim()
+      result.app_token = values.appToken.trim()
+    }
   }
+
+  if (uiTouched && values.uiUrl && values.uiPlatformToken) {
+    result.ui_url = values.uiUrl.trim()
+    result.ui_platform_token = values.uiPlatformToken.trim()
+  }
+
+  return result
 }

@@ -22,6 +22,7 @@ import {
   Info,
   Columns2,
   LayoutPanelTop,
+  ExternalLink,
 } from 'lucide-react'
 import { databasesApi, queryApi, ApiError } from '../lib/api'
 import { useAuthContext } from '../hooks/useAuth'
@@ -669,6 +670,21 @@ export default function QueryPage() {
                     </button>
                   ))
                 )}
+                {selectedDb?.kind === 'spark' && selectedDb.has_spark_ui && (
+                  <>
+                    <hr className="h-px bg-ink-200 border-0" />
+                    <a
+                      href={`/spark-ui/?db=${encodeURIComponent(selectedDb.id)}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      onClick={() => setShowDbMenu(false)}
+                      className="flex items-center justify-between w-full px-4 py-2.5 text-body text-ink-700 hover:bg-ink-100 transition-colors duration-(--duration-base)"
+                    >
+                      <span>{t('spark.spark_ui')}</span>
+                      <ExternalLink size={13} className="text-ink-400 shrink-0" aria-hidden="true" />
+                    </a>
+                  </>
+                )}
               </div>
             )}
           </div>
@@ -1059,6 +1075,21 @@ export default function QueryPage() {
                   </span>
                 </button>
               ))}
+              {selectedDb?.kind === 'spark' && selectedDb.has_spark_ui && (
+                <>
+                  <hr className="h-px bg-ink-200 border-0" />
+                  <a
+                    href={`/spark-ui/?db=${encodeURIComponent(selectedDb.id)}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    onClick={() => setShowDbMenu(false)}
+                    className="flex items-center justify-between w-full px-4 py-2.5 text-body text-ink-700 hover:bg-ink-100 transition-colors duration-(--duration-base)"
+                  >
+                    <span>{t('spark.spark_ui')}</span>
+                    <ExternalLink size={13} className="text-ink-400 shrink-0" aria-hidden="true" />
+                  </a>
+                </>
+              )}
             </div>
           )}
         </div>

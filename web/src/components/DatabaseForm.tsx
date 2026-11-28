@@ -57,6 +57,8 @@ export default function DatabaseForm({ mode, database, available, onSaved, onCan
   const [url, setUrl] = useState('')
   const [platformToken, setPlatformToken] = useState('')
   const [appToken, setAppToken] = useState('')
+  const [uiUrl, setUiUrl] = useState('')
+  const [uiPlatformToken, setUiPlatformToken] = useState('')
   const [testState, setTestState] = useState<ConnectionTestState>('idle')
   const [testedSignature, setTestedSignature] = useState<string | null>(null)
   const [testError, setTestError] = useState('')
@@ -81,6 +83,8 @@ export default function DatabaseForm({ mode, database, available, onSaved, onCan
     setUrl('')
     setPlatformToken('')
     setAppToken('')
+    setUiUrl('')
+    setUiPlatformToken('')
     invalidateTest()
     setFormError('')
   }
@@ -98,6 +102,14 @@ export default function DatabaseForm({ mode, database, available, onSaved, onCan
   function changeAppToken(next: string) {
     setAppToken(next)
     invalidateTest()
+  }
+
+  function changeUiUrl(next: string) {
+    setUiUrl(next)
+  }
+
+  function changeUiPlatformToken(next: string) {
+    setUiPlatformToken(next)
   }
 
   async function testConnection() {
@@ -128,7 +140,7 @@ export default function DatabaseForm({ mode, database, available, onSaved, onCan
     }
   }
 
-  const values = { url, platformToken, appToken }
+  const values = { url, platformToken, appToken, uiUrl, uiPlatformToken }
   const canSave = canSaveForm({
     mode,
     kind: activeKind,
@@ -234,6 +246,8 @@ export default function DatabaseForm({ mode, database, available, onSaved, onCan
             url={url}
             platformToken={platformToken}
             appToken={appToken}
+            uiUrl={uiUrl}
+            uiPlatformToken={uiPlatformToken}
             editing={editing}
             testState={testState}
             testError={testError}
@@ -241,6 +255,8 @@ export default function DatabaseForm({ mode, database, available, onSaved, onCan
             onUrlChange={changeUrl}
             onPlatformTokenChange={changePlatformToken}
             onAppTokenChange={changeAppToken}
+            onUiUrlChange={changeUiUrl}
+            onUiPlatformTokenChange={changeUiPlatformToken}
             onTest={testConnection}
           />
         ) : (

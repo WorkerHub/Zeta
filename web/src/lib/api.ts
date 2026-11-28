@@ -476,6 +476,8 @@ export const adminApi = {
     connection_url?: string
     platform_token?: string
     app_token?: string
+    ui_url?: string
+    ui_platform_token?: string
     cf_database_id?: string
     name?: string
     description?: string
@@ -492,6 +494,8 @@ export const adminApi = {
       connection_url?: string
       platform_token?: string
       app_token?: string
+      ui_url?: string
+      ui_platform_token?: string
     }
   ) => apiFetch<{ message: string }>(`/admin/databases/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
   deleteDatabase: (id: string) => apiFetch<{ message: string }>(`/admin/databases/${id}`, { method: 'DELETE' }),

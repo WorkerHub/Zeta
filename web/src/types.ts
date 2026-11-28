@@ -30,6 +30,7 @@ export interface Database {
   cf_database_id?: string | null
   permission: DbPermission
   is_app_db?: boolean
+  has_spark_ui?: boolean
 }
 
 // A registered database as the admin API returns it
@@ -46,6 +47,7 @@ export interface AdminDatabase {
   is_active: number
   created_at: number
   is_app_db?: boolean
+  has_spark_ui?: boolean
 }
 
 // A Cloudflare account D1 database as returned by GET /admin/d1/databases
