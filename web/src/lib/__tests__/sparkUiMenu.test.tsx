@@ -108,7 +108,7 @@ describe('SparkUiMenuLink Component', () => {
     render(<SparkUiMenuLink selectedDb={db} onSelect={onSelect} />)
 
     const button = screen.getByRole('button', { name: /Spark UI/i })
-    fireEvent.click(button)
+    fireEvent.keyDown(button, { key: 'Enter' })
 
     await waitFor(() => {
       expect(openSpy).toHaveBeenCalledWith('/spark-ui/', '_blank', 'noopener,noreferrer')
@@ -116,7 +116,7 @@ describe('SparkUiMenuLink Component', () => {
     expect(onSelect).toHaveBeenCalledTimes(1)
   })
 
-  it('handles non-2xx response: does not open new tab and surfaces error message', async () => {
+  it('handles non-2xx response: does not open new tab and surfaces error to onError', async () => {
     setSession('test-access-token', mockUser)
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(
       new Response(JSON.stringify({ error: 'Forbidden' }), {
@@ -142,16 +142,14 @@ describe('SparkUiMenuLink Component', () => {
     fireEvent.click(button)
 
     await waitFor(() => {
-      expect(screen.getByRole('alert')).toBeDefined()
+      expect(onError).toHaveBeenCalledWith('Forbidden')
     })
 
-    expect(screen.getByText('Forbidden')).toBeDefined()
-    expect(onError).toHaveBeenCalledWith('Forbidden')
     expect(openSpy).not.toHaveBeenCalled()
     expect(onSelect).not.toHaveBeenCalled()
   })
 
-  it('handles network failure (TypeError): surfaces offline error and does not open new tab', async () => {
+  it('handles network failure (TypeError): surfaces offline error to onError and does not open new tab', async () => {
     setSession('test-access-token', mockUser)
     vi.spyOn(globalThis, 'fetch').mockRejectedValue(new TypeError('Failed to fetch'))
 
@@ -170,18 +168,16 @@ describe('SparkUiMenuLink Component', () => {
     const button = screen.getByRole('button', { name: /Spark UI/i })
     fireEvent.click(button)
 
+    const offlineMsg = t('errors.network_offline')
     await waitFor(() => {
-      expect(screen.getByRole('alert')).toBeDefined()
+      expect(onError).toHaveBeenCalledWith(offlineMsg)
     })
 
-    const offlineMsg = t('errors.network_offline')
-    expect(screen.getByText(offlineMsg)).toBeDefined()
-    expect(onError).toHaveBeenCalledWith(offlineMsg)
     expect(openSpy).not.toHaveBeenCalled()
     expect(onSelect).not.toHaveBeenCalled()
   })
 
-  it('handles classified Spark error code in failure response', async () => {
+  it('handles classified Spark error code in failure response via onError', async () => {
     setSession('test-access-token', mockUser)
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(
       new Response(JSON.stringify({ code: 'spark_stopped', error: 'Service stopped' }), {
@@ -199,14 +195,15 @@ describe('SparkUiMenuLink Component', () => {
       permission: 'read',
       has_spark_ui: true,
     }
-    render(<SparkUiMenuLink selectedDb={db} onSelect={vi.fn()} />)
+    const onError = vi.fn()
+    render(<SparkUiMenuLink selectedDb={db} onSelect={vi.fn()} onError={onError} />)
 
     const button = screen.getByRole('button', { name: /Spark UI/i })
     fireEvent.click(button)
 
     const expectedText = t('spark_error.spark_stopped')
     await waitFor(() => {
-      expect(screen.getByText(expectedText)).toBeDefined()
+      expect(onError).toHaveBeenCalledWith(expectedText)
     })
     expect(openSpy).not.toHaveBeenCalled()
   })

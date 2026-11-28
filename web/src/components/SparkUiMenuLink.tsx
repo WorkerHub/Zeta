@@ -20,7 +20,6 @@ interface Props {
 export default function SparkUiMenuLink({ selectedDb, onSelect, onError }: Props) {
   const { t } = useLocale()
   const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
 
   if (selectedDb?.kind !== 'spark' || !selectedDb.has_spark_ui) {
     return null
@@ -28,7 +27,6 @@ export default function SparkUiMenuLink({ selectedDb, onSelect, onError }: Props
 
   const handleClick = async () => {
     if (!selectedDb?.id || loading) return
-    setError(null)
     setLoading(true)
     try {
       await sparkUiApi.createSession(selectedDb.id)
@@ -40,10 +38,16 @@ export default function SparkUiMenuLink({ selectedDb, onSelect, onError }: Props
           ? t('errors.network_offline')
           : ((err instanceof ApiError ? errorCodeText(t, err.body) : null) ??
             (err instanceof Error ? err.message : t('errors.generic')))
-      setError(msg)
       onError?.(msg)
     } finally {
       setLoading(false)
+    }
+  }
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault()
+      handleClick()
     }
   }
 
@@ -54,16 +58,12 @@ export default function SparkUiMenuLink({ selectedDb, onSelect, onError }: Props
         type="button"
         disabled={loading}
         onClick={handleClick}
+        onKeyDown={handleKeyDown}
         className="flex items-center justify-between w-full px-4 py-2.5 text-body text-ink-700 hover:bg-ink-100 transition-colors duration-(--duration-base) disabled:opacity-50 text-left"
       >
         <span>{t('spark.spark_ui')}</span>
         <ExternalLink size={13} className="text-ink-400 shrink-0" aria-hidden="true" />
       </button>
-      {error && (
-        <p className="px-4 py-1 text-micro text-danger-600" role="alert">
-          {error}
-        </p>
-      )}
     </>
   )
 }
