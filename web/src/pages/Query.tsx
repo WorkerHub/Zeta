@@ -670,7 +670,7 @@ export default function QueryPage() {
                     </button>
                   ))
                 )}
-                <SparkUiMenuLink selectedDb={selectedDb} onSelect={() => setShowDbMenu(false)} />
+                <SparkUiMenuLink selectedDb={selectedDb} onSelect={() => setShowDbMenu(false)} onError={setPageError} />
               </div>
             )}
           </div>
@@ -1061,7 +1061,7 @@ export default function QueryPage() {
                   </span>
                 </button>
               ))}
-              <SparkUiMenuLink selectedDb={selectedDb} onSelect={() => setShowDbMenu(false)} />
+              <SparkUiMenuLink selectedDb={selectedDb} onSelect={() => setShowDbMenu(false)} onError={setPageError} />
             </div>
           )}
         </div>

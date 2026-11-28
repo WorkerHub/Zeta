@@ -1,19 +1,39 @@
 // @vitest-environment jsdom
 
-import { cleanup, fireEvent, render, screen } from '@testing-library/react'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import SparkUiMenuLink from '../../components/SparkUiMenuLink'
 import querySource from '../../pages/Query.tsx?raw'
-import type { Database } from '../../types'
-import { setLocale } from '../translations'
+import type { Database, User } from '../../types'
+import { clearSession, setSession } from '../auth'
+import { setLocale, t } from '../translations'
+
+const mockUser: User = {
+  id: 'u-1',
+  name: 'Test User',
+  email: 'test@example.com',
+  role: 'member',
+  email_verified: 1,
+  two_factor_required: 0,
+  created_at: 1700000000,
+}
+
+let openSpy: ReturnType<typeof vi.spyOn>
+
+beforeEach(() => {
+  openSpy = vi.spyOn(window, 'open').mockImplementation(() => null)
+  clearSession()
+})
 
 afterEach(() => {
   cleanup()
+  vi.restoreAllMocks()
+  clearSession()
   setLocale('en')
 })
 
 describe('SparkUiMenuLink Component', () => {
-  it('renders Spark UI link when selectedDb is spark and has_spark_ui is true', () => {
+  it('renders Spark UI button when selectedDb is spark and has_spark_ui is true', () => {
     const db: Database = {
       id: 'db-spark-1',
       name: 'Spark Cluster',
@@ -25,17 +45,16 @@ describe('SparkUiMenuLink Component', () => {
     const onSelect = vi.fn()
     render(<SparkUiMenuLink selectedDb={db} onSelect={onSelect} />)
 
-    const link = screen.getByRole('link', { name: /Spark UI/i })
-    expect(link).toBeDefined()
-    expect(link.getAttribute('href')).toBe('/spark-ui/?db=db-spark-1')
-    expect(link.getAttribute('target')).toBe('_blank')
-    expect(link.getAttribute('rel')).toBe('noopener noreferrer')
-
-    fireEvent.click(link)
-    expect(onSelect).toHaveBeenCalledTimes(1)
+    const button = screen.getByRole('button', { name: /Spark UI/i })
+    expect(button).toBeDefined()
+    expect(button.getAttribute('href')).toBeNull()
   })
 
-  it('encodes special characters in database ID for the URL query param', () => {
+  it('triggers bootstrap POST request with Authorization, Content-Type, credentials and body on click, then opens /spark-ui/', async () => {
+    setSession('test-access-token-123', mockUser)
+
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(null, { status: 204 }))
+
     const db: Database = {
       id: 'spark/special:id?name=foo',
       name: 'Special Spark',
@@ -44,9 +63,149 @@ describe('SparkUiMenuLink Component', () => {
       permission: 'read',
       has_spark_ui: true,
     }
-    render(<SparkUiMenuLink selectedDb={db} onSelect={vi.fn()} />)
-    const link = screen.getByRole('link', { name: /Spark UI/i })
-    expect(link.getAttribute('href')).toBe('/spark-ui/?db=spark%2Fspecial%3Aid%3Fname%3Dfoo')
+    const onSelect = vi.fn()
+    render(<SparkUiMenuLink selectedDb={db} onSelect={onSelect} />)
+
+    const button = screen.getByRole('button', { name: /Spark UI/i })
+    fireEvent.click(button)
+
+    await waitFor(() => {
+      expect(fetchSpy).toHaveBeenCalledTimes(1)
+    })
+
+    expect(fetchSpy).toHaveBeenCalledWith(
+      '/api/spark-ui/session',
+      expect.objectContaining({
+        method: 'POST',
+        credentials: 'include',
+        headers: expect.objectContaining({
+          Authorization: 'Bearer test-access-token-123',
+          'Content-Type': 'application/json',
+        }),
+        body: JSON.stringify({ db: 'spark/special:id?name=foo' }),
+      })
+    )
+
+    await waitFor(() => {
+      expect(openSpy).toHaveBeenCalledWith('/spark-ui/', '_blank', 'noopener,noreferrer')
+    })
+    expect(onSelect).toHaveBeenCalledTimes(1)
+  })
+
+  it('triggers bootstrap request on keyboard activation (Enter key)', async () => {
+    setSession('test-token-kbd', mockUser)
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(null, { status: 204 }))
+
+    const db: Database = {
+      id: 'db-spark-kbd',
+      name: 'Spark Cluster',
+      description: null,
+      kind: 'spark',
+      permission: 'read',
+      has_spark_ui: true,
+    }
+    const onSelect = vi.fn()
+    render(<SparkUiMenuLink selectedDb={db} onSelect={onSelect} />)
+
+    const button = screen.getByRole('button', { name: /Spark UI/i })
+    fireEvent.keyDown(button, { key: 'Enter' })
+
+    await waitFor(() => {
+      expect(openSpy).toHaveBeenCalledWith('/spark-ui/', '_blank', 'noopener,noreferrer')
+    })
+    expect(onSelect).toHaveBeenCalledTimes(1)
+  })
+
+  it('handles non-2xx response: does not open new tab and surfaces error to onError', async () => {
+    setSession('test-access-token', mockUser)
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(JSON.stringify({ error: 'Forbidden' }), {
+        status: 403,
+        statusText: 'Forbidden',
+        headers: { 'Content-Type': 'application/json' },
+      })
+    )
+
+    const db: Database = {
+      id: 'db-spark-1',
+      name: 'Spark Cluster',
+      description: null,
+      kind: 'spark',
+      permission: 'read',
+      has_spark_ui: true,
+    }
+    const onSelect = vi.fn()
+    const onError = vi.fn()
+    render(<SparkUiMenuLink selectedDb={db} onSelect={onSelect} onError={onError} />)
+
+    const button = screen.getByRole('button', { name: /Spark UI/i })
+    fireEvent.click(button)
+
+    await waitFor(() => {
+      expect(onError).toHaveBeenCalledWith('Forbidden')
+    })
+
+    expect(openSpy).not.toHaveBeenCalled()
+    expect(onSelect).not.toHaveBeenCalled()
+  })
+
+  it('handles network failure (TypeError): surfaces offline error to onError and does not open new tab', async () => {
+    setSession('test-access-token', mockUser)
+    vi.spyOn(globalThis, 'fetch').mockRejectedValue(new TypeError('Failed to fetch'))
+
+    const db: Database = {
+      id: 'db-spark-1',
+      name: 'Spark Cluster',
+      description: null,
+      kind: 'spark',
+      permission: 'read',
+      has_spark_ui: true,
+    }
+    const onSelect = vi.fn()
+    const onError = vi.fn()
+    render(<SparkUiMenuLink selectedDb={db} onSelect={onSelect} onError={onError} />)
+
+    const button = screen.getByRole('button', { name: /Spark UI/i })
+    fireEvent.click(button)
+
+    const offlineMsg = t('errors.network_offline')
+    await waitFor(() => {
+      expect(onError).toHaveBeenCalledWith(offlineMsg)
+    })
+
+    expect(openSpy).not.toHaveBeenCalled()
+    expect(onSelect).not.toHaveBeenCalled()
+  })
+
+  it('handles classified Spark error code in failure response via onError', async () => {
+    setSession('test-access-token', mockUser)
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(JSON.stringify({ code: 'spark_stopped', error: 'Service stopped' }), {
+        status: 502,
+        statusText: 'Bad Gateway',
+        headers: { 'Content-Type': 'application/json' },
+      })
+    )
+
+    const db: Database = {
+      id: 'db-spark-1',
+      name: 'Spark Cluster',
+      description: null,
+      kind: 'spark',
+      permission: 'read',
+      has_spark_ui: true,
+    }
+    const onError = vi.fn()
+    render(<SparkUiMenuLink selectedDb={db} onSelect={vi.fn()} onError={onError} />)
+
+    const button = screen.getByRole('button', { name: /Spark UI/i })
+    fireEvent.click(button)
+
+    const expectedText = t('spark_error.spark_stopped')
+    await waitFor(() => {
+      expect(onError).toHaveBeenCalledWith(expectedText)
+    })
+    expect(openSpy).not.toHaveBeenCalled()
   })
 
   it('renders localized label in Chinese when locale is zh', () => {
@@ -137,7 +296,7 @@ describe('SparkUiMenuLink Integration with Query.tsx', () => {
 
   it('renders SparkUiMenuLink in both desktop and mobile dropdowns with onSelect closing menu', () => {
     const matches = querySource.match(
-      /<SparkUiMenuLink selectedDb=\{selectedDb\} onSelect=\{\(\) => setShowDbMenu\(false\)\} \/>/g
+      /<SparkUiMenuLink selectedDb=\{selectedDb\} onSelect=\{\(\) => setShowDbMenu\(false\)\} onError=\{setPageError\} \/>/g
     )
     expect(matches).toHaveLength(2)
   })
