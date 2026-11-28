@@ -59,6 +59,11 @@ function clearRefreshCookie(c: HeaderSetter, secure: boolean): void {
   }
 }
 
+function clearSparkUiCookie(c: HeaderSetter, secure: boolean): void {
+  const flags = `HttpOnly; Path=/spark-ui; Max-Age=0; SameSite=Lax${secure ? '; Secure' : ''}`
+  c.header('Set-Cookie', `spark_ui_session=; ${flags}`, { append: true })
+}
+
 // ── POST /api/auth/register ───────────────────────────────────────────────────
 
 auth.post('/register', async (c) => {
@@ -418,6 +423,7 @@ auth.post('/logout', async (c) => {
     if (payload) await revokeRefreshToken(c.env, payload.jti)
   }
   clearRefreshCookie(c, isSecure(c))
+  clearSparkUiCookie(c, isSecure(c))
   return c.json({ message: 'Logged out' })
 })
 

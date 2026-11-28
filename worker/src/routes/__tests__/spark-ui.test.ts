@@ -143,6 +143,27 @@ describe('/spark-ui access control', () => {
     expect(res.headers.get('Location')).toBe('/spark-ui/')
     expect(res.headers.get('Set-Cookie')).toContain('spark_ui_session=')
   })
+
+  it('does NOT accept ?token= query parameter for /api/* endpoints (strictly limited to /spark-ui)', async () => {
+    const e = env()
+    const tokenHeader = await bearer(e, 'a1', 'admin')
+    const token = tokenHeader.Authorization.replace('Bearer ', '')
+
+    // /api/profile must refuse query param token and demand Authorization header
+    const res = await callWorker(e, `/api/profile?token=${token}`)
+    expect(res.status).toBe(401)
+    expect(await res.json()).toEqual({ error: 'Unauthorized' })
+  })
+
+  it('POST /api/auth/logout clears spark_ui_session cookie', async () => {
+    const e = env()
+    const res = await callWorker(e, '/api/auth/logout', { method: 'POST' })
+    expect(res.status).toBe(200)
+    const setCookie = res.headers.get('Set-Cookie') ?? ''
+    expect(setCookie).toContain('spark_ui_session=;')
+    expect(setCookie).toContain('Max-Age=0')
+    expect(setCookie).toContain('Path=/spark-ui')
+  })
 })
 
 describe('/spark-ui proxying with signed cookie', () => {
@@ -301,6 +322,33 @@ describe('/spark-ui proxying with signed cookie', () => {
     })
     expect(res3.status).toBe(302)
     expect(res3.headers.get('Location')).toBe('/spark-ui/')
+
+    // Case 4: relative redirect with ../ resolved against current request URL
+    fetchMock.mockResolvedValueOnce(
+      new Response(null, {
+        status: 302,
+        headers: { Location: '../jobs' },
+      })
+    )
+    const res4 = await callWorker(e, '/spark-ui/proxy/app-1/stages/detail', {
+      headers: { Cookie: `spark_ui_session=${cookie}` },
+    })
+    expect(res4.status).toBe(302)
+    expect(res4.headers.get('Location')).toBe('/spark-ui/proxy/app-1/jobs')
+
+    // Case 5: relative redirect with excessive ../ never escapes /spark-ui
+    fetchMock.mockResolvedValueOnce(
+      new Response(null, {
+        status: 302,
+        headers: { Location: '../../../../escaped' },
+      })
+    )
+    const res5 = await callWorker(e, '/spark-ui/proxy/app-1/', {
+      headers: { Cookie: `spark_ui_session=${cookie}` },
+    })
+    expect(res5.status).toBe(302)
+    expect(res5.headers.get('Location')).toMatch(/^\/spark-ui\//)
+    expect(res5.headers.get('Location')).toBe('/spark-ui/escaped')
   })
 
   it('never leaks ui_url or ui_platform_token in headers or response', async () => {

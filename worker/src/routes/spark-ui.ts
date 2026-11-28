@@ -11,7 +11,7 @@ import type { DatabaseRow, Env, Variables } from '../types'
 const sparkUi = new Hono<{ Bindings: Env; Variables: Variables }>()
 sparkUi.use('*', requireAuth)
 
-export function rewriteSparkUiLocation(location: string, uiUrl: string): string {
+export function rewriteSparkUiLocation(location: string, uiUrl: string, requestUrl?: string): string {
   try {
     const locUrl = new URL(location)
     const targetUrl = new URL(uiUrl)
@@ -33,7 +33,20 @@ export function rewriteSparkUiLocation(location: string, uiUrl: string): string 
     if (location.startsWith('/')) {
       return `/spark-ui${location}`
     }
-    return `/spark-ui/${location}`
+    if (requestUrl) {
+      try {
+        const resolved = new URL(location, requestUrl)
+        let pathname = resolved.pathname
+        if (!pathname.startsWith('/spark-ui')) {
+          pathname = `/spark-ui${pathname.startsWith('/') ? pathname : `/${pathname}`}`
+        }
+        return `${pathname}${resolved.search}${resolved.hash}`
+      } catch {
+        // Fall back
+      }
+    }
+    const clean = location.replace(/^(\.\.\/)+/, '')
+    return `/spark-ui/${clean}`
   }
 }
 
@@ -161,7 +174,7 @@ async function handleSparkUi(c: Context<{ Bindings: Env; Variables: Variables }>
 
   const loc = resHeaders.get('location')
   if (loc) {
-    resHeaders.set('location', rewriteSparkUiLocation(loc, resolved.ui_url))
+    resHeaders.set('location', rewriteSparkUiLocation(loc, resolved.ui_url, c.req.url))
   }
 
   return new Response(proxyRes.body, {

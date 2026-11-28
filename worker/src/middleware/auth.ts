@@ -9,7 +9,8 @@ type Ctx = Context<{ Bindings: Env; Variables: Variables }>
 // Returns the verified payload, or null if the token is invalid or was issued before the
 // user's sessions were invalidated (password/role/email change, deletion).
 async function authenticate(c: Ctx) {
-  if (c.req.path.startsWith('/spark-ui')) {
+  const isSparkUi = c.req.path.startsWith('/spark-ui')
+  if (isSparkUi) {
     const cookie = getCookie(c, 'spark_ui_session')
     if (cookie) {
       const session = await verifySparkUiSessionToken(cookie, c.env)
@@ -30,7 +31,8 @@ async function authenticate(c: Ctx) {
   }
 
   const authHeader = c.req.header('Authorization')?.replace(/^Bearer\s+/i, '')
-  const token = authHeader || c.req.query('token')
+  // ?token= is ONLY accepted for the /spark-ui first hit, never on /api/* routes
+  const token = authHeader || (isSparkUi ? c.req.query('token') : undefined)
   if (token) {
     const payload = await verifyAccessToken(token, c.env)
     if (!payload) return null
